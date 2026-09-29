@@ -166,7 +166,8 @@ object Wording {
   val UNCONFIRMED: List<String> = listOf(
     "Connector Unconfirmed: this Runtime cannot verify that ChatGPT is using a connector created from this Runtime's current tool list. " +
       "ChatGPT saves that tool list when the connector is created and does not refresh it later. Create the connector again:",
-    "1. Delete the app in ChatGPT.  2. New Plugin.  3. Select the tunnel.  4. Choose No Auth, not the OAuth default: OAuth fails before any tool call.",
+    "1. Delete the app in ChatGPT.  2. Plugins → Add → Create MCP App.  3. Connection: Tunnel, with this tunnel's ID.  " +
+      "4. Authentication: No authentication, not the OAuth default: OAuth fails before any tool call.",
     "Nothing on this machine can check whether these were done. [C] records your word that they were; it is not a measurement.",
   )
 

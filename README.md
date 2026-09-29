@@ -97,14 +97,16 @@ This command registers it at Read and requires the Runtime to be stopped. Use th
 Keep the Runtime running throughout these steps.
 
 1. In ChatGPT, open **Settings → Security and login** and enable **Developer mode**. A workspace administrator may need to grant access first.
-2. Open **Plugins**, select the **plus button**, and create a connection.
+2. Open **Plugins**, select **Add** at the top right, and choose **Create MCP App**. The **New Plugin** dialog opens.
 3. Give it a name such as **Proxenos** and a description such as “Read and work with my registered local workspaces.”
-4. Under **Connection**, choose **Tunnel**. Select the tunnel created by the wizard, or enter its `tunnel_...` ID.
-5. If asked for authentication, choose **No Auth**. This application's MCP endpoint does not implement OAuth; the tunnel uses the runtime key you saved locally.
-6. Create the connection and review the discovered tools.
-7. Start a new conversation and add **Proxenos** from the tools menu.
+4. Under **Connection**, switch from **Server URL** to **Tunnel** and enter the `tunnel_...` ID the wizard printed.
+5. Set **Authentication** to **No authentication**. The dialog defaults to OAuth, which fails before any tool call. This application's MCP endpoint does not implement OAuth; the tunnel uses the runtime key you saved locally.
+6. Tick **I understand and want to continue**, select **Create**, and then **Connect Proxenos**.
+7. Start a new conversation, type **`@`**, and pick **Proxenos** from the **Plugins** list.
 
-These menu locations follow OpenAI's [connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). UI labels and availability can vary by account.
+With ChatGPT's default permission, **Allow low-risk tools**, read-only calls such as `git_status` run at once, while calls that change files or run commands may ask for approval first. **See details** in that prompt shows the exact arguments, including the command.
+
+These menu locations follow OpenAI's [connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt) as of September 2026. UI labels and availability can vary by account.
 
 Ask ChatGPT:
 
@@ -240,7 +242,7 @@ The Runtime also checks `tools/tunnel-client` inside its state directory. Creden
 | `tunnel-client` cannot be found | Install the executable on `PATH`, in the state directory's `tools/`, or set `tunnel_client` in TOML. |
 | `XDG_RUNTIME_DIR` is missing | Start from a Linux login session, or configure explicit socket paths; pass the matching control socket to the dashboard. |
 | Tunnel is absent in ChatGPT | Check its ChatGPT workspace association and your Tunnels Read + Use access. |
-| Connection fails during OAuth | Recreate the connection with **No Auth**. |
+| Connection fails during OAuth | Recreate the connection with **No authentication**. |
 | Runtime remains Connecting or becomes Failed | Read the tunnel complaint in the dashboard; check the tunnel ID, runtime key, and outbound connectivity. |
 | No workspaces are listed | Register a directory and set it to Read or higher. A workspace marked Broken needs its root checked and re-confirmed. |
 | A write or command is refused | Check the selected workspace's access level. |

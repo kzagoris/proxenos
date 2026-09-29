@@ -168,7 +168,8 @@ run only; previous runs stay stored in the Runtime but are not shown in the dash
 `[i]` opens **Review**: one row per link — **Runtime**, **Tunnel**, **Connector** — each with
 its own state, and `[Enter]` opens the selected row's detail. On a fresh install the status
 line shows **Connector · Unconfirmed**; the Connector detail carries the instructions:
-**New Plugin**, select your tunnel, and choose **No Auth**. Press `[C]` there once you have
+**Plugins → Add → Create MCP App**, set **Connection** to **Tunnel** with your tunnel ID, and
+choose **No authentication**. Press `[C]` there once you have
 completed setup; this records your confirmation, not a connectivity measurement (SPEC §11.5).
 A connection failure and the tunnel's own words are on the Tunnel row and its detail. A stage
 below a Runtime that is not running reads **Can't tell** rather than a fault, because there is

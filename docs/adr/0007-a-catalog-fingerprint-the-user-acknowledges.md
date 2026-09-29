@@ -12,8 +12,9 @@ So the Runtime hashes that data into a **catalog fingerprint**, and persists the
 user last confirmed their connector was built against. When the stored fingerprint is absent or
 differs from the current one, the connector is **Unconfirmed**, and a banner under the status bar
 carries the literal re-creation steps until the user acknowledges it — delete the app in ChatGPT,
-New Plugin, select the tunnel, and choose **No Auth**, because the dialog defaults to OAuth and
-that fails before any tool call. Acknowledging stores the current fingerprint.
+create it again (Plugins → Add → Create MCP App), select the tunnel, and choose **No
+authentication**, because the dialog defaults to OAuth and that fails before any tool call.
+Acknowledging stores the current fingerprint.
 
 This makes first run and re-creation **one code path**, which is the honest shape: on a fresh
 install there is no stored fingerprint, on an upgrade there is a different one, and the user does

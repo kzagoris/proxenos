@@ -322,7 +322,7 @@ class HomeScreenTest {
     assertFalse("Delete the app" in fresh.prose())
     assertTrue("No workspaces yet" in fresh.prose())
     val prose = fresh.keys("i", "ArrowDown", "ArrowDown", "Enter").prose()
-    for (step in listOf("Delete the app in ChatGPT", "New Plugin", "Select the tunnel", "Choose No Auth, not the OAuth default")) assertTrue(step in prose)
+    for (step in listOf("Delete the app in ChatGPT", "Create MCP App", "Connection: Tunnel", "No authentication, not the OAuth default")) assertTrue(step in prose)
   }
 
   @Test

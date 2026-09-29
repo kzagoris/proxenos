@@ -893,8 +893,8 @@ Each is a place the screen could quietly lie:
   nothing is replayed or retried.
 - **Failed** names the reason, quotes the tunnel's own complaint, and cannot be mistaken for
   **Disconnected**: one is a problem, the other is the user's decision.
-- The **Unconfirmed** detail in the Connector stage of Review carries the literal steps — delete the app in ChatGPT, New Plugin,
-  select the tunnel, **choose No Auth and not the OAuth default** — and says plainly that nothing
+- The **Unconfirmed** detail in the Connector stage of Review carries the literal steps — delete the app in ChatGPT, Plugins → Add →
+  Create MCP App, select the tunnel, **choose No authentication and not the OAuth default** — and says plainly that nothing
   on this machine can check whether they were done, so acknowledging records the user's word and
   not a measurement.
 - The **first-run credential panel** quotes the tunnel's `status_code` and `mitigation` verbatim
@@ -1013,7 +1013,7 @@ tool errors inside ChatGPT, which is the worst place to debug it.
 
 Two measured operator facts: ChatGPT **snapshots the catalog with no refresh**, and **Disconnect
 in the ChatGPT UI deletes the plugin definition outright**. The tunnel object survives and is
-re-selectable, but re-creation must choose **No Auth** — the dialog defaults to OAuth and that
+re-selectable, but re-creation must choose **No authentication** — the dialog defaults to OAuth and that
 fails before any tool call. Nothing on this machine can detect that the connector is gone.
 
 The Runtime hashes the catalog it owns as data (§3) into a **catalog fingerprint**, and persists
