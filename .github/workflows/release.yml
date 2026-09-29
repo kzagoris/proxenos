@@ -1,0 +1,79 @@
+name: Release
+
+# Manual releases: run this from the Actions tab (or `gh workflow run release.yml -f version=…`).
+# The tag is created only by a run whose build and smoke tests passed, so a tag always names a
+# commit that produced the archives beside it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, without the v (e.g. 0.1.0)"
+        required: true
+      notes:
+        description: "Release notes (Markdown). Empty: generated from the commits since the last tag."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a version: $VERSION"; exit 1; }
+          if gh release view "v$VERSION" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then
+            echo "v$VERSION already exists"; exit 1
+          fi
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "26"
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew -Pversion="$VERSION" build installDist distTar bundledDistTar
+      - run: python3 tui/drive.py
+
+      # Drive each archive as a user would unpack it. The bundled one runs with a JAVA_HOME that
+      # does not exist, which proves it uses its own runtime and that no JDK module is missing.
+      - name: Smoke-test the archives
+        run: |
+          smoke=$(mktemp -d)
+          tar -xzf "build/distributions/proxenos-$VERSION.tar.gz" -C "$smoke"
+          tar -xzf "build/distributions/proxenos-$VERSION-linux-x64.tar.gz" -C "$smoke"
+          PROXENOS_TREE="$smoke/proxenos-$VERSION" python3 tui/drive.py
+          PROXENOS_TREE="$smoke/proxenos-$VERSION-linux-x64" JAVA_HOME=/nonexistent python3 tui/drive.py
+
+      - name: Checksums
+        working-directory: build/distributions
+        run: sha256sum "proxenos-$VERSION.tar.gz" "proxenos-$VERSION-linux-x64.tar.gz" > SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/distributions/proxenos-*.tar.gz
+
+      - name: Publish
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          if [ -n "$NOTES" ]; then notes=(--notes "$NOTES"); else notes=(--generate-notes); fi
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Proxenos $VERSION" "${notes[@]}" \
+            build/distributions/proxenos-"$VERSION".tar.gz \
+            build/distributions/proxenos-"$VERSION"-linux-x64.tar.gz \
+            build/distributions/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: test-results
+          path: "**/build/test-results/test/*.xml"

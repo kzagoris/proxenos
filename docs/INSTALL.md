@@ -13,6 +13,7 @@ bin/install-tunnel-client  downloads tunnel-client and verifies it against SHA25
 lib/                       the jars both launchers share
 docs/INSTALL.md            this file
 docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
+jre/                       linux-x64 archive only: the Java runtime the launchers use
 ```
 
 `tunnel-client` is **not** in it, and it is not committed to this repository either. Step 4 fetches
@@ -25,7 +26,8 @@ the official binary and checks it before anything runs it.
 - **Outbound HTTPS** and a ChatGPT workspace with developer mode and access to OpenAI Platform
   tunnels. Creating a tunnel requires Tunnels Read + Manage; using it requires Read + Use.
   See the [official tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
-- **A Java 26 runtime.** The code is compiled for Java 26 (class file version 70), so an older
+- **A Java 26 runtime, unless you use the linux-x64 archive**, which carries its own and ignores
+  `JAVA_HOME`. The code is compiled for Java 26 (class file version 70), so an older
   Java refuses it with `UnsupportedClassVersionError … class file version 70.0`. Either install
   one — [Eclipse Temurin 26](https://adoptium.net/temurin/releases/?version=26), or with mise
   `mise use -g java@temurin-26` — and the launchers find it through `JAVA_HOME`, else `java` on
@@ -37,14 +39,32 @@ the official binary and checks it before anything runs it.
 
 ## 2. Get the distribution
 
-Build it from a checkout. The build brings its own JDK 26 toolchain if the machine has none
-(SPEC §12), so this step needs only a JDK to launch Gradle:
+Each [release](https://github.com/kzagoris/proxenos/releases/latest) publishes two archives:
+
+- `proxenos-<version>-linux-x64.tar.gz`: the tree plus its own Java runtime, for x86_64.
+- `proxenos-<version>.tar.gz`: the tree alone, for any architecture, on your Java 26.
+
+Download one together with `SHA256SUMS`, and check it before unpacking:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS   # must print your archive name followed by OK
+```
+
+The archives also carry a build provenance attestation, which proves they were built by this
+repository's release workflow rather than only that they match a list published beside them:
+
+```sh
+gh attestation verify proxenos-<version>-linux-x64.tar.gz --repo kzagoris/proxenos
+```
+
+Or build it from a checkout. The build brings its own JDK 26 toolchain if the machine has none
+(SPEC §12), so this needs only a JDK to launch Gradle:
 
 ```sh
 git clone https://github.com/kzagoris/proxenos.git
 cd proxenos
-./gradlew distTar
-# → build/distributions/proxenos.tar
+./gradlew distTar           # → build/distributions/proxenos-0.0.0-dev.tar.gz
+./gradlew bundledDistTar    # → build/distributions/proxenos-0.0.0-dev-linux-x64.tar.gz
 ```
 
 `./gradlew installDist` lays out the same tree unpacked, in `build/install/proxenos/`,
@@ -54,11 +74,11 @@ if you would rather copy a directory than a tarball.
 
 ```sh
 mkdir -p ~/.local/opt
-tar -xf build/distributions/proxenos.tar -C ~/.local/opt
+tar -xzf proxenos-<version>-linux-x64.tar.gz -C ~/.local/opt
+mv ~/.local/opt/proxenos-<version>-linux-x64 ~/.local/opt/proxenos
 ```
 
-The archive path above assumes you are still in the checkout. If you received an archive, use
-its actual path instead; the checkout is not needed to run the installed application.
+The checkout is not needed to run the installed application.
 
 The tree must stay together: `bin/tui` starts the Runtime it finds at `bin/runtime` beside it. To
 type `tui` from anywhere, link the launcher rather than copying it — the launcher follows the

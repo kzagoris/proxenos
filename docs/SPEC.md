@@ -1109,7 +1109,14 @@ security fix in a module the Runtime loads, and then only to the patch that carr
 the Runtime it finds beside its own launcher; `bin/wizard`; `bin/install-tunnel-client`, into which
 the build writes the catalog's `tunnel-client` version; and `docs/INSTALL.md` with the systemd
 unit. It needs a Java 26 runtime on the machine — the code is compiled for the toolchain — and it
-carries none. [`INSTALL.md`](INSTALL.md) is the path from a clean machine to the first call.
+carries none. A second distribution, `bundled` (`./gradlew bundledDistTar`), is the same tree plus
+a `jlink`ed Java runtime in `jre/`, cut from the JDK 26 toolchain with a fixed module list, which
+the launchers there use unconditionally; it is built for linux-x64 only
+([ADR 0010](adr/0010-a-release-bundles-its-java-runtime.md)). Both are `tar.gz`, named by version
+(`-Pversion`, else `0.0.0-dev`). Releases are manual: the `Release` workflow builds both, drives
+each unpacked archive with `tui/drive.py` — the bundled one with a `JAVA_HOME` that does not
+exist — and only then tags and publishes them with `SHA256SUMS` and a provenance attestation.
+[`INSTALL.md`](INSTALL.md) is the path from a clean machine to the first call.
 
 **Linux-first stands and no portability abstraction is built now.** One adapter is a hypothetical
 seam; Windows would be the second, and it is designed then. What a future Windows port must

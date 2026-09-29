@@ -34,22 +34,27 @@ The Runtime uses local Unix sockets and manages the tunnel client itself. No pub
 
 Creating tunnels requires **Tunnels Read + Manage**; using them requires **Tunnels Read + Use**. Your tunnel must be associated with the ChatGPT workspace you will use. See the [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) for access requirements and downloads.
 
-## 1. Build the application
+## 1. Get the application
+
+Download a release from [GitHub Releases](https://github.com/kzagoris/proxenos/releases/latest):
+
+- **`proxenos-<version>-linux-x64.tar.gz`** carries its own Java runtime. Nothing else to install.
+- **`proxenos-<version>.tar.gz`** runs on any Linux architecture and needs a Java 26 runtime.
 
 ```bash
-git clone https://github.com/kzagoris/proxenos.git
-cd proxenos
-./gradlew installDist
-cd build/install/proxenos
+mkdir -p ~/.local/opt
+tar -xzf proxenos-<version>-linux-x64.tar.gz -C ~/.local/opt
+cd ~/.local/opt/proxenos-<version>-linux-x64
 ./bin/install-tunnel-client
 ```
 
-This builds one directory containing both launchers, the setup wizard, the verified tunnel
-installer, and the installation guide. Keep this tree together: the dashboard finds its Runtime
-beside it automatically. Run the commands below from this directory.
+The tree holds both launchers, the setup wizard, the verified tunnel installer, and the
+installation guide. Keep it together: the dashboard finds its Runtime beside it automatically.
+Run the commands below from this directory. Each release publishes `SHA256SUMS` and a build
+provenance attestation; [the installation guide](docs/INSTALL.md) shows how to check both.
 
-For a transferable archive, build `./gradlew distTar` from the repository root and follow
-[the shipped installation guide](docs/INSTALL.md), including prerequisites and checksum verification.
+To build from source instead, `./gradlew installDist` lays out the same tree in
+`build/install/proxenos/`.
 
 ## 2. Configure the OpenAI tunnel
 

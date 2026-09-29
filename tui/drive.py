@@ -9,6 +9,10 @@ prototype's arrow keys run backwards.
     ./gradlew :runtime:installDist :tui:installDist
     python3 tui/drive.py            # exits non-zero, naming the check, if any check fails
 
+    PROXENOS_TREE=path/to/unpacked/proxenos python3 tui/drive.py
+
+drives an unpacked distribution instead, which is how a release checks the archive it publishes.
+
 It needs no network: a stub stands in for `tunnel-client`, so the Runtime stays Connecting.
 """
 import fcntl
@@ -26,8 +30,9 @@ import termios
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TUI = os.path.join(REPO, "tui/build/install/tui/bin/tui")
-RUNTIME = os.path.join(REPO, "runtime/build/install/runtime/bin/runtime")
+TREE = os.environ.get("PROXENOS_TREE")
+TUI = os.path.join(TREE, "bin/tui") if TREE else os.path.join(REPO, "tui/build/install/tui/bin/tui")
+RUNTIME = os.path.join(TREE, "bin/runtime") if TREE else os.path.join(REPO, "runtime/build/install/runtime/bin/runtime")
 COLUMNS = int(os.environ.get("TUI_TEST_COLUMNS", "140"))
 ROWS = int(os.environ.get("TUI_TEST_ROWS", "40"))
 

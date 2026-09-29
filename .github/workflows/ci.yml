@@ -18,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: "26"
       - uses: gradle/actions/setup-gradle@v6
-      - run: ./gradlew build installDist --continue
+      - run: ./gradlew build installDist bundledDistTar --continue
       - run: python3 tui/drive.py
       - uses: actions/upload-artifact@v7
         if: failure()

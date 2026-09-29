@@ -1,5 +1,8 @@
 plugins {
   base
+  // For jlink: the bundled distribution's runtime is cut from the same JDK 26 toolchain the code
+  // is compiled with, so it is provisioned the same way (SPEC §12) and never the launching JVM.
+  `jvm-toolchains`
   // The one thing a user installs (SPEC §12): `runtime` and `tui` side by side in one
   // tree, plus the scripts and documents first run needs. `./gradlew installDist` lays it out in
   // build/install/proxenos/; `distTar` and `distZip` pack the same tree.
@@ -53,6 +56,71 @@ distributions {
         // (SPEC §11.4). It ships so a user who reads the reason and disagrees has it to hand.
         into("systemd") {
           from("docs/systemd")
+        }
+      }
+    }
+  }
+}
+
+// A release names its archives by version: the workflow passes -Pversion, and a local build that
+// passes nothing says so rather than posing as a release.
+if (version == Project.DEFAULT_VERSION) version = "0.0.0-dev"
+
+// tar.gz only: Linux-only (SPEC §12), and a zip does not keep a launcher's mode.
+tasks.withType<Tar>().configureEach {
+  compression = Compression.GZIP
+  archiveExtension = "tar.gz"
+}
+tasks.withType<Zip>().configureEach { enabled = false }
+
+// The bundled distribution (docs/adr/0010-a-release-bundles-its-java-runtime.md): the same tree
+// plus a trimmed Java runtime in jre/, for linux-x64, so a user needs no JDK 26 of their own.
+// The module list is fixed rather than computed: jdeps over non-modular Kotlin jars is not to be
+// trusted, and a missing module fails the smoke test the release runs against this tree.
+val jreModules = listOf(
+  "java.base", "java.desktop", "java.instrument", "java.logging", "java.management",
+  "jdk.net", "jdk.unsupported",
+)
+val jlinkOutput = layout.buildDirectory.dir("jlink/jre")
+val jlink by tasks.registering(Exec::class) {
+  val jlinkExecutable = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(libs.versions.jdk.get().toInt())
+  }.map { it.metadata.installationPath.file("bin/jlink").asFile.path }
+  val output = jlinkOutput.map { it.asFile }
+  inputs.property("modules", jreModules)
+  outputs.dir(jlinkOutput)
+  doFirst { output.get().deleteRecursively() }
+  executable(jlinkExecutable.get())
+  args(
+    "--add-modules", jreModules.joinToString(","),
+    "--strip-debug", "--no-header-files", "--no-man-pages",
+    "--compress", "zip-6",
+    "--output", output.get().path,
+  )
+}
+
+distributions {
+  create("bundled") {
+    distributionBaseName = "proxenos"
+    distributionClassifier = "linux-x64"
+    contents {
+      with(distributions["main"].contents)
+      into("jre") {
+        val executables = listOf("bin/*", "lib/jspawnhelper")
+        from(jlink) { exclude(executables) }
+        // As with the launchers, the archive keeps no mode from disk; jspawnhelper is how the
+        // JDK starts every child process, so without it no Command or Git tool could run.
+        from(jlink) {
+          include(executables)
+          filePermissions { unix("rwxr-xr-x") }
+        }
+      }
+      // The start scripts fall back to JAVA_HOME, else `java` on PATH. Here they use the tree's
+      // own runtime unconditionally: a stray JAVA_HOME pointing at an older Java would otherwise
+      // fail with UnsupportedClassVersionError in an archive that promised to need no Java.
+      filesMatching(listOf("bin/runtime", "bin/tui")) {
+        filter { line ->
+          if (line == "if [ -n \"\$JAVA_HOME\" ] ; then") "JAVA_HOME=\$APP_HOME/jre\n$line" else line
         }
       }
     }
