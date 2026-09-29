@@ -153,8 +153,9 @@ internal class TunnelChild(
     Thread({
       try {
         process.inputStream.bufferedReader().forEachLine {
-          log("[tunnel-client] $it")
+          // Taken in before it is logged, so a line the log shows is one the link state has heard.
           heard(it)
+          log("[tunnel-client] $it")
         }
       } catch (_: IOException) {
         // The pipe closed under us as the child died, which the supervisor reports itself.

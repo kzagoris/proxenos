@@ -372,11 +372,17 @@ class TunnelTest {
     return seen
   }
 
-  /** Appends [line] to the stub's output and waits until the Runtime has heard it. */
+  /**
+   * Appends [line] to the stub's output and waits until the Runtime has heard it, and then until
+   * the clock has moved past that moment: a success stamped in the same millisecond as the words
+   * is neither before nor after them.
+   */
   private fun complain(line: String) {
     val before = heard.count { line in it }
     Files.writeString(out.resolve("log"), line + "\n", CREATE, APPEND)
     assertTrue(eventually(10.seconds) { heard.count { line in it } > before }, "the tunnel's line never reached the Runtime")
+    val heardBy = now()
+    assertTrue(eventually(1.seconds) { now() > heardBy })
   }
 
   private inline fun <reified S : RuntimeState> awaitState(tunnel: Tunnel): S {
