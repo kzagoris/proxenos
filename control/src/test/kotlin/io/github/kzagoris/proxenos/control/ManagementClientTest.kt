@@ -219,6 +219,51 @@ class ManagementClientTest {
   }
 
   @Test
+  fun `Disconnect and Revoke stop no running work, StopOperation ends one command, and Stop ends the Runtime`() = runBlocking {
+    val workspace = client.perform(ManagementAct.Register(project("api").toString(), "api"))
+    client.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+
+    // Disconnect, then Revoke, each with a command running: both finish.
+    for (act in listOf(ManagementAct.Disconnect, ManagementAct.SetLevel(workspace.id, AccessLevel.None))) {
+      client.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+      val running = async(Dispatchers.IO) {
+        client.perform(ManagementAct.TryOperation(Operation.RunCommand("api", "sleep 0.5; echo finished", deliveryKey = "$act")))
+      }
+      awaitRunning("$act")
+      client.perform(act)
+      val finished = assertIs<CommandReply.Finished>(assertIs<Outcome.Ok<CommandReply>>(running.await()).value)
+      assertEquals("finished\n", finished.result.output, "$act stopped running work")
+    }
+    assertFalse(exited)
+
+    // StopOperation: that one command, named by the entry a frontend sees it running as.
+    client.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+    val stopped = async(Dispatchers.IO) {
+      client.perform(ManagementAct.TryOperation(Operation.RunCommand("api", "sleep 30", deliveryKey = "long")))
+    }
+    client.perform(ManagementAct.StopOperation(awaitRunning("long").entry))
+    val ended = assertIs<Outcome.Uncertain>(stopped.await())
+    assertIs<Uncertainty.Stopped>(ended.reason)
+    assertContains(ended.message, "the user stopped it")
+    // Acknowledge closes the loop on it: the Uncertain entry is settled by an appended fact.
+    val entry = activity.entries().single { it.needsAttention }
+    client.perform(ManagementAct.Acknowledge(entry.id))
+    assertFalse(activity.entries().single { it.id == entry.id }.needsAttention)
+    assertFailsWith<IllegalArgumentException> { client.perform(ManagementAct.StopOperation(entry.id)) }
+
+    // Stop: what is running is ended, new calls are refused, and the process is told to exit.
+    val last = async(Dispatchers.IO) {
+      client.perform(ManagementAct.TryOperation(Operation.RunCommand("api", "sleep 30", deliveryKey = "last")))
+    }
+    awaitRunning("last")
+    client.perform(ManagementAct.Stop)
+    assertIs<Uncertainty.Stopped>(assertIs<Outcome.Uncertain>(last.await()).reason)
+    assertTrue(exited)
+    val refused = client.perform(ManagementAct.TryOperation(Operation.ListWorkspaces))
+    assertEquals(Failure.RuntimeStopping, assertIs<Outcome.Failed>(refused).reason)
+  }
+
+  @Test
   fun `a process running as another Linux user cannot use the socket`() = runBlocking {
     server.stop()
     // The kernel's word for who dialed is this user, and the server serves somebody else: the
@@ -231,6 +276,22 @@ class ManagementClientTest {
     assertContains(refused.message!!, "somebody-else")
     assertFailsWith<IllegalStateException> { withTimeout(5.seconds) { stranger.observe().first() } }
     assertEquals(emptyList(), core.observe().first().let { (it as RuntimeEvent.Snapshot).workspaces })
+  }
+
+  /**
+   * The in-flight command sent with [deliveryKey], as a frontend sees it through its own snapshot.
+   * Its own, not merely one: a command that has just answered can still be listed for a moment,
+   * and stopping that one is rightly refused.
+   */
+  private suspend fun awaitRunning(deliveryKey: String): RunningOperation = withTimeout(10.seconds) {
+    var state: RuntimeEvent.Snapshot? = null
+    val mine = { operation: RunningOperation -> operation.arguments.endsWith("request_id=$deliveryKey") }
+    client.observe().first { event ->
+      val next = if (event is RuntimeEvent.Snapshot) event else state!!.after(event as RuntimeEvent.Change)
+      state = next
+      next.running.any(mine)
+    }
+    state!!.running.single(mine)
   }
 
   private fun Outcome<*>.fresh(): Outcome<*> = when (this) {
