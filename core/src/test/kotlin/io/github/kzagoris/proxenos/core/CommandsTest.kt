@@ -158,29 +158,33 @@ class CommandsTest {
     val elapsed = timing { assertEquals(emptyList(), execution.reap(), "every process should have been reaped") }
     // TERM was ignored, so what reaped these is the grace and then the escalation, not the TERM.
     assertTrue(elapsed >= GRACE, "SIGKILL must follow a full grace, not precede it: $elapsed")
-    for ((label, pid) in pids) assertFalse(alive(pid), "$label (pid $pid) is still running")
+    // `left-tree` is reached by the group's KILL alone, which reap cannot wait on because it has
+    // no handle to it: a delivered KILL is given the moment it takes to land, well short of the 30s
+    // a missed one would leave it running.
+    for ((label, pid) in pids) await("$label (pid $pid) to die", within = 5.seconds) { !alive(pid) }
   }
 
   @Test
   fun `a process forked after the snapshot and outside the group is named, and said to be unsignalled`() {
-    // It is started by the TERM handler, so it exists only after the tree was snapshotted, and
-    // `setsid` has already taken it out of the group. Neither arm of the kill can reach it, and
-    // rounding it off to "stopped" would be a plain untruth about this machine.
-    val execution = start(
-      script(
-        "forks-late.sh",
-        """
-        trap 'if [ -z "${'$'}LATE" ]; then setsid sleep 30 & LATE=${'$'}!; printf "late %s\n" "${'$'}LATE"; fi' TERM
-        sleep 30 &
-        $READY
-        $IDLE
-        """.trimIndent() + "\n",
-      ),
-    )
+    // It is started by the TERM handler of a helper that `setsid` has already taken out of the
+    // group, so it exists only after the tree was snapshotted and is born outside the group rather
+    // than leaving it after the group's TERM may have landed. Neither arm of the kill can reach
+    // it, and rounding it off to "stopped" would be a plain untruth about this machine.
+    // Both idle on `wait` alone, which a TERM interrupts: IDLE's `sleep 1` would be one more
+    // process born after the snapshot, and the helper's would survive the kill as well.
+    val lateOne = script("late.sh", "printf 'late %s\\n' \"${'$'}${'$'}\"\nexec sleep 30\n")
+    val helper = script("helper.sh", "trap \"'$lateOne' &\" TERM\nsleep 30 &\n$READY\nwhile true; do wait; done\n")
+    val forksLate = script("forks-late.sh", "trap : TERM\nsetsid '$helper' &\nwhile true; do wait; done\n")
+    // `exec`, so the shell that outlives TERM is the command itself: a `sh -c` that forks the
+    // script would die on the TERM and leave nothing for the late walk to walk.
+    val execution = runner.start("exec '$forksLate'", temporary).also { started += it }
     awaitReady(execution)
 
-    val survivors = execution.reap()
-    val late = assertNotNull(pidsIn(execution.captured().text)["late"], "the TERM handler should have forked one")
+    // Reap's two halves, with the late fork waited for between them rather than raced against the grace.
+    val snapshot = execution.term()
+    await("the TERM handler to fork one") { "late" in pidsIn(execution.captured().text) }
+    val late = pidsIn(execution.captured().text).getValue("late")
+    val survivors = execution.kill(snapshot)
     try {
       assertEquals(listOf(Survivor(late.toLong(), signalled = false)), survivors)
       assertContains(survivors.describe(), "pid $late")
@@ -363,13 +367,13 @@ class CommandsTest {
   private fun awaitReady(execution: CommandExecution) =
     await("the stub to say it is ready") { READY_LINE in execution.captured().text.lines() }
 
-  private fun await(what: String, until: () -> Boolean) {
-    val deadline = System.nanoTime() + 30.seconds.inWholeNanoseconds
+  private fun await(what: String, within: Duration = 30.seconds, until: () -> Boolean) {
+    val deadline = System.nanoTime() + within.inWholeNanoseconds
     while (System.nanoTime() < deadline) {
       if (until()) return
       Thread.sleep(20)
     }
-    fail("Waited 30s for $what")
+    fail("Waited $within for $what")
   }
 
   private fun timing(block: () -> Unit): Duration {
