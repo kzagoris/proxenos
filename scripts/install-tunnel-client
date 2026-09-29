@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# Installs the official tunnel-client executable where the Runtime looks for it, after checking
+# the release archive against the release's own SHA256SUMS.txt (SPEC §11, §12).
+#
+#   install-tunnel-client
+#
+# It lands in the state directory's tools/ — $XDG_STATE_HOME/proxenos/tools/, else
+# ~/.local/state/proxenos/tools/ — which the Runtime reads when no tunnel-client is on PATH.
+# That needs no root and no edit to PATH, and it is found the same way from a terminal, from the
+# TUI and from a systemd --user manager whose PATH is short. A tunnel-client you already keep on
+# PATH still wins; this script does not touch it.
+#
+# The binary is never committed to the repository. Re-running replaces the installed copy with a
+# freshly verified one.
+#
+# Environment:
+#   PROXENOS_STATE_DIR  the state directory, if you moved it (the Runtime honours it too).
+#                            A state_dir set only in config.toml is not read here; set this.
+#   TUNNEL_CLIENT_VERSION    the release to install. The distribution fills in the version the
+#                            build pins in gradle/libs.versions.toml; override it only on purpose.
+#   TUNNEL_CLIENT_RELEASES   where releases are downloaded from. Defaults to GitHub.
+
+set -euo pipefail
+
+version="${TUNNEL_CLIENT_VERSION:-@TUNNEL_CLIENT_VERSION@}"
+releases="${TUNNEL_CLIENT_RELEASES:-https://github.com/openai/tunnel-client/releases/download}"
+releases="${releases%/}"
+
+die() { printf 'install-tunnel-client: %s\n' "$1" >&2; exit 1; }
+say() { printf 'install-tunnel-client: %s\n' "$1"; }
+
+# The placeholder above is replaced when the distribution is assembled. Run straight from a
+# checkout, there is no pin to read, and guessing one would install a version nobody chose.
+[[ "$version" != *@* ]] || die "no version to install. Run the copy in the distribution's bin/, or set TUNNEL_CLIENT_VERSION."
+version="${version#v}"
+
+[[ "$(uname -s)" == Linux ]] || die "Proxenos is Linux-only, and this is $(uname -s)."
+case "$(uname -m)" in
+  x86_64 | amd64) arch=amd64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+  *) die "tunnel-client publishes no Linux release for $(uname -m)." ;;
+esac
+
+for tool in unzip sha256sum; do
+  command -v "$tool" >/dev/null 2>&1 || die "needs $tool, which is not installed."
+done
+if command -v curl >/dev/null 2>&1; then
+  fetch() { curl -fsSL --proto '=https,file' -o "$2" "$1"; }
+elif command -v wget >/dev/null 2>&1; then
+  fetch() { wget -q -O "$2" "$1"; }
+else
+  die "needs curl or wget to download the release, and neither is installed."
+fi
+
+state="${PROXENOS_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/proxenos}"
+tools="$state/tools"
+archive="tunnel-client-v$version-linux-$arch.zip"
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+say "downloading $archive and SHA256SUMS.txt from $releases/v$version/"
+fetch "$releases/v$version/$archive" "$work/$archive" || die "could not download $releases/v$version/$archive."
+fetch "$releases/v$version/SHA256SUMS.txt" "$work/SHA256SUMS.txt" || die "could not download $releases/v$version/SHA256SUMS.txt."
+
+# SHA256SUMS.txt lists every asset of the release, one "<sum>  <name>" per line. Only the line
+# for this archive is checked, and its absence is a refusal, not a pass.
+expected=$(awk -v name="$archive" '$2 == name || $2 == "*" name { print $1; exit }' "$work/SHA256SUMS.txt")
+[[ -n "$expected" ]] || die "$archive is not listed in the release's SHA256SUMS.txt. Nothing was installed."
+actual=$(sha256sum "$work/$archive" | awk '{ print $1 }')
+[[ "$actual" == "$expected" ]] || die "$archive does not match the release's SHA256SUMS.txt (expected $expected, got $actual). Nothing was installed."
+say "verified $archive against SHA256SUMS.txt: sha256 $actual"
+
+# The archive also carries cloudflared and licence files; the Runtime runs tunnel-client alone.
+unzip -p "$work/$archive" tunnel-client > "$work/tunnel-client" || die "$archive has no tunnel-client inside it. Nothing was installed."
+
+# Owner-only, like everything under the state directory. The Runtime makes that directory private
+# only when it creates it, so if this script creates it first, this script has to.
+(umask 077 && mkdir -p "$tools")
+# Staged in the same directory, so the rename is atomic: a Runtime starting now finds either the
+# old executable or the whole new one, never half of it.
+staged=$(mktemp "$tools/.tunnel-client.XXXXXX")
+cp "$work/tunnel-client" "$staged"
+# mktemp made it 0600, and cp onto an existing file keeps that mode.
+chmod 0755 "$staged"
+mv -f "$staged" "$tools/tunnel-client"
+
+say "installed tunnel-client v$version at $tools/tunnel-client"
+if command -v tunnel-client >/dev/null 2>&1; then
+  say "note: $(command -v tunnel-client) is on PATH, and the Runtime uses that one instead."
+fi

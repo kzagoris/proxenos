@@ -1,0 +1,23 @@
+# SPEC §12: the build compiles against a JDK 26 toolchain and Gradle 9.7.1. mise supplies the
+# JDK that launches Gradle and the Gradle version itself; the committed wrapper pins Gradle
+# again for anyone arriving without mise, so this file and
+# gradle/wrapper/gradle-wrapper.properties move together.
+#
+# Launcher and toolchain are both 26 here, so nothing is downloaded on this machine. They are
+# still two separate decisions: settings.gradle.kts applies a toolchain resolver, so a machine
+# whose JDK is something else fetches a 26 into ~/.gradle/jdks and compiles the same result.
+#
+# Measured on this machine, because the failure is not obvious: Gradle has no supplier that
+# knows where mise keeps its JDKs — its list is asdf, SDKMAN, jabba, IntelliJ, /usr/lib/jvm,
+# Maven toolchains. Without the resolver a mismatched launcher would stop the build at
+#
+#   Cannot find a Java installation on your machine ... matching: {languageVersion=26, ...}
+#
+# mise's layout is asdf's, so a JDK that mise already has can be used instead of a downloaded
+# one, and no second copy is fetched:
+#
+#   ASDF_DATA_DIR=~/.local/share/mise ./gradlew build
+#
+[tools]
+java = "temurin-26"
+gradle = "9.7.1"

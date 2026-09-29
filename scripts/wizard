@@ -1,0 +1,385 @@
+#!/usr/bin/env bash
+#
+# A wizard walks a human through a manual procedure, step by step.
+#
+# Everything above the "STAGES" marker is the wizard library: do not hand-edit
+# it. Author the per-step stages below the marker.
+
+set -euo pipefail
+
+# ──────────────────────────────────────────────────────────────────────────
+# Wizard library: delightful, consistent UX, identical across every wizard.
+# ──────────────────────────────────────────────────────────────────────────
+
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
+  BOLD=$(tput bold); DIM=$(tput dim); RESET=$(tput sgr0)
+  BLUE=$(tput setaf 4); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3); RED=$(tput setaf 1)
+else
+  BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""; RED=""
+fi
+
+# Author sets this at the top of the stages section.
+TOTAL_STAGES=0
+
+_STAGE_INDEX=0
+ENV_FILE="${ENV_FILE:-.env}"
+WRITTEN_ENV=()    # KEYs written to ENV_FILE this run
+WRITTEN_SECRET=() # secret NAMEs set this run
+SKIPPED=()        # things we couldn't do (e.g. gh missing)
+
+# _clear wipes the terminal so only the current step is on screen. No-op when
+# output isn't a terminal, so piped logs stay readable.
+_clear() {
+  [[ -t 1 ]] || return 0
+  if command -v tput >/dev/null 2>&1; then tput clear; else printf '\033[2J\033[3J\033[H'; fi
+}
+
+# banner "Title" shows the opening frame: what this wizard does.
+banner() {
+  _clear
+  printf '\n%s%s  %s%s\n' "$BOLD" "$BLUE" "$1" "$RESET"
+  printf '%s  %s stages%s\n\n' "$DIM" "$TOTAL_STAGES" "$RESET"
+  printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$DIM"
+  printf '  captures the values you copy back. Stop any time with Ctrl-C and re-run\n'
+  printf '  later, since it remembers values already saved.%s\n' "$RESET"
+  pause "Ready to start?"
+}
+
+# stage "Name" clears the screen, then announces a stage and shows progress.
+# Clearing keeps only the current step on screen.
+stage() {
+  _clear
+  _STAGE_INDEX=$((_STAGE_INDEX + 1))
+  printf '\n%s%s▸ Stage %s/%s · %s%s\n' \
+    "$BOLD" "$BLUE" "$_STAGE_INDEX" "$TOTAL_STAGES" "$1" "$RESET"
+}
+
+# say "..." prints a plain instruction line.
+say()  { printf '  %s\n' "$1"; }
+# step "..." is a numbered-feeling action the human takes in the browser.
+step() { printf '  %s•%s %s\n' "$BLUE" "$RESET" "$1"; }
+note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
+warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
+
+# open_url URL opens it in the human's browser, cross-platform incl. WSL.
+# The opener is detached: xdg-open blocks until the browser exits when it has
+# to launch one, which would freeze the wizard before its next prompt.
+open_url() {
+  local url="$1" opener=""
+  printf '  %s↗ opening%s %s\n' "$GREEN" "$RESET" "$url"
+  for opener in wslview explorer.exe xdg-open open; do
+    command -v "$opener" >/dev/null 2>&1 && break
+    opener=""
+  done
+  if [[ -z "$opener" ]]; then
+    warn "couldn't open a browser; visit it manually: $url"
+    return 0
+  fi
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$opener" "$url" </dev/null >/dev/null 2>&1 &
+  else
+    nohup "$opener" "$url" </dev/null >/dev/null 2>&1 &
+  fi
+  disown 2>/dev/null || true
+}
+
+# pause "msg" waits for the human to confirm they've done the manual part.
+pause() {
+  printf '  %s%s%s ' "$DIM" "${1:-Press Enter to continue}" "$RESET"
+  read -er _ || true
+}
+
+# confirm "question" is a y/N gate; returns success on yes.
+confirm() {
+  local reply=""
+  printf '  %s? %s [y/N] ' "$YELLOW" "$1"
+  read -er reply || true
+  [[ "$reply" =~ ^[Yy] ]]
+}
+
+# _existing KEY: current value of KEY in ENV_FILE, if any.
+_existing() {
+  [[ -f "$ENV_FILE" ]] || return 1
+  local line; line=$(grep -E "^${1}=" "$ENV_FILE" | tail -n1) || return 1
+  printf '%s' "${line#*=}"
+}
+
+# ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
+# a default on re-runs (Enter keeps it). Visible input (non-secret).
+ask() {
+  local key="$1" prompt="$2" current input
+  current=$(_existing "$key" || true)
+  if [[ -n "$current" ]]; then
+    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
+  else
+    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+  fi
+  read -er input || true
+  [[ -z "$input" && -n "$current" ]] && input="$current"
+  printf -v "$key" '%s' "$input"
+}
+
+# ask_secret KEY "Prompt" is like ask, but input is hidden.
+ask_secret() {
+  local key="$1" prompt="$2" current input
+  current=$(_existing "$key" || true)
+  if [[ -n "$current" ]]; then
+    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
+  else
+    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+  fi
+  read -rs input || true
+  printf '\n'
+  [[ -z "$input" && -n "$current" ]] && input="$current"
+  printf -v "$key" '%s' "$input"
+}
+
+# write_env KEY VALUE upserts KEY=VALUE into ENV_FILE (creates it; replaces
+# any existing line). Idempotent.
+write_env() {
+  local key="$1" value="$2" tmp
+  touch "$ENV_FILE"
+  tmp=$(mktemp)
+  grep -vE "^${key}=" "$ENV_FILE" > "$tmp" || true
+  printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  mv "$tmp" "$ENV_FILE"
+  WRITTEN_ENV+=("$key")
+  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
+}
+
+# set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
+# to a warning (and records it) if gh is unavailable or unauthenticated.
+set_secret() {
+  local name="$1" value="$2"
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    if printf '%s' "$value" | gh secret set "$name" >/dev/null 2>&1; then
+      WRITTEN_SECRET+=("$name")
+      printf '  %s✓ set%s GitHub secret %s\n' "$GREEN" "$RESET" "$name"
+      return
+    fi
+  fi
+  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name)")
+  warn "skipped GitHub secret $name: gh not ready; set it later"
+}
+
+# set_var NAME VALUE sets a GitHub Actions repo variable (non-secret).
+set_var() {
+  local name="$1" value="$2"
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    if gh variable set "$name" --body "$value" >/dev/null 2>&1; then
+      printf '  %s✓ set%s GitHub variable %s\n' "$GREEN" "$RESET" "$name"
+      return
+    fi
+  fi
+  SKIPPED+=("GitHub variable $name")
+  warn "skipped GitHub variable $name, gh not ready; set it later"
+}
+
+# finish clears, then shows a closing summary of everything configured.
+finish() {
+  _clear
+  printf '\n%s%s  ✓ Setup complete%s\n' "$BOLD" "$GREEN" "$RESET"
+  (( ${#WRITTEN_ENV[@]} ))    && note "wrote ${#WRITTEN_ENV[@]} value(s) to $ENV_FILE: ${WRITTEN_ENV[*]}"
+  (( ${#WRITTEN_SECRET[@]} )) && note "set ${#WRITTEN_SECRET[@]} GitHub secret(s): ${WRITTEN_SECRET[*]}"
+  if (( ${#SKIPPED[@]} )); then
+    printf '\n'; warn "still to do by hand:"
+    for s in "${SKIPPED[@]}"; do note "  - $s"; done
+  fi
+  printf '\n'
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# STAGES: author this section. One stage() per step the human takes.
+# Replace the example below. Set TOTAL_STAGES to match the stages you write.
+# ──────────────────────────────────────────────────────────────────────────
+
+TOTAL_STAGES=6
+
+# Where the credentials file lives (SPEC §11.1). The Runtime reads exactly
+# this path and nothing else; `config.toml` may move other paths, never this.
+CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/proxenos"
+CRED_FILE="$CRED_DIR/credentials"
+
+# The library's summary and its "[Enter keeps current]" defaults read this.
+ENV_FILE="$CRED_FILE"
+
+die() { printf '\n  %s✗ %s%s\n\n' "$RED" "$1" "$RESET" >&2; exit 1; }
+
+# A wizard is a conversation with a human at a keyboard. Without one, the
+# hidden read has nothing to hide from and every prompt would answer itself.
+[[ -t 0 ]] || die "This wizard reads a secret from the terminal, so it must be run interactively, not from a pipe."
+
+# Refuse outright to write inside a checkout: a credential in the repository
+# is a credential in the next commit.
+_repo_root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$_repo_root" && "$CRED_FILE" == "$_repo_root"/* ]]; then
+  printf '%s✗ %s resolves inside the repository at %s. Refusing to write a credential there.%s\n' \
+    "$RED" "$CRED_FILE" "$_repo_root" "$RESET" >&2
+  exit 1
+fi
+
+# The key lives in a shell variable for the few seconds between the hidden
+# read and the atomic write, and nowhere else: not exported, not echoed, not
+# in a temporary file that outlives a failure. This script is non-interactive
+# bash, so `read` never touches $HISTFILE.
+TMP_CRED=""
+_cleanup() {
+  if [[ -n "$TMP_CRED" ]]; then rm -f "$TMP_CRED"; fi
+  RUNTIME_KEY=""
+}
+trap _cleanup EXIT
+
+# write_credentials TUNNEL KEY writes both keys to $CRED_FILE at mode 0600.
+# The temporary file is created 0600 in the *same directory*, so the rename is
+# atomic: either the old file or the whole new one, never a half-written one
+# and never the previous key left behind beside the new one.
+write_credentials() {
+  local tunnel="$1" key="$2"
+  mkdir -p "$CRED_DIR"
+  chmod 700 "$CRED_DIR" 2>/dev/null || true
+  TMP_CRED=$(umask 077; mktemp "$CRED_DIR/.credentials.XXXXXX")
+  chmod 600 "$TMP_CRED"
+  { printf 'TUNNEL_ID=%s\n' "$tunnel"
+    printf 'RUNTIME_KEY=%s\n' "$key"
+  } > "$TMP_CRED"
+  mv -f "$TMP_CRED" "$CRED_FILE"
+  TMP_CRED=""
+  chmod 600 "$CRED_FILE"
+  WRITTEN_ENV+=("TUNNEL_ID" "RUNTIME_KEY")
+  printf '  %s✓ wrote%s TUNNEL_ID, RUNTIME_KEY → %s (mode %s)\n' \
+    "$GREEN" "$RESET" "$CRED_FILE" "$(stat -c '%a' "$CRED_FILE" 2>/dev/null || stat -f '%Lp' "$CRED_FILE")"
+}
+
+banner "Proxenos — Platform dashboard setup"
+
+# ── 1 ─────────────────────────────────────────────────────────────────────
+stage "What this writes, and what it replaces"
+say "Four of first run's steps happen in OpenAI's dashboard, not here: create a"
+say "tunnel, create a runtime key, associate the tunnel with your ChatGPT"
+say "workspace, and enable developer mode. This wizard walks those, then writes"
+say "the one file the Runtime refuses to start without:"
+printf '\n'
+say "  $CRED_FILE"
+printf '\n'
+note "It happens once. Re-run it only to rotate the runtime key."
+note "The connector inside ChatGPT is the other half, and Runtime Review in the TUI explains it."
+printf '\n'
+
+if [[ -e "$CRED_FILE" ]]; then
+  _mode=$(stat -c '%a' "$CRED_FILE" 2>/dev/null || stat -f '%Lp' "$CRED_FILE" 2>/dev/null || echo "?")
+  warn "a credentials file already exists, at mode $_mode."
+  say "Continuing replaces it: the key you enter below becomes the only key on"
+  say "disk, and the current one is gone. Revoke the old key in the dashboard"
+  say "afterwards, since deleting it here does not revoke it there."
+  printf '\n'
+  if ! confirm "Replace $CRED_FILE?"; then
+    printf '\n'
+    say "Left untouched. Nothing was written."
+    exit 0
+  fi
+else
+  note "No credentials file yet, so nothing here is at risk of being overwritten."
+fi
+pause
+
+# ── 2 ─────────────────────────────────────────────────────────────────────
+stage "Create the tunnel"
+say "The tunnel is the outbound path between this machine and OpenAI. It lives"
+say "in your Platform *organization*, and creating one needs organization-level"
+say "Tunnels Read + Manage (running it later needs Read + Use)."
+open_url "https://platform.openai.com/settings/organization/tunnels"
+step "Create a tunnel, and give it a name you'll recognise later."
+step "Copy its tunnel ID. It looks like tunnel_0123456789abcdef0123456789abcdef."
+printf '\n'
+_tries=0
+while :; do
+  _tries=$((_tries + 1))
+  (( _tries <= 5 )) || die "No tunnel ID after five tries. Nothing was written; re-run when you have it."
+  ask TUNNEL_ID "Paste the tunnel ID:"
+  [[ -n "$TUNNEL_ID" ]] || { warn "the tunnel ID can't be empty."; continue; }
+  if [[ ! "$TUNNEL_ID" =~ ^tunnel_ ]]; then
+    warn "that doesn't start with 'tunnel_', which is the documented shape."
+    confirm "Use it anyway?" || continue
+  fi
+  break
+done
+
+# ── 3 ─────────────────────────────────────────────────────────────────────
+stage "Associate the tunnel with your ChatGPT workspace"
+say "A tunnel associated only with your Platform organization will not appear"
+say "in ChatGPT when you go to create the connector. The workspace that should"
+say "list it has to be added to the tunnel explicitly."
+open_url "https://platform.openai.com/settings/organization/tunnels"
+step "Open the tunnel you just created."
+step "In its associations, add the ChatGPT workspace you'll use this from."
+printf '\n'
+note "Personal accounts use that account's own Platform organization. On"
+note "Enterprise/Edu, a personal-org tunnel does not reach the workspace; if"
+note "the association won't take, your OpenAI account team does it manually."
+printf '\n'
+pause "Associated? Press Enter."
+
+# ── 4 ─────────────────────────────────────────────────────────────────────
+stage "Create the runtime key"
+say "The runtime key authenticates the tunnel itself. It is shown once, at"
+say "creation, and cannot be read back afterwards — so copy it now."
+open_url "https://platform.openai.com/settings/organization/tunnels"
+step "Create a runtime API key for this tunnel. It starts with sk-."
+note "OpenAI's guide names the key as a prerequisite without pinning the page"
+note "it is minted on: if the tunnel's own panel doesn't offer one, create it"
+note "under the organization's API keys and keep it to this tunnel's use."
+printf '\n'
+warn "Your paste will not appear on screen. That is deliberate."
+_tries=0
+while :; do
+  _tries=$((_tries + 1))
+  (( _tries <= 5 )) || die "No runtime key after five tries. Nothing was written; re-run when you have it."
+  ask_secret RUNTIME_KEY "Paste the runtime key (hidden):"
+  [[ -n "$RUNTIME_KEY" ]] || { warn "the runtime key can't be empty."; continue; }
+  if [[ "$RUNTIME_KEY" == "$TUNNEL_ID" ]]; then
+    warn "that is the tunnel ID, not the key. They are different values."
+    continue
+  fi
+  if [[ ! "$RUNTIME_KEY" =~ ^sk- ]]; then
+    warn "that doesn't start with 'sk-', which is the documented shape."
+    confirm "Use it anyway?" || continue
+  fi
+  break
+done
+note "Held in memory only, until it is written in stage 6."
+
+# ── 5 ─────────────────────────────────────────────────────────────────────
+stage "Enable developer mode in ChatGPT"
+say "Developer mode is what lets ChatGPT list a tunnel and build a connector"
+say "against it. It is a ChatGPT setting, not a Platform one, and it is not"
+say "where you would look for it:"
+printf '\n'
+say "  ${BOLD}Settings → Security and login${RESET}"
+printf '\n'
+open_url "https://chatgpt.com/#settings"
+step "Open Settings → Security and login, and enable developer mode."
+note "On Enterprise/Edu a workspace admin must grant developer-mode access"
+note "first; until they do, the toggle is not yours to flip."
+printf '\n'
+pause "Enabled? Press Enter."
+
+# ── 6 ─────────────────────────────────────────────────────────────────────
+stage "Write the credentials file"
+say "Both values go into one file, readable only by you:"
+printf '\n'
+say "  $CRED_FILE"
+printf '\n'
+note "Mode 0600. The Runtime refuses to start on anything wider, and refuses"
+note "to start at all if the file is missing."
+printf '\n'
+write_credentials "$TUNNEL_ID" "$RUNTIME_KEY"
+RUNTIME_KEY=""
+printf '\n'
+say "Next: run bin/tui, which starts the Runtime. It reads this file, hands"
+say "both values to the tunnel child, and never puts them in its own"
+say "environment. Open [i] Runtime, then [r] Review for instructions to create the"
+say "connector in ChatGPT — that half recurs, and this half does not."
+note "The Runtime also needs tunnel-client: bin/install-tunnel-client, if you"
+note "have not run it yet (docs/INSTALL.md, step 4)."
+
+finish

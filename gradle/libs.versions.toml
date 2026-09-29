@@ -1,0 +1,65 @@
+# The SPEC §12 pins, in one place. A version string in a build file is a bug: the whole point
+# of the catalog is that `mcp` and `runtime` cannot drift apart on Ktor without someone
+# noticing here first.
+#
+# Gradle's own version is pinned by gradle/wrapper/gradle-wrapper.properties and by mise.toml,
+# which is the only honest home for it — the wrapper reads it before this file exists.
+# The foojay toolchain resolver is pinned in settings.gradle.kts for the same reason: Gradle
+# evaluates a settings plugins block before it reads this file.
+
+[versions]
+# SPEC §12: a JDK 26 toolchain, so the JVM that launches Gradle never decides what we compile
+# against. Read by the convention plugins in build-logic. 26 is not an LTS release, which is a
+# deliberate six-month horizon, not an oversight — SPEC §12 records why.
+jdk = "26"
+# The Compose compiler plugin ships inside the Kotlin release and must be applied at exactly
+# this version — Mosaic publishes no Gradle plugin after 0.12.0 and will not do it for us.
+kotlin = "2.4.20"
+mcp = "0.15.0"
+# Tracks the SDK, deliberately (docs/adr/0008-track-the-sdks-ktor.md): this is what
+# kotlin-sdk-server 0.15.0 resolves, and it moves in the same commit as `mcp` above, not before
+# and not after. Newer Ktor releases exist and are not taken. The one exception is a security fix
+# in a Ktor module the Runtime loads, and then only to the patch that carries it, named here.
+ktor = "3.5.1"
+mosaic = "0.18.0"
+# Tracks what kotlin-sdk-server 0.15.0 resolves, like Ktor and for the same reason (ADR 0008):
+# one copy on the Runtime's classpath, not two that happen to agree today.
+coroutines = "1.11.0"
+# Tracks what kotlin-sdk-server 0.15.0 resolves, like Ktor (ADR 0008).
+serialization = "1.11.0"
+# Not a Gradle dependency: the official tunnel-client executable, never committed. The root
+# build writes this into the distribution's bin/install-tunnel-client, which downloads it and
+# verifies it against the release's SHA256SUMS.txt (docs/INSTALL.md).
+tunnel-client = "0.0.14"
+
+[libraries]
+# Build-logic classpath. These are what let a convention plugin apply `org.jetbrains.kotlin.jvm`
+# and `org.jetbrains.kotlin.plugin.compose` by id alone, with no version anywhere downstream.
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+compose-compiler-gradlePlugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+# Lets core-api and control apply `org.jetbrains.kotlin.plugin.serialization` by id alone: the
+# wire format is the domain types themselves, so the compiler has to write their serializers.
+kotlin-serialization-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+
+# kotlin-sdk-server ships no engine, so `mcp` brings its own. CIO is the only Ktor engine with
+# Unix socket support, in both directions.
+mcp-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+
+# Test-only, and only in `mcp`. SPEC §13.1 exercises the eleven through the operations
+# interface with no transport; what that leaves untested is the transport itself, and the only
+# honest test of it is a real MCP client dialing the real Unix socket.
+mcp-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp" }
+# That client's engine in `mcp`'s tests, and the core's one HTTP client: it reads the tunnel
+# child's /metrics over a Unix socket (SPEC §8.4). CIO again, for the same reason: it is the
+# engine with Unix socket support in both directions.
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+
+mosaic-runtime = { module = "com.jakewharton.mosaic:mosaic-runtime", version.ref = "mosaic" }
+# The core reads the tunnel child's JSON log lines for the words Failed quotes (SPEC §8.4).
+# The library alone: nothing is serialized into a class, so no compiler plugin.
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+# core-api: the domain types are the control protocol's wire format (SPEC §9), so they carry
+# @Serializable and nothing more. The format itself is control's to choose.
+serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }

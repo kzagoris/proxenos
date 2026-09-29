@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Proxenos Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --paper: #fbfaf7;
+  --paper-sunk: #f2efe9;
+  --panel: #ffffff;
+  --ink: #1e1c19;
+  --ink-soft: #55504a;
+  --ink-faint: #8a837a;
+  --rule: #e0dbd2;
+  --rule-strong: #c9c2b6;
+  --accent: #5b4ee8;
+  --accent-soft: #eceaff;
+  --accent-ink: #3a2fc0;
+  --lv-none: #8a837a;
+  --lv-read: #2563a8;
+  --lv-write: #b4690e;
+  --lv-command: #b3261e;
+  --good: #1f7a4d;
+  --good-soft: #e6f5ed;
+  --warn: #b4690e;
+  --warn-soft: #fdf3e3;
+  --bad: #b3261e;
+  --bad-soft: #fdeceb;
+  --openai: #eef3f1;
+  --machine: #f6f4ff;
+  --display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --sans: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  --measure: 44rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #16151a; --paper-sunk: #1e1d24; --panel: #1c1b22;
+    --ink: #ece9e3; --ink-soft: #b3ada4; --ink-faint: #7d766d;
+    --rule: #2e2c35; --rule-strong: #43404c;
+    --accent: #a99cff; --accent-soft: #241f45; --accent-ink: #c4baff;
+    --lv-none: #8f887f; --lv-read: #6aa6ec; --lv-write: #e8a33d; --lv-command: #ff8a80;
+    --good: #6bd39b; --good-soft: #14301f;
+    --warn: #e8a33d; --warn-soft: #2c2415;
+    --bad: #ff8a80; --bad-soft: #341817;
+    --openai: #17221f; --machine: #1d1a2c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #16151a; --paper-sunk: #1e1d24; --panel: #1c1b22;
+  --ink: #ece9e3; --ink-soft: #b3ada4; --ink-faint: #7d766d;
+  --rule: #2e2c35; --rule-strong: #43404c;
+  --accent: #a99cff; --accent-soft: #241f45; --accent-ink: #c4baff;
+  --lv-none: #8f887f; --lv-read: #6aa6ec; --lv-write: #e8a33d; --lv-command: #ff8a80;
+  --good: #6bd39b; --good-soft: #14301f;
+  --warn: #e8a33d; --warn-soft: #2c2415;
+  --bad: #ff8a80; --bad-soft: #341817;
+  --openai: #17221f; --machine: #1d1a2c;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 17px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h2 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+p { margin: 0; max-width: var(--measure); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--paper-sunk); padding: 0.08em 0.35em; border-radius: 4px; }
+a { color: var(--accent-ink); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font: 600 0.72rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); }
+.muted { color: var(--ink-soft); }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+
+/* header */
+header.top { padding-block: 44px 28px; border-bottom: 1px solid var(--rule); }
+header.top .wrap { display: grid; gap: 16px; }
+header.top h1 { font-size: clamp(2rem, 5vw, 3.1rem); font-weight: 800; letter-spacing: -0.02em; }
+header.top .lede { font-size: 1.2rem; color: var(--ink-soft); max-width: 46rem; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.fact { font: 0.8rem/1 var(--mono); padding: 7px 10px; border: 1px solid var(--rule-strong); border-radius: 999px; color: var(--ink-soft); background: var(--panel); }
+
+/* nav */
+nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); }
+nav.toc .wrap { display: flex; gap: 4px; overflow-x: auto; padding-block: 8px; scrollbar-width: none; }
+nav.toc a { flex: none; text-decoration: none; color: var(--ink-soft); font: 600 0.85rem/1 var(--sans); padding: 8px 11px; border-radius: 6px; }
+nav.toc a:hover, nav.toc a.on { background: var(--accent-soft); color: var(--accent-ink); }
+
+section.part { padding-block: 56px 8px; scroll-margin-top: 56px; }
+section.part > .wrap { display: flex; flex-direction: column; gap: 22px; }
+.head { display: flex; flex-direction: column; gap: 8px; }
+.head p { color: var(--ink-soft); font-size: 1.05rem; }
+
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+.pad { padding: 18px 20px; }
+
+/* map */
+.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
+@media (max-width: 980px) { .map-layout { grid-template-columns: minmax(0, 1fr); } }
+.map-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule-strong); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: 8px 12px; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--ink-soft); }
+.seg button + button { border-left: 1px solid var(--rule-strong); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+:root[data-theme="dark"] .seg button[aria-pressed="true"] { color: #16151a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg button[aria-pressed="true"] { color: #16151a; } }
+.diagram { overflow-x: auto; padding: 8px; }
+.diagram svg { display: block; width: 100%; min-width: 700px; height: auto; }
+svg text { font-family: var(--sans); fill: var(--ink); }
+svg .region-label { font: 700 12px var(--mono); letter-spacing: 0.08em; fill: var(--ink-faint); text-transform: uppercase; }
+svg .region-openai { fill: var(--openai); stroke: var(--rule-strong); }
+svg .region-machine { fill: var(--machine); stroke: var(--rule-strong); }
+svg .proc { fill: none; stroke: var(--rule-strong); stroke-dasharray: 5 4; }
+svg .proc-label { font: 600 11px var(--mono); fill: var(--ink-faint); }
+svg .node rect { fill: var(--panel); stroke: var(--rule-strong); stroke-width: 1.5; transition: stroke 0.15s, fill 0.15s; }
+svg .node { cursor: pointer; }
+svg .node .t { font: 700 14px var(--display); }
+svg .node .s { font: 12px var(--sans); fill: var(--ink-soft); }
+svg .node:hover rect, svg .node:focus-visible rect { stroke: var(--accent); }
+svg .node:focus { outline: none; }
+svg .node.sel rect { stroke: var(--accent); stroke-width: 2.5; fill: var(--accent-soft); }
+svg .node.dim { opacity: 0.35; }
+svg .edge { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
+svg .edge.on { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 8 6; animation: flow 0.9s linear infinite; }
+svg .edge.dashed { stroke-dasharray: 5 5; }
+svg .elabel { font: 11px var(--mono); fill: var(--ink-faint); }
+svg .elabel.on { fill: var(--accent-ink); font-weight: 600; }
+svg .arrow { fill: var(--rule-strong); }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { svg .edge.on { animation: none; } }
+.detail { position: sticky; top: 70px; }
+.detail h3 { font-size: 1.35rem; }
+.detail .kind { font: 600 0.72rem/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+.detail ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 6px; }
+.detail .files { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail .files code { font-size: 0.78rem; }
+.flow-note { font-size: 0.95rem; color: var(--ink-soft); }
+
+/* modules */
+.modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.mod { display: flex; flex-direction: column; gap: 10px; }
+.mod .name { font: 700 1.05rem var(--mono); color: var(--accent-ink); }
+.mod .role { font-weight: 600; }
+.mod .reach { font-size: 0.85rem; color: var(--ink-soft); }
+.mod .reach b { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.matrix-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 0.75rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+.matrix td, .matrix th { text-align: center; font-family: var(--mono); }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+.yes { color: var(--good); font-weight: 700; }
+.no { color: var(--ink-faint); }
+.self { color: var(--ink-faint); }
+
+/* callouts */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.callout { border-left: 4px solid var(--accent); padding: 14px 18px; background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+.callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+.callout.bad { border-color: var(--bad); background: var(--bad-soft); }
+.callout p + p { margin-top: 8px; }
+
+/* pipeline */
+.scenarios { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn { border: 1px solid var(--rule-strong); background: var(--panel); border-radius: 999px; padding: 7px 13px; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--ink-soft); }
+.chip-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.callbox { font: 0.9rem/1.5 var(--mono); background: var(--paper-sunk); border-radius: 8px; padding: 12px 14px; overflow-x: auto; white-space: pre; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; counter-reset: step; }
+.step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding-block: 10px; position: relative; }
+.step::before { counter-increment: step; content: counter(step); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 700 0.85rem var(--mono); border: 2px solid var(--rule-strong); color: var(--ink-faint); background: var(--panel); z-index: 1; }
+.step:not(:last-child)::after { content: ""; position: absolute; left: 14px; top: 42px; bottom: -8px; width: 2px; background: var(--rule); }
+.step .st { font-weight: 700; }
+.step .sd { color: var(--ink-soft); font-size: 0.95rem; }
+.step .res { font-size: 0.92rem; margin-top: 4px; display: none; }
+.step.pass::before { border-color: var(--good); color: var(--good); background: var(--good-soft); }
+.step.skip::before { border-style: dashed; }
+.step.stop::before { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); }
+.step.special::before { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.step.pass .res, .step.skip .res, .step.stop .res, .step.special .res { display: block; }
+.step.pass .res { color: var(--good); }
+.step.skip .res { color: var(--ink-faint); }
+.step.stop .res { color: var(--bad); font-weight: 600; }
+.step.special .res { color: var(--accent-ink); font-weight: 600; }
+.step.later { opacity: 0.4; }
+.pipe-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+.btn.ghost { background: var(--panel); color: var(--accent-ink); }
+:root[data-theme="dark"] .btn:not(.ghost) { color: #16151a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn:not(.ghost) { color: #16151a; } }
+.verdict { padding: 12px 14px; border-radius: 8px; font-weight: 600; }
+.verdict.ok { background: var(--good-soft); color: var(--good); }
+.verdict.failed { background: var(--bad-soft); color: var(--bad); }
+.verdict.promoted, .verdict.recorded { background: var(--accent-soft); color: var(--accent-ink); }
+.verdict span { display: block; font-weight: 400; color: var(--ink-soft); margin-top: 4px; }
+.pipe-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 820px) { .pipe-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* access dial */
+.dial { display: flex; flex-wrap: wrap; gap: 8px; }
+.lv { border: 2px solid var(--rule-strong); background: var(--panel); border-radius: 8px; padding: 10px 16px; cursor: pointer; font: 700 1rem var(--display); color: var(--ink-soft); min-width: 110px; text-align: left; }
+.lv small { display: block; font: 400 0.78rem var(--sans); color: var(--ink-faint); }
+.lv[aria-pressed="true"] { color: var(--ink); }
+.lv[data-lv="0"][aria-pressed="true"] { border-color: var(--lv-none); }
+.lv[data-lv="1"][aria-pressed="true"] { border-color: var(--lv-read); }
+.lv[data-lv="2"][aria-pressed="true"] { border-color: var(--lv-write); }
+.lv[data-lv="3"][aria-pressed="true"] { border-color: var(--lv-command); }
+.tools td:nth-child(2) { font-family: var(--mono); font-size: 0.85rem; }
+.pill { display: inline-block; font: 600 0.72rem/1 var(--mono); padding: 5px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.allowed { background: var(--good-soft); color: var(--good); }
+.pill.refused { background: var(--bad-soft); color: var(--bad); }
+.pill.absent { background: var(--paper-sunk); color: var(--ink-faint); }
+.lvtag { font: 600 0.78rem var(--mono); }
+.lvtag[data-l="Read"] { color: var(--lv-read); }
+.lvtag[data-l="Write"] { color: var(--lv-write); }
+.lvtag[data-l="Command"] { color: var(--lv-command); }
+
+/* outcomes */
+.outcomes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.oc { border-top: 5px solid var(--rule-strong); }
+.oc.ok { border-top-color: var(--good); }
+.oc.failed { border-top-color: var(--bad); }
+.oc.uncertain { border-top-color: var(--warn); }
+.oc .big { font: 800 1.4rem var(--mono); }
+.oc.ok .big { color: var(--good); }
+.oc.failed .big { color: var(--bad); }
+.oc.uncertain .big { color: var(--warn); }
+.oc .retry { font-size: 0.88rem; font-weight: 600; }
+
+/* timeline */
+.slider-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+input[type="range"] { flex: 1 1 260px; accent-color: var(--accent); }
+.dur { font: 700 1.3rem var(--mono); min-width: 5.5ch; font-variant-numeric: tabular-nums; }
+.track { position: relative; height: 64px; margin-top: 8px; }
+.track .base { position: absolute; left: 0; right: 0; top: 26px; height: 12px; background: var(--paper-sunk); border-radius: 6px; }
+.track .run { position: absolute; left: 0; top: 26px; height: 12px; border-radius: 6px; background: var(--accent); transition: width 0.15s; }
+.track .run.promo { background: repeating-linear-gradient(90deg, var(--accent) 0 10px, color-mix(in srgb, var(--accent) 60%, transparent) 10px 20px); }
+.track .mark { position: absolute; top: 14px; height: 36px; width: 2px; background: var(--ink); }
+.track .mark span { position: absolute; top: -16px; transform: translateX(-50%); font: 600 0.72rem var(--mono); white-space: nowrap; }
+.track .mark.m61 { background: var(--bad); }
+.track .mark.m61 span { color: var(--bad); top: 38px; }
+.track .axis { position: absolute; top: 52px; font: 0.72rem var(--mono); color: var(--ink-faint); transform: translateX(-50%); }
+.story { display: flex; flex-direction: column; gap: 8px; margin: 0; padding-left: 1.2em; }
+
+/* state machine */
+.sm-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 820px) { .sm-grid { grid-template-columns: minmax(0, 1fr); } }
+.states { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.state { border: 2px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--panel); transition: border-color 0.2s, background 0.2s; }
+.state b { font-family: var(--display); font-size: 1.05rem; }
+.state p { font-size: 0.88rem; color: var(--ink-soft); margin-top: 4px; }
+.state.cur { border-color: var(--accent); background: var(--accent-soft); }
+.state.cur[data-s="Failed"] { border-color: var(--bad); background: var(--bad-soft); }
+.state.cur[data-s="Connected"] { border-color: var(--good); background: var(--good-soft); }
+.events { display: flex; flex-wrap: wrap; gap: 8px; }
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 6px; font-size: 0.92rem; max-height: 220px; overflow-y: auto; }
+.log li { padding: 8px 10px; border-radius: 6px; background: var(--paper-sunk); }
+.log li b { font-family: var(--mono); font-size: 0.85rem; }
+
+/* storage & glossary */
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; font-size: 0.95rem; }
+.kv dt { font-family: var(--mono); font-size: 0.82rem; color: var(--accent-ink); padding-top: 2px; }
+.kv dd { margin: 0; color: var(--ink-soft); }
+@media (max-width: 560px) { .kv { grid-template-columns: 1fr; } .kv dd { margin-bottom: 8px; } }
+.gl-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+#gl-filter { flex: 1 1 240px; font: inherit; padding: 10px 12px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; }
+.term { padding: 14px 16px; }
+.term h3 { font-size: 1rem; }
+.term p { font-size: 0.95rem; color: var(--ink-soft); margin-top: 4px; }
+.term .avoid { font-size: 0.8rem; color: var(--ink-faint); margin-top: 6px; }
+.adrs { display: flex; flex-direction: column; gap: 0; }
+.adr { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding-block: 14px; border-bottom: 1px solid var(--rule); }
+.adr:last-child { border-bottom: 0; }
+.adr .n { font: 700 0.95rem var(--mono); color: var(--accent-ink); padding-top: 2px; }
+.adr a { font-weight: 600; text-decoration: none; }
+.adr a:hover { text-decoration: underline; }
+.adr p { color: var(--ink-soft); font-size: 0.95rem; margin-top: 2px; }
+footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <span class="eyebrow">Proxenos · architecture guide</span>
+    <h1>Proxenos Architecture</h1>
+    <p class="lede">A background program on your Linux machine that lets a ChatGPT conversation read and change the folders you choose, through OpenAI's Secure MCP Tunnel. A small terminal app decides what each folder allows.</p>
+    <div class="facts">
+      <span class="fact">Kotlin 2.4 · JDK 26</span>
+      <span class="fact">6 Gradle modules</span>
+      <span class="fact">11 tools</span>
+      <span class="fact">4 access levels</span>
+      <span class="fact">Linux only</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <div class="wrap">
+    <a href="#map">Big picture</a>
+    <a href="#modules">Modules</a>
+    <a href="#journey">A call's journey</a>
+    <a href="#levels">Access levels</a>
+    <a href="#outcomes">Outcomes</a>
+    <a href="#slow">Slow commands</a>
+    <a href="#link">Tunnel link</a>
+    <a href="#state">What is saved</a>
+    <a href="#decisions">Decisions</a>
+    <a href="#glossary">Glossary</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ MAP ============ -->
+<section class="part" id="map">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">1 · The big picture</span>
+      <h2>Two worlds, two doors</h2>
+      <p>ChatGPT lives at OpenAI. Your folders live on your machine. Nothing on your machine listens on the internet: a helper program dials <em>out</em> to OpenAI and carries calls back in. Click any box to see what it does, or pick a flow to watch a request travel.</p>
+    </div>
+
+    <div class="map-tools">
+      <div class="seg" role="group" aria-label="Highlight a flow">
+        <button type="button" data-flow="none" aria-pressed="true">No flow</button>
+        <button type="button" data-flow="chat" aria-pressed="false">ChatGPT calls a tool</button>
+        <button type="button" data-flow="front" aria-pressed="false">You change a setting</button>
+        <button type="button" data-flow="watch" aria-pressed="false">Link health check</button>
+      </div>
+    </div>
+
+    <div class="map-layout">
+      <div class="panel diagram">
+        <svg viewBox="0 0 1000 600" role="img" aria-label="Architecture diagram: ChatGPT and the OpenAI tunnel service on the left; on the Linux machine the tunnel-client, the runtime process with mcp, core, core-api and control server, the TUI process with its control client, and the directories on disk.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="arrow" d="M0 0 L10 5 L0 10 z"></path>
+            </marker>
+          </defs>
+          <rect class="region-openai" x="10" y="10" width="205" height="580" rx="12"></rect>
+          <text class="region-label" x="28" y="36">OpenAI · internet</text>
+          <rect class="region-machine" x="230" y="10" width="760" height="580" rx="12"></rect>
+          <text class="region-label" x="248" y="36">Your Linux machine</text>
+          <rect class="proc" x="450" y="48" width="522" height="372" rx="10"></rect>
+          <text class="proc-label" x="464" y="66">runtime process · one long-lived JVM</text>
+          <rect class="proc" x="248" y="440" width="400" height="136" rx="10"></rect>
+          <text class="proc-label" x="262" y="460">tui process · opens and closes freely</text>
+
+          <!-- edges -->
+          <path class="edge" id="e1" d="M112 142 L112 244" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e1" x="120" y="198">tool call</text>
+          <path class="edge" id="e2" d="M262 282 L198 282" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e2" x="230" y="240" text-anchor="middle">dials out</text>
+          <path class="edge" id="e2b" d="M198 300 L252 300" marker-end="url(#ah)"></path>
+          <path class="edge" id="e3" d="M345 250 C345 150 400 118 468 118" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e3" x="352" y="150">mcp.sock</text>
+          <path class="edge" id="e4" d="M630 118 C660 118 660 190 684 190" marker-end="url(#ah)"></path>
+          <path class="edge" id="e6" d="M630 360 C660 360 660 318 684 318" marker-end="url(#ah)"></path>
+          <path class="edge" id="e7" d="M555 492 L555 398" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e7" x="563" y="450">control.sock</text>
+          <path class="edge" id="e8" d="M428 522 L472 522" marker-end="url(#ah)"></path>
+          <path class="edge" id="e9" d="M950 214 C992 214 992 505 956 505" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e9" x="890" y="440" text-anchor="end">files · git · /bin/sh</text>
+          <path class="edge dashed" id="e10" d="M684 240 C590 240 500 312 432 312" marker-end="url(#ah)"></path>
+          <text class="elabel" data-e="e10" x="470" y="290">starts it · reads /metrics</text>
+
+          <!-- nodes -->
+          <g class="node" data-id="chatgpt" tabindex="0" role="button" aria-label="ChatGPT">
+            <rect x="32" y="78" width="160" height="64" rx="8"></rect>
+            <text class="t" x="48" y="106">ChatGPT</text>
+            <text class="s" x="48" y="126">the conversation</text>
+          </g>
+          <g class="node" data-id="tunnelsvc" tabindex="0" role="button" aria-label="OpenAI tunnel service">
+            <rect x="32" y="250" width="166" height="64" rx="8"></rect>
+            <text class="t" x="48" y="278">Tunnel service</text>
+            <text class="s" x="48" y="298">OpenAI relay</text>
+          </g>
+          <g class="node" data-id="tunnelclient" tabindex="0" role="button" aria-label="tunnel-client child process">
+            <rect x="262" y="250" width="170" height="80" rx="8"></rect>
+            <text class="t" x="278" y="278">tunnel-client</text>
+            <text class="s" x="278" y="298">official binary,</text>
+            <text class="s" x="278" y="314">child of the runtime</text>
+          </g>
+          <g class="node" data-id="mcp" tabindex="0" role="button" aria-label="mcp module">
+            <rect x="470" y="86" width="160" height="64" rx="8"></rect>
+            <text class="t" x="486" y="114">mcp</text>
+            <text class="s" x="486" y="134">speaks MCP to ChatGPT</text>
+          </g>
+          <g class="node" data-id="runtime" tabindex="0" role="button" aria-label="runtime module">
+            <rect x="686" y="86" width="266" height="64" rx="8"></rect>
+            <text class="t" x="702" y="114">runtime · main()</text>
+            <text class="s" x="702" y="134">wires everything together</text>
+          </g>
+          <g class="node" data-id="core" tabindex="0" role="button" aria-label="core module">
+            <rect x="686" y="168" width="266" height="98" rx="8"></rect>
+            <text class="t" x="702" y="196">core</text>
+            <text class="s" x="702" y="216">rules, files, git, commands,</text>
+            <text class="s" x="702" y="234">Activity, tunnel supervision</text>
+            <text class="s" x="702" y="252">the only part that does work</text>
+          </g>
+          <g class="node" data-id="coreapi" tabindex="0" role="button" aria-label="core-api module">
+            <rect x="686" y="284" width="266" height="64" rx="8"></rect>
+            <text class="t" x="702" y="312">core-api</text>
+            <text class="s" x="702" y="332">the contract: types + interfaces</text>
+          </g>
+          <g class="node" data-id="controlserver" tabindex="0" role="button" aria-label="control server">
+            <rect x="470" y="330" width="160" height="66" rx="8"></rect>
+            <text class="t" x="486" y="358">control server</text>
+            <text class="s" x="486" y="378">settings door</text>
+          </g>
+          <g class="node" data-id="tui" tabindex="0" role="button" aria-label="tui module">
+            <rect x="266" y="490" width="162" height="64" rx="8"></rect>
+            <text class="t" x="282" y="518">tui</text>
+            <text class="s" x="282" y="538">terminal screen</text>
+          </g>
+          <g class="node" data-id="controlclient" tabindex="0" role="button" aria-label="control client">
+            <rect x="472" y="490" width="160" height="64" rx="8"></rect>
+            <text class="t" x="488" y="518">control client</text>
+            <text class="s" x="488" y="538">ManagementClient</text>
+          </g>
+          <g class="node" data-id="disk" tabindex="0" role="button" aria-label="Your directories and state on disk">
+            <rect x="686" y="470" width="266" height="84" rx="8"></rect>
+            <text class="t" x="702" y="498">Disk</text>
+            <text class="s" x="702" y="518">your Workspace folders +</text>
+            <text class="s" x="702" y="536">~/.local/state/proxenos</text>
+          </g>
+        </svg>
+      </div>
+
+      <aside class="panel pad detail" id="detail" aria-live="polite">
+        <div class="stack" id="detail-body"></div>
+      </aside>
+    </div>
+    <p class="flow-note" id="flow-note">Tip: the two dashed boxes are separate programs. Closing the terminal app never changes what ChatGPT can reach, because the runtime keeps running.</p>
+  </div>
+</section>
+
+<!-- ============ MODULES ============ -->
+<section class="part" id="modules">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">2 · The code</span>
+      <h2>Six modules, strict walls between them</h2>
+      <p>Each Gradle module has one job. The build itself refuses a module that reaches one it has not declared (<code>build-logic/…/ModuleBoundaryRules.kt</code>), so the walls below are enforced by the compiler, not by good intentions.</p>
+    </div>
+    <div class="modules" id="module-cards"></div>
+
+    <div class="panel pad stack">
+      <h3>Who may depend on whom</h3>
+      <p class="muted">Read a row as “this module may use…”. The key wall: <code>tui</code> and <code>control</code> cannot see <code>core</code>, so a frontend can only ever talk to the running runtime, never build its own copy.</p>
+      <div class="matrix-wrap">
+        <table class="matrix" id="matrix"></table>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="callout">
+        <p><b>Why split <code>core-api</code> from <code>core</code>?</b></p>
+        <p>So the question “could a ChatGPT conversation raise an access level?” is answered by the compiler. ChatGPT is handed <code>WorkspaceOperations</code> (the 11 tools). Only the local control socket is handed <code>WorkspaceManagement</code> (register, set level, stop…). They are two different types.</p>
+      </div>
+      <div class="callout">
+        <p><b>Why no interfaces below the core?</b></p>
+        <p>No <code>FileSystem</code>, <code>Clock</code> or <code>ProcessLauncher</code> wrappers. Tests use real temp folders, real <code>git</code> and real child processes. Timeouts and the tunnel binary path are configuration, so a test sets a 200 ms budget and a stub script instead (ADR 0002).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ JOURNEY ============ -->
+<section class="part" id="journey">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">3 · Inside the core</span>
+      <h2>A call's journey through one pipeline</h2>
+      <p>Every tool call, whether it came from ChatGPT or from the terminal app's “try it” button, passes through the same seven checks in <code>WorkspaceOperationsPipeline.kt</code>. Pick a situation and step through it to see where it passes and where it stops.</p>
+    </div>
+    <div class="scenarios" id="scenarios" role="group" aria-label="Situations"></div>
+    <div class="pipe-grid">
+      <div class="panel pad stack">
+        <div class="callbox" id="callbox"></div>
+        <ol class="steps" id="steps"></ol>
+      </div>
+      <div class="stack">
+        <div class="pipe-controls">
+          <button type="button" class="btn" id="step-next">Next step</button>
+          <button type="button" class="btn ghost" id="step-all">Show all</button>
+          <button type="button" class="btn ghost" id="step-reset">Reset</button>
+        </div>
+        <div class="verdict" id="verdict" hidden></div>
+        <div class="panel pad stack">
+          <h3>What each check protects</h3>
+          <dl class="kv">
+            <dt>resolve</dt><dd>The <code>workspace</code> argument is mandatory and must match a name exactly. No “current workspace”, no guessing, even when only one exists.</dd>
+            <dt>level</dt><dd>The Workspace's dial must be high enough for this tool. The level alone authorizes; there is no per-call prompt.</dd>
+            <dt>confine</dt><dd>Paths are resolved (symlinks followed) and must land inside the Root. <code>..</code> and absolute paths are refused.</dd>
+            <dt>key</dt><dd>Changing tools carry a <code>request_id</code> so a repeat from the tunnel is never run twice.</dd>
+            <dt>lock</dt><dd>Writes to the same real file wait for each other, even via two overlapping Workspaces.</dd>
+            <dt>Activity</dt><dd>An entry is written <em>before</em> any change, so a crash leaves a trace.</dd>
+            <dt>outcome</dt><dd>Exactly one of <code>ok</code>, <code>failed</code>, <code>uncertain</code>.</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LEVELS ============ -->
+<section class="part" id="levels">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">4 · Permissions</span>
+      <h2>One dial per Workspace</h2>
+      <p>A Workspace is a folder you registered, with a name. Its Access Level is a single dial: <b>None → Read → Write → Command</b>, each including the ones below. New Workspaces start at Read. Turn the dial to see what ChatGPT gets.</p>
+    </div>
+    <div class="dial" id="dial" role="group" aria-label="Access level">
+      <button type="button" class="lv" data-lv="0" aria-pressed="false">None<small>withheld</small></button>
+      <button type="button" class="lv" data-lv="1" aria-pressed="true">Read<small>look only</small></button>
+      <button type="button" class="lv" data-lv="2" aria-pressed="false">Write<small>change files</small></button>
+      <button type="button" class="lv" data-lv="3" aria-pressed="false">Command<small>run programs</small></button>
+    </div>
+    <div class="callout" id="lv-note"></div>
+    <div class="panel matrix-wrap">
+      <table class="tools">
+        <thead><tr><th>Tool</th><th>Needs</th><th>What it does</th><th>At this level</th></tr></thead>
+        <tbody id="tool-rows"></tbody>
+      </table>
+    </div>
+    <div class="two">
+      <div class="callout warn">
+        <p><b>Lowering the dial is not a stop button.</b> It governs the <em>next</em> call. A build already running keeps running; stop it from the terminal app with <code>s</code> then <code>y</code>.</p>
+      </div>
+      <div class="callout">
+        <p><b>One connector, every Workspace.</b> There is one tunnel and one flat catalog of 11 tools. Every tool call names its Workspace, and any conversation that reaches the connector can reach every Workspace above None.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OUTCOMES ============ -->
+<section class="part" id="outcomes">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">5 · Results</span>
+      <h2>Three outcomes, so retries are safe</h2>
+      <p>Two outcomes (“worked” / “didn't”) would hide the dangerous case: a change that <em>may</em> have happened. The model reads the words, so <code>uncertain</code> says “do not retry” in plain text (ADR 0001).</p>
+    </div>
+    <div class="outcomes">
+      <div class="panel pad oc ok stack"><span class="big">ok</span><p>It worked. Here is the result.</p><p class="retry muted">Retry? Not needed.</p></div>
+      <div class="panel pad oc failed stack"><span class="big">failed</span><p>Refused or impossible. Guaranteed: <b>nothing on disk changed.</b></p><p class="retry" style="color:var(--good)">Retry? Safe.</p></div>
+      <div class="panel pad oc uncertain stack"><span class="big">uncertain</span><p>Timed out, stopped, or the folder vanished midway. Effects unknown.</p><p class="retry" style="color:var(--bad)">Retry? No. Repeat with the same request_id to fetch the original answer.</p></div>
+    </div>
+    <div class="panel pad stack">
+      <h3>Entries that need a human look</h3>
+      <p class="muted">The Activity feed flags four unresolved states with a <code>!</code>. They never expire until settled; everything else is kept for 30 days.</p>
+      <div class="matrix-wrap">
+        <table>
+          <thead><tr><th>State</th><th>Plain meaning</th><th>How it settles</th></tr></thead>
+          <tbody>
+            <tr><td><b>Uncertain</b></td><td>It ran; what it did to disk is unknown.</td><td>You acknowledge it.</td></tr>
+            <tr><td><b>Lost</b></td><td>The runtime crashed or was killed while it ran. No result exists.</td><td>You acknowledge it.</td></tr>
+            <tr><td><b>Undelivered</b></td><td>It finished, but the answer never reached ChatGPT. ChatGPT thinks it failed.</td><td>A repeat delivery hands over the stored answer, or you acknowledge it.</td></tr>
+            <tr><td><b>Unclaimed</b></td><td>A slow command finished and nobody collected its result.</td><td>A later <code>get_result</code>, or you acknowledge it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SLOW ============ -->
+<section class="part" id="slow">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">6 · Long-running work</span>
+      <h2>Slow commands get a ticket, not a timeout</h2>
+      <p>The tunnel re-sends a call it has not heard back from after about 61 seconds, and ChatGPT's own Stop button never reaches this machine. So the runtime answers every call within <b>45 seconds</b>. A <code>run_command</code> that takes longer keeps running and the call returns a <b>Handle</b> instead. Drag to set how long the command takes.</p>
+    </div>
+    <div class="panel pad stack">
+      <div class="slider-row">
+        <label for="dur">Command runs for</label>
+        <input type="range" id="dur" min="1" max="240" value="20">
+        <span class="dur" id="dur-out">20 s</span>
+      </div>
+      <div class="track" aria-hidden="true">
+        <div class="base"></div>
+        <div class="run" id="run-bar"></div>
+        <div class="mark" style="left:18.75%"><span>45 s budget</span></div>
+        <div class="mark m61" style="left:25.4%"><span>~61 s tunnel re-sends</span></div>
+        <span class="axis" style="left:0%">0</span>
+        <span class="axis" style="left:50%">120 s</span>
+        <span class="axis" style="left:100%">240 s</span>
+      </div>
+      <ol class="story" id="story"></ol>
+    </div>
+    <div class="two">
+      <div class="callout">
+        <p><b>At most 4 commands at once.</b> Promoted commands keep their slot until they end, so a model stuck in a retry loop cannot start twenty builds. The fifth call is <code>failed</code> (nothing ran, safe to retry).</p>
+      </div>
+      <div class="callout">
+        <p><b>One way to kill.</b> Snapshot the process tree, send TERM to the tree and the process group, wait 5 s, then SIGKILL. Anything that survives is named, never rounded off to “stopped”.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LINK ============ -->
+<section class="part" id="link">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">7 · Tunnel health</span>
+      <h2>What “Connected” can honestly claim</h2>
+      <p>The runtime reads one number from the tunnel-client every ~15 s: when it last polled OpenAI successfully. Every state is derived from that number plus your own Connect/Disconnect choice (ADR 0005). Press the events to drive the state machine.</p>
+    </div>
+    <div class="sm-grid">
+      <div class="stack">
+        <div class="states" id="states">
+          <div class="state" data-s="Connecting"><b>Connecting</b><p>No successful poll yet since start, or since you pressed Connect.</p></div>
+          <div class="state" data-s="Connected"><b>Connected</b><p>A poll succeeded recently. The link to OpenAI is up.</p></div>
+          <div class="state" data-s="Failed"><b>Failed</b><p>It worked before and has gone stale. Shows the tunnel's own complaint, word for word.</p></div>
+          <div class="state" data-s="Disconnected"><b>Disconnected</b><p>Your choice. Never measured, never a fault.</p></div>
+        </div>
+        <div class="events" id="events">
+          <button type="button" class="chip-btn" data-ev="ok">A poll succeeds</button>
+          <button type="button" class="chip-btn" data-ev="stale">Polls go stale</button>
+          <button type="button" class="chip-btn" data-ev="disc">You press Disconnect</button>
+          <button type="button" class="chip-btn" data-ev="conn">You press Connect</button>
+          <button type="button" class="chip-btn" data-ev="reset">Restart runtime</button>
+        </div>
+      </div>
+      <div class="panel pad stack">
+        <h3>What just happened</h3>
+        <ul class="log" id="sm-log"></ul>
+      </div>
+    </div>
+    <div class="callout warn">
+      <p><b>Connected does not mean ChatGPT still has the connector.</b> Deleting the connector in ChatGPT leaves the link up and the reading unchanged, and ChatGPT's copy of the tool list is a snapshot that never refreshes. That is why the terminal app shows an “Unconfirmed” banner after install or after an upgrade that changes the tools, until you confirm you re-created the connector (ADR 0007).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STATE ============ -->
+<section class="part" id="state">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">8 · Files and settings</span>
+      <h2>What is saved, and what is forgotten</h2>
+      <p>You supply exactly one thing: the credentials file. Everything else has a default.</p>
+    </div>
+    <div class="two">
+      <div class="panel pad stack">
+        <h3>Kept across restarts</h3>
+        <dl class="kv">
+          <dt>registry.properties</dt><dd>Each Workspace: id, name, Root and Access Level, exactly as set (Command stays Command).</dd>
+          <dt>activity</dt><dd>The append-only account of every operation. 30 days, unresolved entries kept until settled.</dd>
+          <dt>disconnected</dt><dd>Whether you last chose Disconnect. Otherwise a start comes up connecting.</dd>
+          <dt>connector</dt><dd>The tool-catalog fingerprint you last confirmed in ChatGPT.</dd>
+        </dl>
+        <p class="muted" style="font-size:0.9rem">All under <code>~/.local/state/proxenos</code>.</p>
+      </div>
+      <div class="panel pad stack">
+        <h3>Forgotten on restart</h3>
+        <dl class="kv">
+          <dt>Connected state</dt><dd>Re-measured from scratch.</dd>
+          <dt>Broken</dt><dd>Recomputed: does each Root still point at the same directory?</dd>
+          <dt>request_ids</dt><dd>Kept 10 minutes in memory. A restart kills the tunnel child too, so no repeat can arrive.</dd>
+          <dt>running work</dt><dd>Ended on Stop (left Uncertain) or shown as Lost after a crash.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="panel pad stack">
+      <h3>Where things live</h3>
+      <dl class="kv">
+        <dt>credentials</dt><dd><code>~/.config/proxenos/credentials</code>, mode <code>0600</code> or the runtime refuses to start. Holds the tunnel ID and runtime key; only the tunnel-client child ever gets them, and <code>run_command</code> strips them from every command's environment.</dd>
+        <dt>config.toml</dt><dd>Optional overrides beside the credentials file. Never holds the key.</dd>
+        <dt>mcp.sock</dt><dd><code>$XDG_RUNTIME_DIR/proxenos/</code>: where tunnel-client delivers ChatGPT's calls.</dd>
+        <dt>control.sock</dt><dd>Same folder: where frontends connect. The server checks the caller is the same Linux user (<code>SO_PEERCRED</code>).</dd>
+        <dt>bin/wizard</dt><dd>One-time setup script for the OpenAI dashboard side; writes the credentials file.</dd>
+        <dt>no autostart</dt><dd>On purpose: after a reboot, nothing is reachable until you start it once. A systemd unit is in <code>docs/</code> if you disagree.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section class="part" id="decisions">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">9 · Why it is built this way</span>
+      <h2>The eight recorded decisions</h2>
+      <p>Each ADR in <code>docs/adr/</code> records a choice a future reader might otherwise undo.</p>
+    </div>
+    <div class="panel pad adrs" id="adrs"></div>
+  </div>
+</section>
+
+<!-- ============ GLOSSARY ============ -->
+<section class="part" id="glossary">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">10 · Vocabulary</span>
+      <h2>The words, in plain language</h2>
+      <p>The project uses these words precisely. Full definitions are in <code>CONTEXT.md</code>.</p>
+    </div>
+    <div class="gl-top">
+      <input type="search" id="gl-filter" placeholder="Filter terms, e.g. handle, level, lost" aria-label="Filter glossary">
+      <span class="muted" id="gl-count"></span>
+    </div>
+    <div class="glossary" id="gl"></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">Built from <code>docs/SPEC.md</code>, <code>CONTEXT.md</code>, <code>docs/adr/</code> and the module sources. When they disagree with this page, they win.</div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var REPO = "https://github.com/kzagoris/proxenos/blob/master/";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /* ---------- components ---------- */
+  var C = {
+    chatgpt: { kind: "external · OpenAI", title: "ChatGPT", what: "Where you talk. It sees this machine as one connector with 11 tools and calls them during a conversation.",
+      points: ["Takes a snapshot of the tool list when you create the connector, and never refreshes it.", "Its Stop button never reaches this machine, so a long command keeps running.", "Re-sends a call it has not heard back from (seen at ~61 s), byte for byte identical."], files: [] },
+    tunnelsvc: { kind: "external · OpenAI", title: "Secure MCP Tunnel service", what: "OpenAI's relay. It hands ChatGPT's tool calls to whichever machine is polling for that tunnel ID.",
+      points: ["Your machine opens no port: the tunnel-client polls out to it.", "At most 10 requests in flight at once.", "Offers no lease or heartbeat the runtime can rely on, so the runtime never replays work."], files: [] },
+    tunnelclient: { kind: "external binary · child process", title: "tunnel-client", what: "OpenAI's official program (v0.0.14). The runtime starts it, watches it, and restarts it if it dies. It forwards calls to the runtime over a local Unix socket.",
+      points: ["Receives the tunnel ID and key in its environment. Nothing else does.", "Serves /metrics on its own health socket; the runtime reads one gauge there to judge Connected.", "Never gives up on its own: a wrong key loops forever, so Failed is the runtime's judgement.", "Installed by bin/install-tunnel-client, which checks its SHA-256."],
+      files: ["core/…/TunnelChild.kt", "core/…/Tunnel.kt", "scripts/install-tunnel-client"] },
+    mcp: { kind: "module · adapter", title: "mcp", what: "Translates between the MCP protocol and the core. A Ktor CIO server on a Unix socket at path /mcp, using the Kotlin MCP SDK.",
+      points: ["Turns the core's catalog (data) into MCP tool definitions.", "Decodes JSON arguments into a typed Operation; a malformed call is answered as a tool result that says nothing was attempted.", "Renders each Outcome as text a model acts on, e.g. “effects uncertain, do not retry”.", "Only allows the hostname proxenos.internal, which the runtime also gives tunnel-client."],
+      files: ["McpEndpoint.kt", "ToolCatalog.kt", "ToolCalls.kt", "ToolReplies.kt"] },
+    runtime: { kind: "module · application", title: "runtime", what: "The composition root and main(). The only module allowed to see all the others. Builds the core once and hands out two views of it.",
+      points: ["Reads configuration: credentials file (0600 or refuse), XDG paths, optional config.toml.", "Takes a single-instance lock; a second runtime refuses to start.", "Stamps the Origin: ChatGPT for the mcp view, Frontend for the control socket.", "Starts the MCP endpoint, the tunnel child and the control server; its shutdown hook stops running work.", "Also has a small `runtime register` command."],
+      files: ["Main.kt", "Configuration.kt", "Credentials.kt", "ConfigToml.kt", "InstanceLock.kt", "Register.kt"] },
+    core: { kind: "module · the engine", title: "core", what: "Everything that actually touches the machine: reading and writing files, searching, git, running commands, the Workspace registry, the Activity record and tunnel supervision.",
+      points: ["WorkspaceOperationsPipeline runs every call through the same seven checks.", "WorkspaceRegistry holds Workspaces, levels and Broken detection.", "CommandRunner + Promotion run /bin/sh -c, promote at 45 s, and kill process trees.", "Deliveries remembers request_ids for 10 minutes to absorb repeats.", "Activity is the append-only record; RuntimeFeed pushes a snapshot then changes to every frontend.", "Blocking work moves to an I/O dispatcher inside the core, so callers never stall."],
+      files: ["WorkspaceOperationsPipeline.kt", "WorkspaceRegistry.kt", "OperationCatalog.kt", "PathConfinement.kt", "PathLocks.kt", "FileReads.kt", "FileWrites.kt", "FileSearch.kt", "GitTools.kt", "Commands.kt", "Promotion.kt", "Deliveries.kt", "Activity.kt", "Tunnel.kt", "RuntimeManagement.kt", "RuntimeFeed.kt", "OutputBounds.kt", "ConnectorAcknowledgement.kt"] },
+    coreapi: { kind: "module · contract", title: "core-api", what: "Interfaces and data types only. It cannot open a file or start a process. It is what frontends are allowed to see.",
+      points: ["WorkspaceOperations: the catalog + perform(Operation) → Outcome.", "WorkspaceManagement: perform(ManagementAct) + observe() stream of RuntimeEvent.", "Outcome is sealed: Ok, Failed(reason), Uncertain(reason).", "Types are serializable, so they double as the control socket's wire format.", "Depends on nothing else in the project."],
+      files: ["WorkspaceOperations.kt", "WorkspaceManagement.kt", "Workspace.kt", "Activity.kt", "RuntimeState.kt", "GitReports.kt"] },
+    controlserver: { kind: "module control · server side", title: "control server", what: "The settings door. A second Unix socket that only your Linux user may use, where frontends register folders, change levels, stop work and more.",
+      points: ["One JSON document per line; each request is a serialized ManagementAct.", "Checks the caller's user id with SO_PEERCRED, and sits in an owner-only folder.", "Any number of frontends can attach at once and see the same live state.", "ChatGPT cannot reach this socket, so it cannot change a level."],
+      files: ["control/…/ControlServer.kt", "control/…/Protocol.kt"] },
+    controlclient: { kind: "module control · client side", title: "ManagementClient", what: "Implements the same WorkspaceManagement interface as the core, but over the socket: serialize, send, deserialize.",
+      points: ["The TUI now, and a GUI later, program against the interface and cannot tell it is remote.", "Tests prove the client and the in-process core are interchangeable."],
+      files: ["control/…/ManagementClient.kt"] },
+    tui: { kind: "module · frontend", title: "tui", what: "The terminal app, built with Mosaic (Compose for terminals). It starts the runtime if it is not running, then attaches to it.",
+      points: ["Home screen: status bar, banners, Workspace chips with levels, a band of running commands, then the Activity feed.", "Keys: n new, e rename, 0–3 set level, w Workspace detail, i runtime detail, s then y to stop, a acknowledge, d disconnect, q quit.", "Workspace detail shows all 11 tools against that level, with a try-it action.", "Closing it changes nothing about what is exposed."],
+      files: ["Main.kt", "Home.kt", "Screen.kt", "Ui.kt", "Wording.kt", "RuntimeLauncher.kt", "Roots.kt", "Tryable.kt"] },
+    disk: { kind: "your machine", title: "Disk", what: "The folders you registered as Workspaces, plus the runtime's own state folder.",
+      points: ["File tools are confined to the Workspace's Root, following symlinks first and then checking.", "run_command is not confined: it runs with your full Linux account.", "Writes go to a temp file and are renamed into place atomically."],
+      files: ["~/.local/state/proxenos/", "~/.config/proxenos/credentials"] }
+  };
+
+  var FLOWS = {
+    none: { nodes: [], edges: [], note: "Tip: the two dashed boxes are separate programs. Closing the terminal app never changes what ChatGPT can reach, because the runtime keeps running." },
+    chat: { nodes: ["chatgpt", "tunnelsvc", "tunnelclient", "mcp", "core", "disk"], edges: ["e1", "e2", "e2b", "e3", "e4", "e9"],
+      note: "ChatGPT → OpenAI's tunnel service → tunnel-client (which polled out for it) → mcp.sock → mcp decodes the call → core runs the pipeline and touches disk. The answer goes back the same way." },
+    front: { nodes: ["tui", "controlclient", "controlserver", "coreapi", "core", "disk"], edges: ["e8", "e7", "e6", "e9"],
+      note: "You press a key in the tui → ManagementClient sends a ManagementAct over control.sock → the control server hands it to the core → the change is saved and pushed to every attached frontend." },
+    watch: { nodes: ["core", "tunnelclient"], edges: ["e10"],
+      note: "The core starts tunnel-client as its child and reads one gauge from its /metrics every ~15 s: the time of the last successful poll. That decides Connecting, Connected or Failed." }
+  };
+
+  var sel = null;
+  function showNode(id) {
+    var c = C[id]; if (!c) return;
+    sel = id;
+    $$("svg .node").forEach(function (n) { n.classList.toggle("sel", n.getAttribute("data-id") === id); });
+    var files = c.files.length ? '<div class="stack" style="gap:6px"><span class="kind">Key files</span><div class="files">' + c.files.map(function (f) { return "<code>" + esc(f) + "</code>"; }).join("") + "</div></div>" : "";
+    $("#detail-body").innerHTML = '<span class="kind">' + esc(c.kind) + '</span><h3>' + esc(c.title) + '</h3><p>' + esc(c.what) + '</p><ul>' + c.points.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ul>" + files;
+  }
+  $$("svg .node").forEach(function (n) {
+    n.addEventListener("click", function () { showNode(n.getAttribute("data-id")); });
+    n.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showNode(n.getAttribute("data-id")); } });
+  });
+  function setFlow(f) {
+    var fl = FLOWS[f];
+    $$("[data-flow]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-flow") === f)); });
+    $$("svg .edge").forEach(function (e) { e.classList.toggle("on", fl.edges.indexOf(e.id) >= 0); });
+    $$("svg .elabel").forEach(function (t) { t.classList.toggle("on", fl.edges.indexOf(t.getAttribute("data-e")) >= 0); });
+    $$("svg .node").forEach(function (n) { n.classList.toggle("dim", fl.nodes.length > 0 && fl.nodes.indexOf(n.getAttribute("data-id")) < 0); });
+    $("#flow-note").textContent = fl.note;
+  }
+  $$("[data-flow]").forEach(function (b) { b.addEventListener("click", function () { setFlow(b.getAttribute("data-flow")); }); });
+  showNode("core");
+
+  /* ---------- modules ---------- */
+  var MODS = [
+    { n: "core-api", role: "The contract", d: "Interfaces, operations, outcomes and events. Cannot touch the machine.", reach: [] },
+    { n: "core", role: "The engine", d: "Files, search, git, commands, registry, Activity, tunnel supervision.", reach: ["core-api"] },
+    { n: "mcp", role: "ChatGPT's door", d: "MCP server on a Unix socket, renders the catalog and replies.", reach: ["core", "core-api"] },
+    { n: "control", role: "The settings door", d: "Wire protocol, socket server, and the ManagementClient library.", reach: ["core-api"] },
+    { n: "runtime", role: "The background program", d: "main(), configuration, single-instance lock, wiring, tunnel child.", reach: ["core-api", "core", "mcp", "control"] },
+    { n: "tui", role: "The terminal app", d: "Mosaic screen that attaches to the runtime over the control socket.", reach: ["core-api", "control"] }
+  ];
+  $("#module-cards").innerHTML = MODS.map(function (m) {
+    return '<div class="panel pad mod"><span class="name">' + m.n + '</span><span class="role">' + m.role + '</span><p class="muted">' + m.d + '</p><span class="reach">May use: ' + (m.reach.length ? m.reach.map(function (r) { return "<b>" + r + "</b>"; }).join(", ") : "<b>nothing</b>") + "</span></div>";
+  }).join("");
+  var names = MODS.map(function (m) { return m.n; });
+  $("#matrix").innerHTML = "<thead><tr><th>module ↓ uses →</th>" + names.map(function (n) { return "<th>" + n + "</th>"; }).join("") + "</tr></thead><tbody>" +
+    MODS.map(function (m) {
+      return "<tr><td><b>" + m.n + "</b></td>" + names.map(function (n) {
+        if (n === m.n) return '<td class="self">·</td>';
+        return m.reach.indexOf(n) >= 0 ? '<td class="yes" aria-label="yes">✓</td>' : '<td class="no" aria-label="no">–</td>';
+      }).join("") + "</tr>";
+    }).join("") + "</tbody>";
+
+  /* ---------- pipeline ---------- */
+  var STEPS = [
+    ["Resolve the Workspace", "Look up the name in the registry."],
+    ["Check the Access Level", "Is the dial high enough for this tool?"],
+    ["Confine the path", "Does the real path stay inside the Root?"],
+    ["Check the request_id", "Have we seen this exact operation before?"],
+    ["Take the path lock", "Serialize writes to the same real file."],
+    ["Write Activity", "Record it before anything changes."],
+    ["Do the work, shape the Outcome", "Run it and return ok, failed or uncertain."]
+  ];
+  // r: array of [status, text] per step; status pass/skip/stop/special
+  var SCEN = [
+    { id: "read", label: "Read a file", call: 'read_file(\n  workspace: "api",        // at Read\n  path: "src/Main.kt")',
+      r: [["pass", "“api” found. Root: ~/Projects/api."], ["pass", "Needs Read, has Read."], ["pass", "~/Projects/api/src/Main.kt is inside the Root."], ["skip", "Reads carry no key: repeating a read only costs time."], ["skip", "Reads take no lock."], ["pass", "Entry recorded with Origin ChatGPT."], ["pass", "Returned lines 1–312 of 312, under the 2000-line and 64 KiB caps."]],
+      v: ["ok", "ok", "The file text, plus its total line count so the model knows what it has not seen."] },
+    { id: "hidden", label: "Name a withheld Workspace", call: 'edit_file(\n  workspace: "taxes",      // at None\n  path: "2025.csv", ...)',
+      r: [["stop", "NoSuchWorkspace: answered as if “taxes” did not exist, and lists the exposed ones."]],
+      v: ["failed", "failed · NoSuchWorkspace", "A level of None hides the Workspace completely. Saying “it exists but is at None” would reveal the folder you withheld (ADR 0006). The refusal is still written to Activity."] },
+    { id: "low", label: "Write at Read level", call: 'write_file(\n  workspace: "docs",       // at Read\n  path: "notes.md", ...)',
+      r: [["pass", "“docs” found."], ["stop", "LevelTooLow: needs Write, “docs” is at Read."]],
+      v: ["failed", "failed · LevelTooLow", "Above None, the Workspace is already visible, so the error names its level and the level needed. Nothing changed; safe to retry after you raise the dial."] },
+    { id: "escape", label: "Path escapes via symlink", call: 'read_file(\n  workspace: "api",\n  path: "config/secrets")  // symlink → ~/.ssh',
+      r: [["pass", "“api” found."], ["pass", "Needs Read, has Read."], ["stop", "OutsideRoot: config/secrets is a symlink to ~/.ssh, outside the Root. The error names the symlink."]],
+      v: ["failed", "failed · OutsideRoot", "Symlinks are followed first, then checked. To really expose that folder, register it as its own Workspace."] },
+    { id: "repeat", label: "Tunnel repeats an edit", call: 'edit_file(\n  workspace: "api",        // at Write\n  path: "README.md",\n  request_id: "r-81f2",    // seen 70 s ago\n  old: "v1", new: "v2")',
+      r: [["pass", "“api” found."], ["pass", "Needs Write, has Write."], ["pass", "Inside the Root."], ["special", "Key r-81f2 already finished. Return the first reply word for word, noting it is a recorded result."]],
+      v: ["recorded", "ok · recorded result", "Without the key, the repeat would find no “v1” left and answer failed (“nothing changed”), which would be a lie: the first delivery changed it. The key is what makes that impossible (ADR 0004)."] },
+    { id: "slow", label: "Long build", call: 'run_command(\n  workspace: "api",        // at Command\n  command: "./gradlew build",\n  request_id: "r-9c10")',
+      r: [["pass", "“api” found."], ["pass", "Needs Command, has Command."], ["pass", "Working directory defaults to the Root (the command itself is not confined)."], ["pass", "New key r-9c10: remembered for 10 minutes after the reply."], ["skip", "Commands take no lock; they take one of 4 command slots (now 2/4)."], ["pass", "Entry recorded before starting."], ["special", "Still running at 45 s → Promoted. Reply carries a Handle; the build keeps going."]],
+      v: ["promoted", "Promoted · Handle returned", "Not a fourth outcome. ChatGPT calls get_result(workspace, handle) to collect the final ok / failed / uncertain."] },
+    { id: "noname", label: "Forget the workspace argument", call: 'git_status()             // no workspace',
+      r: [["stop", "Rejected: workspace is required. Exposed Workspaces are listed. Never defaulted, even if only one exists."]],
+      v: ["failed", "failed · missing workspace", "There is no “current workspace” anywhere. A stale default would edit the right file in the wrong project, and nothing in the transcript would look wrong."] }
+  ];
+  var cur = SCEN[0], shown = 0;
+  $("#scenarios").innerHTML = SCEN.map(function (s) { return '<button type="button" class="chip-btn" data-sc="' + s.id + '" aria-pressed="false">' + esc(s.label) + "</button>"; }).join("");
+  $("#steps").innerHTML = STEPS.map(function (s) { return '<li class="step"><div><div class="st">' + esc(s[0]) + '</div><div class="sd">' + esc(s[1]) + '</div><div class="res"></div></div></li>'; }).join("");
+  function renderPipe() {
+    $("#callbox").textContent = cur.call;
+    $$("#scenarios button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-sc") === cur.id)); });
+    $$("#steps .step").forEach(function (li, i) {
+      li.className = "step";
+      var r = cur.r[i];
+      if (i < shown && r) { li.classList.add(r[0]); $(".res", li).textContent = r[1]; }
+      else if (i >= cur.r.length && shown >= cur.r.length) { li.classList.add("later"); $(".res", li).textContent = ""; }
+      else { $(".res", li).textContent = ""; }
+    });
+    var done = shown >= cur.r.length, v = $("#verdict");
+    v.hidden = !done;
+    if (done) { v.className = "verdict " + cur.v[0]; v.innerHTML = esc(cur.v[1]) + "<span>" + esc(cur.v[2]) + "</span>"; }
+    $("#step-next").disabled = done;
+  }
+  $$("#scenarios button").forEach(function (b) { b.addEventListener("click", function () { cur = SCEN.filter(function (s) { return s.id === b.getAttribute("data-sc"); })[0]; shown = 0; renderPipe(); }); });
+  $("#step-next").addEventListener("click", function () { if (shown < cur.r.length) shown++; renderPipe(); });
+  $("#step-all").addEventListener("click", function () { shown = cur.r.length; renderPipe(); });
+  $("#step-reset").addEventListener("click", function () { shown = 0; renderPipe(); });
+  shown = cur.r.length; renderPipe();
+
+  /* ---------- access levels ---------- */
+  var LV = ["None", "Read", "Write", "Command"];
+  var TOOLS = [
+    ["list_workspaces", -1, "Lists exposed Workspaces: name, Root, level, is it a git repo."],
+    ["list_directory", 1, "Lists a folder inside the Root."],
+    ["read_file", 1, "Reads up to 2000 lines / 64 KiB, with offset paging. Refuses binaries."],
+    ["search", 1, "Filename and content search; respects .gitignore; stops at the time budget with a marker."],
+    ["git_status", 1, "Parsed porcelain status, labelled “scoped” when the Root is inside a bigger repo."],
+    ["git_diff", 1, "Working tree vs HEAD, or staged only."],
+    ["git_log", 1, "Last 20 commits by default."],
+    ["write_file", 2, "Writes a whole file atomically. Will not create missing parent folders."],
+    ["edit_file", 2, "Replaces text that must match exactly once. Zero or several matches: failed."],
+    ["run_command", 3, "Runs /bin/sh -c in the Root, with your full account. Promoted after 45 s."],
+    ["get_result", 3, "Collects a Promoted command's output by Handle. Re-checks the level every time."]
+  ];
+  var LVNOTE = [
+    "<p><b>None: withheld.</b> The Workspace is missing from list_workspaces, and any call naming it gets the same answer as a name that was never registered. There is no separate visibility switch.</p>",
+    "<p><b>Read: look, don't touch.</b> Browse, read, search and inspect git. The default for a new Workspace. Git tools sit here so ChatGPT can see what changed without being able to run anything.</p>",
+    "<p><b>Write: change files.</b> Adds write_file and edit_file. Each needs a request_id so a repeated delivery never applies twice.</p>",
+    "<p><b>Command: run anything as you.</b> Commands run with the full authority of your Linux account and are <b>not</b> bounded by the Root: a command can read <code>~/.ssh</code>. There is no per-call prompt, so this level works while nobody is watching. Keep it rare, and review the Activity feed.</p>"
+  ];
+  function setLevel(l) {
+    $$("#dial .lv").forEach(function (b) { b.setAttribute("aria-pressed", String(+b.getAttribute("data-lv") === l)); });
+    var n = $("#lv-note"); n.className = "callout" + (l === 3 ? " bad" : ""); n.innerHTML = LVNOTE[l];
+    $("#tool-rows").innerHTML = TOOLS.map(function (t) {
+      var need = t[1] < 0 ? "—" : '<span class="lvtag" data-l="' + LV[t[1]] + '">' + LV[t[1]] + "</span>";
+      var st;
+      if (t[1] < 0) st = l === 0 ? '<span class="pill absent">not listed</span>' : '<span class="pill allowed">listed</span>';
+      else if (l === 0) st = '<span class="pill absent">NoSuchWorkspace</span>';
+      else if (l >= t[1]) st = '<span class="pill allowed">allowed</span>';
+      else st = '<span class="pill refused">LevelTooLow</span>';
+      return "<tr><td><code>" + t[0] + "</code></td><td>" + need + "</td><td>" + esc(t[2]) + "</td><td>" + st + "</td></tr>";
+    }).join("");
+  }
+  $$("#dial .lv").forEach(function (b) { b.addEventListener("click", function () { setLevel(+b.getAttribute("data-lv")); }); });
+  setLevel(1);
+
+  /* ---------- slow commands ---------- */
+  function renderDur() {
+    var d = +$("#dur").value, MAX = 240;
+    $("#dur-out").textContent = d + " s";
+    var bar = $("#run-bar"); bar.style.width = (d / MAX * 100) + "%"; bar.classList.toggle("promo", d > 45);
+    var items;
+    if (d <= 45) {
+      items = ["The command starts in the Root via /bin/sh -c and takes one of 4 slots.",
+        "It finishes at " + d + " s, inside the 45 s budget.",
+        "ChatGPT gets the answer in the same call: ok (exit 0) or failed, with output cut to 32 KiB head + 32 KiB tail if long.",
+        "No Handle, no follow-up needed."];
+    } else {
+      items = ["The command starts in the Root and takes one of 4 slots.",
+        "At 45 s the call is answered with <b>Promoted</b> and a <b>Handle</b>. The command is <em>not</em> killed.",
+        "That answer beats the tunnel's ~61 s re-send, so no second copy of the command is ever started.",
+        "ChatGPT calls <code>get_result(workspace, handle)</code>; before " + d + " s it sees “still running” plus output so far.",
+        "At " + d + " s it finishes. The next get_result returns the final outcome.",
+        "If nobody ever collects it, Activity marks it <b>Unclaimed</b> until you look."];
+    }
+    $("#story").innerHTML = items.map(function (t) { return "<li>" + t + "</li>"; }).join("");
+  }
+  $("#dur").addEventListener("input", renderDur);
+  renderDur();
+
+  /* ---------- state machine ---------- */
+  var sm = "Connecting";
+  function log(ev, text) {
+    var li = document.createElement("li"); li.innerHTML = "<b>" + esc(ev) + "</b> → " + text; $("#sm-log").appendChild(li);
+    var items = $$("#sm-log li"); if (items.length > 8) items[0].remove();
+  }
+  function renderSm() { $$("#states .state").forEach(function (s) { s.classList.toggle("cur", s.getAttribute("data-s") === sm); }); }
+  var EV = {
+    ok: function () {
+      if (sm === "Disconnected") return "Stays <b>Disconnected</b>. That was your choice; no measurement overrides it.";
+      var was = sm; sm = "Connected";
+      return was === "Failed" ? "<b>Connected</b> again on its own, with no keypress. The gauge went fresh." : was === "Connected" ? "Still <b>Connected</b>. The stream stays silent: only transitions are sent." : "<b>Connected</b>. First successful poll.";
+    },
+    stale: function () {
+      if (sm === "Disconnected") return "Stays <b>Disconnected</b>.";
+      if (sm === "Connecting") return "Stays <b>Connecting</b>. It never had a link, so it cannot have lost one. After one poll wait, the tui shows the tunnel's own error (e.g. 401) word for word, without guessing why.";
+      if (sm === "Failed") return "Still <b>Failed</b>. Retries are not events; nothing new is sent.";
+      sm = "Failed"; return "<b>Failed</b>. It worked and went stale. Shows the tunnel's own complaint; a deleted tunnel and a bad key look the same, so it never diagnoses.";
+    },
+    disc: function () { if (sm === "Disconnected") return "Already <b>Disconnected</b>."; sm = "Disconnected"; return "<b>Disconnected</b>. The link is down; the runtime, Workspaces, levels and running commands are untouched."; },
+    conn: function () { if (sm !== "Disconnected") return "Nothing to do; only meaningful after Disconnect."; sm = "Connecting"; return "<b>Connecting</b>. A success from before the disconnect says nothing about the new link, so it waits for a fresh poll."; },
+    reset: function () { sm = "Connecting"; $("#sm-log").innerHTML = ""; return "Runtime started. <b>Connecting</b> until the first successful poll."; }
+  };
+  var EVN = { ok: "poll ok", stale: "stale", disc: "Disconnect", conn: "Connect", reset: "start" };
+  $$("#events button").forEach(function (b) { b.addEventListener("click", function () { var k = b.getAttribute("data-ev"); var t = EV[k](); log(EVN[k], t); renderSm(); }); });
+  log("start", "Runtime started. <b>Connecting</b> until the first successful poll."); renderSm();
+
+  /* ---------- ADRs ---------- */
+  var ADRS = [
+    ["0001", "three-valued-operation-outcome", "Mutating operations report three outcomes, not two", "ok / failed / uncertain, so “failed” can promise nothing changed and a retry is safe."],
+    ["0002", "no-abstraction-below-the-core", "The core abstracts nothing beneath itself", "No fake file systems or clocks. Real folders, real git and real processes in tests."],
+    ["0003", "promote-long-running-commands", "A command that outruns its call is promoted, not killed", "At 45 s the call returns a Handle and the command keeps running."],
+    ["0004", "caller-supplied-key-for-repeat-deliveries", "A mutating call carries a caller-supplied key", "The tunnel's repeats are byte-identical; only a request_id the model wrote can tell them from a deliberate second run."],
+    ["0005", "one-measured-signal-backs-connected", "One measured signal backs Connected", "The last-successful-poll gauge decides the state; the tunnel's logs only supply words."],
+    ["0006", "a-withheld-workspace-reads-as-absent", "A Workspace at None reads as absent", "A refusal that named its level would reveal the folder you hid."],
+    ["0007", "a-catalog-fingerprint-the-user-acknowledges", "A catalog fingerprint the user acknowledges", "ChatGPT never refreshes the tool list, so a hash tells you when to re-create the connector."],
+    ["0008", "track-the-sdks-ktor", "Ktor tracks the MCP SDK", "Use the Ktor version the MCP SDK resolves, not a newer one, except for a security patch."]
+  ];
+  $("#adrs").innerHTML = ADRS.map(function (a) {
+    return '<div class="adr"><span class="n">ADR ' + a[0] + '</span><div><a href="' + REPO + "docs/adr/" + a[0] + "-" + a[1] + '.md" target="_blank" rel="noopener">' + esc(a[2]) + "</a><p>" + esc(a[3]) + "</p></div></div>";
+  }).join("");
+
+  /* ---------- glossary ---------- */
+  var GL = [
+    ["Workspace", "A folder you chose to expose, with a name and a generated id. Renaming or moving the folder keeps it the same Workspace.", "project, folder"],
+    ["Root", "The folder a Workspace points at. An attribute, not its identity, and not a fence for commands.", "path, base folder"],
+    ["Broken", "The Root no longer points at the directory it was registered with. Hidden and refused until you re-confirm it, which drops it to Read.", "missing, stale"],
+    ["Access Level", "The one dial: None, Read, Write or Command. Each includes those below.", "permission, role"],
+    ["Command", "The level that runs programs with your full Linux account, wider than the Root.", "shell access, sandbox"],
+    ["Runtime", "The background program that owns the Workspaces and answers ChatGPT. Outlives any frontend.", "server, daemon"],
+    ["Connected", "The runtime's link to the tunnel is up. Says nothing about whether ChatGPT still has the connector.", "online, live"],
+    ["Connecting", "No successful poll yet since start or since you pressed Connect. Never returned to after a link is lost.", "reconnecting"],
+    ["Failed", "A link that worked has gone stale. Carries the tunnel's own complaint, never your choice.", "error, down"],
+    ["Disconnect", "You take the link down on purpose. Levels, registrations and running work are untouched.", "revoke, pause"],
+    ["Stop", "End the runtime itself. Running work is killed and left Uncertain; registrations survive.", "quit, kill"],
+    ["Operation", "One use of one tool against one named Workspace. Ends as ok, failed or uncertain.", "call, job, task"],
+    ["Promoted", "An operation that outran its 45 s and kept running. The caller gets a Handle at once.", "background, async"],
+    ["Handle", "The ticket for collecting a Promoted operation's result. Points into Activity.", "job id, token"],
+    ["Delivery", "One arrival of a call. The tunnel can deliver the same call several times; the request_id tells them apart.", "retry, duplicate"],
+    ["Uncertain", "Effects on disk unknown: timed out, stopped, or the folder vanished midway. Do not retry blindly.", "partial, unknown"],
+    ["Lost", "The runtime died while this ran. No result exists.", "crashed, orphaned"],
+    ["Undelivered", "It finished, but the answer never reached ChatGPT, which thinks it failed.", "dropped"],
+    ["Unclaimed", "A Promoted command finished and nobody has collected its result.", "abandoned"],
+    ["Acknowledged", "You have seen an unresolved entry. Recorded as a new fact, never an edit.", "dismissed, cleared"],
+    ["Unconfirmed", "Nobody has confirmed the ChatGPT connector matches the current tool catalog.", "stale, out of date"],
+    ["Activity", "The append-only record of every operation, written before a change and completed after. For reporting, never replay.", "audit log, history"],
+    ["Origin", "Which door an operation came through: ChatGPT or a frontend. Fixed per door.", "caller, session"],
+    ["Scoped", "A git answer limited to the Root because the Root sits inside a bigger repository.", "filtered"]
+  ];
+  function renderGl() {
+    var q = $("#gl-filter").value.trim().toLowerCase();
+    var hits = GL.filter(function (g) { return !q || (g[0] + " " + g[1]).toLowerCase().indexOf(q) >= 0; });
+    $("#gl").innerHTML = hits.map(function (g) { return '<div class="panel term"><h3>' + esc(g[0]) + "</h3><p>" + esc(g[1]) + '</p><p class="avoid">Not to be called: ' + esc(g[2]) + "</p></div>"; }).join("") || '<p class="muted">No term matches.</p>';
+    $("#gl-count").textContent = hits.length + " of " + GL.length + " terms";
+  }
+  $("#gl-filter").addEventListener("input", renderGl);
+  renderGl();
+
+  /* ---------- nav highlight ---------- */
+  var links = $$("nav.toc a");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id); });
+      });
+    }, { rootMargin: "-40% 0px -55% 0px" });
+    $$("section.part").forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>

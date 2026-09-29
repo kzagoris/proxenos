@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Runtime (Kotlin)",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "io.github.kzagoris.proxenos.runtime.MainKt",
+      // The Kotlin extension runs on its own bundled JBR (Java 25), but the project
+      // compiles on the JDK 26 toolchain (mise.toml) and the JBR cannot load class file
+      // version 70. Point the launch at the mise-installed JDK 26 instead. An absolute
+      // path, not ${env:JAVA_HOME}: the launch config is resolved by the extension host,
+      // which does not inherit the mise environment that terminals get.
+      "javaExec": "${userHome}/.local/share/mise/installs/java/temurin-26/bin/java",
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "TUI (Kotlin)",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "io.github.kzagoris.proxenos.tui.MainKt",
+      "javaExec": "${userHome}/.local/share/mise/installs/java/temurin-26/bin/java",
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      // Launching TUI from IDE class files, the launcher computes tui/build/classes/bin/runtime,
+      // which does not exist, so [S] cannot start the Runtime. Name the installed launcher
+      // instead; it requires `./gradlew installDist` (README step 1).
+      "env": { "PROXENOS_RUNTIME": "${workspaceFolder}/build/install/proxenos/bin/runtime" },
+      "vmArgs": ["--enable-native-access=ALL-UNNAMED"]
+    },
+    {
+      "name": "Attach to JVM",
+      "type": "intellij_jvm",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Runtime + Dashboard",
+      "configurations": ["Runtime (Kotlin)", "TUI (Kotlin)"],
+      "stopAll": true
+    }
+  ]
+}

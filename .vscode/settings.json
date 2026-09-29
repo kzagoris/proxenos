@@ -1,0 +1,15 @@
+{
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/.gradle/**": true,
+    "**/.kotlin/**": true
+  },
+  "search.exclude": {
+    "**/build/**": true,
+    "**/.gradle/**": true,
+    "**/.kotlin/**": true
+  },
+  // No Java sources here; keep the Red Hat Java extension, if installed, from
+  // importing the Gradle build alongside the Kotlin language server.
+  "java.import.gradle.enabled": false
+}

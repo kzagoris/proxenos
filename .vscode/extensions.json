@@ -1,0 +1,24 @@
+{
+  "recommendations": [
+    // Official Kotlin language server: .kt and .gradle.kts.
+    "JetBrains.kotlin-server",
+    // Hands VS Code the JDK 26 and Gradle 9.7.1 that mise.toml pins.
+    "hverlin.mise-vscode",
+    // Gradle task tree: build, test, run for :runtime and :tui.
+    "vscjava.vscode-gradle",
+    // gradle/libs.versions.toml, mise.toml.
+    "tamasfe.even-better-toml",
+    // scripts/wizard and scripts/install-tunnel-client.
+    "timonwong.shellcheck",
+    // SPEC, ADRs, CONTEXT.md.
+    "davidanson.vscode-markdownlint",
+    // Issues and PRs live on GitHub.
+    "github.vscode-pull-request-github",
+    // Applies .editorconfig on save.
+    "editorconfig.editorconfig"
+  ],
+  "unwantedRecommendations": [
+    // The old community Kotlin server; conflicts with JetBrains.kotlin-server.
+    "fwcd.kotlin"
+  ]
+}

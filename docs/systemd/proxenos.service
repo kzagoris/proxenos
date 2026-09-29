@@ -1,0 +1,51 @@
+# A systemd --user unit that starts the Proxenos Runtime at login.
+#
+# The product does not install this, and it never offers to (SPEC §8.2, §11.4). Starting at
+# login boots the machine into a state where a Workspace at Command is reachable from ChatGPT
+# with nobody present and no human act in between. Without it the cost is the one SPEC §8.2
+# accepts: after a reboot, ChatGPT's calls fail until you start the Runtime once.
+#
+# If you have read that and still want it:
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp docs/systemd/proxenos.service ~/.config/systemd/user/
+#   # edit ExecStart below if you unpacked the distribution anywhere but docs/INSTALL.md's place
+#   # set JAVA_HOME below if your Java 26 is not the `java` on the user manager's PATH
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now proxenos.service
+#
+# Undo with `systemctl --user disable --now proxenos.service`.
+#
+# Never add the tunnel ID or the runtime key to this file, as Environment= or otherwise. The
+# Runtime reads them from ~/.config/proxenos/credentials (mode 0600) and ignores them in
+# its own environment — a key in a unit file is a key in every backup of your home directory.
+
+[Unit]
+Description=Proxenos Runtime
+Documentation=https://github.com/kzagoris/proxenos/blob/master/docs/SPEC.md
+
+[Service]
+Type=simple
+# Where docs/INSTALL.md unpacks the distribution (`./gradlew distTar`).
+ExecStart=%h/.local/opt/proxenos/bin/runtime
+# The user manager does not read your shell profile, so a JAVA_HOME set there is not set here.
+#Environment=JAVA_HOME=/path/to/your/jdk-26
+# The user manager's PATH is short and rarely includes ~/.local/bin. bin/install-tunnel-client
+# puts tunnel-client in ~/.local/state/proxenos/tools/, which needs no PATH; name it here
+# only if you keep it somewhere else (or set tunnel_client in config.toml).
+#Environment=PROXENOS_TUNNEL_CLIENT=%h/.local/bin/tunnel-client
+
+# Restart a Runtime that crashed, but not one that refused to start: a missing or
+# world-readable credentials file, or a Runtime already running, exits 78, and no restart
+# fixes any of those.
+Restart=on-failure
+RestartPreventExitStatus=78
+
+# TERM reaches the Runtime alone, so its own shutdown ends the tunnel child and every running
+# Operation in order, each with its 5 s grace. Whatever is still alive after the timeout is
+# killed by systemd.
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

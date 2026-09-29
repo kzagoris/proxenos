@@ -1,0 +1,17 @@
+.claude/settings.local.json
+
+# Gradle
+.gradle/
+build/
+# Kotlin build session state
+.kotlin/
+
+# Credentials live at $XDG_CONFIG_HOME/proxenos/credentials, outside any
+# checkout, and scripts/wizard refuses to write inside one. This is the belt
+# to that braces: a credentials file that somehow lands here is never staged.
+credentials
+.env
+
+# Python
+__pycache__/
+*.py[cod]
