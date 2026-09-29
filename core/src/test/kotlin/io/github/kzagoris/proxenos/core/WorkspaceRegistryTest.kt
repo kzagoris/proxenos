@@ -98,6 +98,21 @@ class WorkspaceRegistryTest {
   }
 
   @Test
+  fun `a Root recorded under another boot's device number is still the same Root`() = runBlocking<Unit> {
+    // A btrfs subvolume is numbered at mount time, so the same directory can come back from a
+    // reboot under another device. A registry written before the device was dropped holds one.
+    val state = temporary.resolve("registry.properties")
+    val root = Files.createDirectory(temporary.resolve("project"))
+    val workspace = WorkspaceRegistry(state).perform(ManagementAct.Register(root.toString(), "api"))
+    WorkspaceRegistry(state).perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+    val inode = Files.getAttribute(root, "unix:ino")
+    val recorded = Files.readString(state).replace(Regex("""identity\.key=.*"""), """identity.key=(dev\\=4095,ino\\=$inode)""")
+    Files.writeString(state, recorded)
+
+    assertEquals(Outcome.Ok(workspace.copy(accessLevel = AccessLevel.Command)), WorkspaceRegistry(state).admit("api", AccessLevel.Command))
+  }
+
+  @Test
   fun `reconfirmation can rebind a moved Root without changing Workspace identity`() = runBlocking<Unit> {
     val state = temporary.resolve("registry.properties")
     val root = Files.createDirectory(temporary.resolve("project"))

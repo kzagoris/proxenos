@@ -150,10 +150,19 @@ class WorkspaceRegistry(
   private fun identify(root: Path): DirectoryIdentity {
     val attributes = Files.readAttributes(root, BasicFileAttributes::class.java)
     if (!attributes.isDirectory) throw IOException("Root must resolve to a directory: $root")
-    val key = attributes.fileKey() ?: throw IOException("Root has no directory identity: $root")
-    // Device/inode distinguish replacement; birth time also protects against inode reuse.
-    return DirectoryIdentity(key.toString(), attributes.creationTime().toString())
+    val inode = Files.getAttribute(root, "unix:ino") as Long
+    // The inode distinguishes replacement; birth time also protects against inode reuse. Not the
+    // device: a btrfs subvolume's number, like a device-mapper volume's, is handed out at mount
+    // time and changes across a reboot, which would make every Root read as replaced.
+    return DirectoryIdentity("ino=$inode", attributes.creationTime().toString())
   }
+
+  /**
+   * A recorded key as [identify] writes it now. Registries written before the device was dropped
+   * hold `(dev=…,ino=…)`, and it is the inode in it that still names the directory.
+   */
+  private fun inodeKey(recorded: String): String =
+    Regex("""\bino=(\d+)""").find(recorded)?.let { "ino=${it.groupValues[1]}" } ?: recorded
 
   /** An attribute of the Root, discovered from Git's layout rather than from `git` (§2.1). */
   private fun isGitRepository(root: Path): Boolean = gitRepositoryAt(root)
@@ -179,7 +188,7 @@ class WorkspaceRegistry(
           required("$prefix.root"),
           AccessLevel.valueOf(required("$prefix.level")),
         ),
-        DirectoryIdentity(required("$prefix.identity.key"), required("$prefix.identity.created")),
+        DirectoryIdentity(inodeKey(required("$prefix.identity.key")), required("$prefix.identity.created")),
       )
     }
     require(loaded.map { it.workspace.id }.distinct().size == count) { "Duplicate Workspace ids in registry" }
