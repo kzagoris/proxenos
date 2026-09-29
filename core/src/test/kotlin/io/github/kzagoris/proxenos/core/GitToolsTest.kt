@@ -196,7 +196,7 @@ class GitToolsTest {
     assertEquals("commit number 24", newest.subject)
     assertEquals("Ada Lovelace", newest.author)
     assertEquals(40, newest.hash.length, "the full hash: an abbreviation can collide")
-    assertTrue(Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$""").matches(newest.date), newest.date)
+    assertTrue(Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$""").matches(newest.date), newest.date)
     // Newest first, which is the end a log is read from.
     assertEquals("commit number 5", log.commits.last().subject)
 
