@@ -1,5 +1,7 @@
 package io.github.kzagoris.proxenos.tui
 
+import io.github.kzagoris.proxenos.control.ConfigRefused
+import io.github.kzagoris.proxenos.control.ControlSocket
 import io.github.kzagoris.proxenos.control.ManagementClient
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
@@ -25,8 +27,10 @@ fun main(args: Array<String>) {
     exitProcess(64)
   }
   val environment = System.getenv()
-  val socket = options.socket ?: RuntimeLauncher.socketFrom(environment) ?: run {
-    System.err.println("tui: XDG_RUNTIME_DIR is not set, so the control socket cannot be found. Name it with --control-socket.")
+  val socket = try {
+    ControlSocket.resolve(environment, flag = options.socket)
+  } catch (refused: ConfigRefused) {
+    System.err.println("tui: ${refused.message} Or name the control socket with --control-socket.")
     exitProcess(78)
   }
   val launcher = RuntimeLauncher(socket, RuntimeLauncher.executableFrom(environment))

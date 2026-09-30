@@ -10,6 +10,10 @@ import io.github.kzagoris.proxenos.core.TunnelCredentials
 import io.github.kzagoris.proxenos.core.WorkspaceOperationsPipeline
 import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.*
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.Channels
+import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText
@@ -83,7 +87,7 @@ class ManagementClientTest {
   private fun project(name: String): Path = Files.createDirectories(temporary.resolve(name))
 
   @Test
-  fun `each registry act round-trips and answers what the core answers`() = runBlocking {
+  fun `each registry act round-trips and answers what the core answers`() = runBlocking<Unit> {
     val root = project("api")
     val registered = client.perform(ManagementAct.Register(root.toString(), "api"))
     assertEquals(Workspace(registered.id, "api", root.toString(), AccessLevel.Read), registered)
@@ -276,6 +280,39 @@ class ManagementClientTest {
     assertContains(refused.message!!, "somebody-else")
     assertFailsWith<IllegalStateException> { withTimeout(5.seconds) { stranger.observe().first() } }
     assertEquals(emptyList(), core.observe().first().let { (it as RuntimeEvent.Snapshot).workspaces })
+  }
+
+  @Test
+  fun `an act that could not be dialed is NotSent, and nothing reached the Runtime`() = runBlocking<Unit> {
+    server.stop()
+    // What a Runtime that has died leaves behind: its socket file, with nobody listening on it.
+    val stale = temporary.resolve("stale.sock")
+    ServerSocketChannel.open(StandardProtocolFamily.UNIX).use { it.bind(UnixDomainSocketAddress.of(stale)) }
+
+    assertFailsWith<NotSent> { ManagementClient(stale).perform(ManagementAct.Register(project("api").toString())) }
+    assertFailsWith<NotSent> { ManagementClient(temporary.resolve("absent.sock")).perform(ManagementAct.Connect) }
+  }
+
+  @Test
+  fun `an act whose request was read and then answered with a close is ReplyLost, and it was sent once`() = runBlocking {
+    val socket = temporary.resolve("mute.sock")
+    val requests = mutableListOf<String>()
+    val mute = ServerSocketChannel.open(StandardProtocolFamily.UNIX).apply { bind(UnixDomainSocketAddress.of(socket)) }
+    val serving = Thread {
+      mute.use { listening ->
+        // Every connection it is dialed on: a client that retried would dial a second one.
+        while (true) {
+          val connection = runCatching { listening.accept() }.getOrNull() ?: break
+          connection.use { requests += Channels.newInputStream(it).bufferedReader().readLine() }
+        }
+      }
+    }.apply { start() }
+
+    assertFailsWith<ReplyLost> { ManagementClient(socket).perform(ManagementAct.Register(project("api").toString())) }
+    mute.close()
+    serving.join()
+    assertEquals(1, requests.size, "the act was sent $requests")
+    assertContains(requests.single(), "Register")
   }
 
   /**

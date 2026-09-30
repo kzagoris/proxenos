@@ -17,6 +17,19 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.runInterruptible
 
 /**
+ * The control socket could not be dialed, so nothing reached the Runtime: the act was not done.
+ * With [ReplyLost] it is the split ADR 0001 makes for an Operation, between a hard guarantee
+ * that nothing happened and effects that are unknown.
+ */
+class NotSent(message: String, cause: Throwable) : IOException(message, cause)
+
+/**
+ * The connection was made and the request went, or may have gone, and no reply came: the act may
+ * or may not have been done, and only the Runtime's state now says which.
+ */
+class ReplyLost(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+/**
  * [WorkspaceManagement] over the control socket: the design's one real seam. A
  * frontend holds this as the interface and cannot tell it from the core — every act is
  * serialize, send, deserialize, so there is no per-act method here to drift from the core.
@@ -25,11 +38,18 @@ import kotlinx.coroutines.runInterruptible
  * number of frontends can attach at once and none of them holds anything another needs.
  */
 class ManagementClient(private val socket: Path) : WorkspaceManagement {
+  /**
+   * Nothing is ever sent twice: a failure after the dial is [ReplyLost], and a retry could do
+   * the act a second time.
+   */
   override suspend fun <R> perform(act: ManagementAct<R>): R = blocking {
     dial().use { channel ->
       val frames = Frames(channel)
-      frames.sendOrHearRefusal(Request.Perform(wire.encodeToJsonElement(actSerializer, act)))
-      when (val reply = frames.reply()) {
+      val reply = replyLost {
+        frames.sendOrHearRefusal(Request.Perform(wire.encodeToJsonElement(actSerializer, act)))
+        frames.reply()
+      }
+      when (reply) {
         is Reply.Done -> wire.decodeFromJsonElement(resultSerializer(act), reply.result)
         is Reply.Refused -> throw refusal(reply)
         is Reply.Event -> throw IOException("The Runtime answered an act with an event")
@@ -37,7 +57,7 @@ class ManagementClient(private val socket: Path) : WorkspaceManagement {
         // before the answer is written. For this one act, the socket closing *is* the answer.
         @Suppress("UNCHECKED_CAST")
         null -> if (act == ManagementAct.Stop) Unit as R
-        else throw IOException("The Runtime closed the control socket without answering")
+        else throw ReplyLost("The Runtime closed the control socket without answering")
       }
     }
   }
@@ -85,8 +105,30 @@ class ManagementClient(private val socket: Path) : WorkspaceManagement {
     }
   }
 
-  private fun dial(): SocketChannel =
-    SocketChannel.open(StandardProtocolFamily.UNIX).apply { connect(UnixDomainSocketAddress.of(socket)) }
+  private fun dial(): SocketChannel {
+    val channel = SocketChannel.open(StandardProtocolFamily.UNIX)
+    try {
+      channel.connect(UnixDomainSocketAddress.of(socket))
+    } catch (failed: IOException) {
+      channel.close()
+      if (failed is ClosedByInterruptException) throw failed
+      throw NotSent("The Runtime is not answering on $socket", failed)
+    }
+    return channel
+  }
+
+  /**
+   * A failed write counts as lost rather than unsent: part of the request may have gone, and the
+   * Runtime reads a last unterminated line as a request all the same. The interrupt of a
+   * cancelled caller is not a transport failure, and is left for [blocking] to turn back into one.
+   */
+  private inline fun <T> replyLost(exchange: () -> T): T = try {
+    exchange()
+  } catch (interrupted: ClosedByInterruptException) {
+    throw interrupted
+  } catch (failed: IOException) {
+    throw ReplyLost("No reply from the Runtime on $socket", failed)
+  }
 
   /** What the core itself would have thrown for the same act, as near as the wire allows. */
   private fun refusal(reply: Reply.Refused): RuntimeException =

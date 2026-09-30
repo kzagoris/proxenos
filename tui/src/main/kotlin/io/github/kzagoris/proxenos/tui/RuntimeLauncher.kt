@@ -1,5 +1,6 @@
 package io.github.kzagoris.proxenos.tui
 
+import io.github.kzagoris.proxenos.control.ControlSocket
 import java.io.File
 import java.io.IOException
 import java.net.StandardProtocolFamily
@@ -53,6 +54,9 @@ class RuntimeLauncher(
     val from = if (Files.exists(log)) Files.size(log) else 0L
     val process = try {
       ProcessBuilder("setsid", program.toString())
+        // Told outright, so a socket this frontend was given with --control-socket is the one
+        // the Runtime binds, rather than the one it would resolve for itself.
+        .apply { environment()[ControlSocket.VARIABLE] = socket.toString() }
         .redirectInput(File("/dev/null"))
         .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()))
         .redirectErrorStream(true)
@@ -88,17 +92,6 @@ class RuntimeLauncher(
 
   companion object {
     const val RUNTIME_VARIABLE = "PROXENOS_RUNTIME"
-    const val SOCKET_VARIABLE = "PROXENOS_CONTROL_SOCKET"
-
-    /**
-     * The same socket the Runtime binds by default: `PROXENOS_CONTROL_SOCKET`, else
-     * `$XDG_RUNTIME_DIR/proxenos/control.sock`. A `control_socket` set in `config.toml` is
-     * not read here; `--control-socket` names it.
-     */
-    fun socketFrom(environment: Map<String, String>): Path? =
-      environment[SOCKET_VARIABLE]?.let(Path::of)
-        ?: environment["XDG_RUNTIME_DIR"]?.let { Path.of(it, "proxenos", "control.sock") }
-
     /**
      * `PROXENOS_RUNTIME`, else a `runtime` launcher in the `bin/` beside this one's
      * installation — which is where one distribution of both would put it.

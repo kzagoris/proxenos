@@ -236,7 +236,7 @@ Defaults are sufficient for normal use. For example, to use a tunnel executable 
 tunnel_client = "/absolute/path/to/tunnel-client"
 ```
 
-The Runtime also checks `tools/tunnel-client` inside its state directory. Credentials belong only in the credentials file. See [Runtime configuration](runtime/src/main/kotlin/io/github/kzagoris/proxenos/runtime/Configuration.kt) for supported settings and environment overrides. If you override `control_socket` in TOML, give the dashboard the same path with `--control-socket`.
+The Runtime also checks `tools/tunnel-client` inside its state directory. Credentials belong only in the credentials file. See [Runtime configuration](runtime/src/main/kotlin/io/github/kzagoris/proxenos/runtime/Configuration.kt) for supported settings and environment overrides. The dashboard finds the control socket exactly as the Runtime does, `control_socket` in TOML included; `--control-socket` overrides both.
 
 ## Troubleshooting
 

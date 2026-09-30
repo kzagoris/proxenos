@@ -166,7 +166,7 @@ class AttachedTest {
   }
 
   @Test
-  fun `a command tried from the pane is watched in the band, stopped with s then y, and leaves the band once reaped`() = runBlocking {
+  fun `a command tried from the pane is watched in the band, stopped with s then y, and leaves the band once reaped`() = runBlocking<Unit> {
     val tui = Tui()
     tui.until("attached") { it.snapshot != null }
     val root = Files.createDirectories(temporary.resolve("scripts"))
