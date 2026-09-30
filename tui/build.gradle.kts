@@ -11,6 +11,9 @@ dependencies {
   // with it, which is the wrong lifetime.
   implementation(project(":core-api"))
   implementation(project(":control"))
+  // What every frontend must agree on — attaching, starting the Runtime, and the domain's
+  // wording — so this one cannot drift from the others.
+  implementation(project(":frontend"))
   implementation(libs.mosaic.runtime)
 
   // Two TUIs attached at once are proven against a real core on a real control socket, as
@@ -26,6 +29,13 @@ application {
   applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
+tasks.startScripts {
+  // The Runtime this launcher starts is the bin/runtime of its own tree. APP_HOME is resolved
+  // through any symlink to the launcher, so a linked bin/tui still finds it. Set here rather
+  // than in applicationDefaultJvmArgs, where `run` would pass the placeholder unsubstituted.
+  defaultJvmOpts = application.applicationDefaultJvmArgs + "-Dproxenos.runtime=__APP_HOME__/bin/runtime"
+}
+
 moduleBoundaries {
-  mayReach(":core-api", ":control")
+  mayReach(":core-api", ":control", ":frontend")
 }

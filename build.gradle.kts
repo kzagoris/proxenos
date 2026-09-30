@@ -21,8 +21,9 @@ distributions {
     distributionBaseName = "proxenos"
     contents {
       // Both applications' own installations, merged: bin/runtime and bin/tui over one lib/.
-      // One tree is the point, not a convenience — the TUI starts the Runtime it finds at
-      // bin/runtime beside its own launcher (RuntimeLauncher.executableFrom). The two lib/
+      // One tree is the point, not a convenience — bin/tui starts the bin/runtime beside it,
+      // which it names to the JVM as the proxenos.runtime property
+      // (RuntimeAttachment.executable). The two lib/
       // directories overlap in every shared jar, and the copies are the same file.
       // Named by path, because the root is configured before either project has a task to
       // look up; builtBy is what still makes installing here install them first.

@@ -9,7 +9,10 @@ import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
 import io.github.kzagoris.proxenos.coreapi.RuntimeStartId
 import io.github.kzagoris.proxenos.coreapi.RunningOperation
 import io.github.kzagoris.proxenos.coreapi.RuntimeState
-import io.github.kzagoris.proxenos.coreapi.TunnelComplaint
+import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.FeedRow
+import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
+import io.github.kzagoris.proxenos.frontend.Wording
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -201,8 +204,8 @@ private fun stageReading(home: Home, stage: Stage): Pair<String, Tone> = when (s
 private fun stageHint(home: Home, stage: Stage): String? {
   val state = home.snapshot?.runtime?.state
   return when {
-    stage == Stage.Runtime && home.attachment is Attachment.Absent -> home.attachment.why
-    stage == Stage.Tunnel && state is RuntimeState.Failed -> complaint(state.complaint)
+    stage == Stage.Runtime -> home.absence
+    stage == Stage.Tunnel && state is RuntimeState.Failed -> Wording.complaint(state.complaint)
     else -> null
   }
 }
@@ -216,12 +219,12 @@ private fun runtimeDetail(home: Home, frame: Frame): List<Line> {
   val width = frame.columns - 4
   return buildList {
     when (val attachment = home.attachment) {
-      Attachment.Attaching -> addAll(paragraph(Wording.ATTACHING, width))
-      Attachment.Starting -> addAll(paragraph(Wording.STARTING, width))
-      is Attachment.Absent -> addAll(paragraph("${stageReading(home, Stage.Runtime).first}: ${attachment.why}", width, Tone.Warn))
+      Attachment.Attaching -> addAll(paragraph(Wording.attaching(SELF), width))
+      Attachment.Starting -> addAll(paragraph(Wording.starting(SELF), width))
+      is Attachment.Absent -> addAll(paragraph("${stageReading(home, Stage.Runtime).first}: ${home.absence}", width, Tone.Warn))
       is Attachment.Attached -> {
         attachment.snapshot.start?.let { addAll(paragraph("This Runtime started ${clock(it.at, frame)}.", width)) }
-        addAll(paragraph(Wording.ATTACHED, width))
+        addAll(paragraph(Wording.attached(SELF), width))
       }
     }
     addAll(paragraph(Wording.NO_AUTOSTART, width))
@@ -244,7 +247,7 @@ private fun tunnelDetail(home: Home, frame: Frame): List<Line> {
       RuntimeState.Connected -> addAll(paragraph("It is Connected.", width))
       is RuntimeState.Failed -> addAll(
         paragraph(
-          "It is Failed: the link to the tunnel worked and has gone stale. That is a problem, not a choice anyone made. ${complaint(state.complaint)}",
+          "It is Failed: the link to the tunnel worked and has gone stale. That is a problem, not a choice anyone made. ${Wording.complaint(state.complaint)}",
           width, Tone.Bad,
         ),
       )
@@ -260,7 +263,7 @@ private fun tunnelDetail(home: Home, frame: Frame): List<Line> {
 private fun connectorDetail(home: Home, frame: Frame): List<Line> {
   val width = frame.columns - 4
   val snapshot = home.snapshot ?: return paragraph(Wording.CANT_TELL_CONNECTOR, width, Tone.Dim)
-  return if (snapshot.connectorUnconfirmed) Wording.UNCONFIRMED.flatMap { paragraph(it, width, Tone.Warn) }
+  return if (snapshot.connectorUnconfirmed) Wording.unconfirmed("[C]").flatMap { paragraph(it, width, Tone.Warn) }
   else paragraph(Wording.CONNECTOR_CONFIRMED, width)
 }
 
@@ -285,7 +288,7 @@ private fun band(home: Home, frame: Frame): List<Line> {
         addAll(expanded(home, running, frame))
         val state = home.workspaces.find { it.workspace.name == running.workspace }
         if (state != null && state.workspace.accessLevel != AccessLevel.Command)
-          addAll(paragraph(Wording.lowered(home.commandOf(running), state.workspace.name, state.workspace.accessLevel, clock(running.startedAt, frame), running.promoted), frame.columns - 4, Tone.Warn))
+          addAll(paragraph(Wording.lowered(home.commandOf(running), state.workspace.name, state.workspace.accessLevel, clock(running.startedAt, frame), running.promoted) + " To end it, select it in the band and press [s].", frame.columns - 4, Tone.Warn))
       }
     }
   }
@@ -332,18 +335,6 @@ private fun expanded(home: Home, running: RunningOperation, frame: Frame): List<
   return listOf(Line(label, Tone.Dim)) + shown.map { Line("      │ $it") }
 }
 
-/** The tunnel's own words, quoted field by field, and never a diagnosis of ours. */
-fun complaint(complaint: TunnelComplaint?): String {
-  if (complaint == null) return "The tunnel said nothing about why."
-  val said = listOfNotNull(
-    complaint.statusCode?.let { "status_code $it" },
-    complaint.errorCode?.let { "error_code \"$it\"" },
-    complaint.message?.let { "message \"$it\"" },
-    complaint.mitigation?.let { "mitigation \"$it\"" },
-  )
-  return if (said.isEmpty()) "The tunnel said nothing about why." else "The tunnel said: ${said.joinToString(" · ")}"
-}
-
 private fun overlay(overlay: Overlay, home: Home, frame: Frame): List<Line> {
   val width = frame.columns - 4
   return when (overlay) {
@@ -359,7 +350,8 @@ private fun overlay(overlay: Overlay, home: Home, frame: Frame): List<Line> {
       if (running == null) listOf(Line(""), Line("  That command has already ended. [any key] close", Tone.Dim), Line(""))
       else buildList {
         add(Line(""))
-        val lines = Wording.stopCommand(home.commandOf(running), running.workspace, clock(running.startedAt, frame), elapsed(running.startedAt, frame))
+        val lines = Wording.stopCommand(home.commandOf(running), running.workspace, clock(running.startedAt, frame), elapsed(running.startedAt, frame)) +
+          "[y] stop it · any other key cancels"
         lines.forEachIndexed { index, text -> addAll(paragraph(text, width, if (index == 0 || index == lines.lastIndex) Tone.Bad else Tone.Plain)) }
         add(Line(""))
       }
@@ -525,6 +517,9 @@ private fun help(home: Home): String = when (val overlay = home.overlay) {
   }
   else -> "[Esc] Back"
 }
+
+/** What this frontend calls itself where the shared wording names it. */
+private const val SELF = "this dashboard"
 
 private const val REVIEW_HELP = "[↑↓] Stage · [Enter] Details · [Esc] Workspaces · [q] Close dashboard"
 

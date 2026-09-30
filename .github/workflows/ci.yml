@@ -20,6 +20,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew build installDist bundledDistTar --continue
       - run: python3 tui/drive.py
+      # bin/tui names bin/runtime from its own APP_HOME, resolved through links, so a launcher
+      # linked from elsewhere still starts its own tree's Runtime. That Runtime's refusal to start
+      # without credentials is the proof it was the one started.
+      - name: A linked bin/tui starts its own tree's Runtime
+        run: |
+          home=$(mktemp -d)
+          ln -s "$PWD/build/install/proxenos/bin/tui" "$home/tui"
+          out=$(env -i HOME="$home" XDG_RUNTIME_DIR="$home" PATH=/usr/bin:/bin JAVA_HOME="$JAVA_HOME" "$home/tui" start 2>&1) || true
+          echo "$out"
+          grep -q "No credentials file" <<<"$out"
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

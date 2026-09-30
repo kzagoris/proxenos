@@ -7,12 +7,24 @@ import io.github.kzagoris.proxenos.coreapi.ArgumentSpec
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.Operation
 import io.github.kzagoris.proxenos.coreapi.OperationSpec
+import io.github.kzagoris.proxenos.coreapi.Outcome
 import io.github.kzagoris.proxenos.coreapi.RunningCommand
 import io.github.kzagoris.proxenos.coreapi.RunningOperation
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
 import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
+import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.FeedRow
+import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
+import io.github.kzagoris.proxenos.frontend.Reason
+import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.absoluteRoot
+import io.github.kzagoris.proxenos.frontend.askedOf
+import io.github.kzagoris.proxenos.frontend.feed
+import io.github.kzagoris.proxenos.frontend.folded
+import io.github.kzagoris.proxenos.frontend.operationFrom
+import io.github.kzagoris.proxenos.frontend.overlaps
 import java.nio.file.Path
 
 /**
@@ -42,6 +54,11 @@ data class Home(
    * the buffer `get_result` reads, never a copy of it kept up by this screen.
    */
   val outputs: Map<ActivityEntryId, RunningCommand> = emptyMap(),
+  /**
+   * This dashboard performed Stop, so the end of the stream that follows reads Stopped rather
+   * than Not running. Another frontend's Stop and a crash look the same on the stream.
+   */
+  val stopped: Boolean = false,
 ) {
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
 
@@ -49,10 +66,7 @@ data class Home(
   val workspaces: List<WorkspaceState> get() = snapshot?.workspaces.orEmpty()
 
   /** Current-run entries only. The complete Runtime snapshot remains untouched. */
-  val feed: List<ActivityEntry> get() {
-    val current = snapshot?.start?.id ?: return emptyList()
-    return snapshot?.activity.orEmpty().filter { it.runtimeStart == current }
-  }
+  val feed: List<ActivityEntry> get() = snapshot?.feed.orEmpty()
 
   /**
    * The feed's rows **in the order they are drawn**, oldest at the top: consecutive `get_result`
@@ -92,29 +106,50 @@ data class Home(
     is Target.Feed -> feedRows.indexOfFirst { target.entry in it }.let { if (it < 0) -1 else band.size + it }
   }
 
-  /** One event from the stream folded in. A snapshot replaces what was there; a change moves it on. */
-  fun observed(event: RuntimeEvent): Home {
-    val next = when (event) {
-      is RuntimeEvent.Snapshot -> event
-      is RuntimeEvent.Change -> snapshot?.after(event) ?: return this
-    }
-    val running = next.running.map { it.entry }.toSet()
-    val restarted = snapshot != null && snapshot?.start?.id != next.start?.id
-    return copy(
-      attachment = Attachment.Attached(next), outputs = outputs.filterKeys { it in running },
-      selected = if (restarted) null else selected,
-      overlay = if (restarted) null else overlay,
-      notice = if (restarted) null else notice,
-      scroll = if (restarted) 0 else scroll,
-    )
+  /**
+   * Why the Runtime is not attached, as this dashboard says it: null while it is attached or on
+   * its way to being.
+   */
+  val absence: String? get() = when (val reason = (attachment as? Attachment.Absent)?.reason) {
+    null -> null
+    Reason.NotAnswering -> if (stopped) STOPPED else NOT_RUNNING
+    is Reason.StartFailed -> "refused to start: ${reason.words} · [S] try again"
   }
+
+  /**
+   * Where the attachment has got to. A Runtime start id that differs from the snapshot before it
+   * is a restart, and nothing selected in the old one carries over.
+   */
+  fun observed(next: Attachment): Home = when (next) {
+    Attachment.Starting, Attachment.Attaching -> copy(attachment = next, stopped = false)
+    is Attachment.Attached -> {
+      val running = next.snapshot.running.map { it.entry }.toSet()
+      val restarted = snapshot != null && snapshot?.start?.id != next.snapshot.start?.id
+      copy(
+        attachment = next, stopped = false, outputs = outputs.filterKeys { it in running },
+        selected = if (restarted) null else selected,
+        overlay = if (restarted) null else overlay,
+        notice = if (restarted) null else notice,
+        scroll = if (restarted) 0 else scroll,
+      )
+    }
+    // What was on the screen is not kept: it would be a claim about a Runtime that is gone. A
+    // start that failed is said where [S] was pressed too, not only in Review: a start that
+    // fails silently reads as a key that did nothing.
+    is Attachment.Absent -> copy(attachment = next, overlay = null, selected = null, outputs = emptyMap()).let { home ->
+      when (val reason = next.reason) {
+        is Reason.StartFailed -> home.say("The Runtime did not start. ${reason.words}", Tone.Bad)
+        Reason.NotAnswering -> home
+      }
+    }
+  }
+
+  /** This dashboard asked the Runtime to Stop: it is detached now, and says Stopped. */
+  fun stoppedHere(): Home = observed(Attachment.Absent(Reason.NotAnswering)).copy(stopped = true)
 
   /** What [entry] has said so far, as just read; null once it names nothing running. */
   fun read(entry: ActivityEntryId, output: RunningCommand?): Home =
     if (output == null || band.none { it.entry == entry }) copy(outputs = outputs - entry) else copy(outputs = outputs + (entry to output))
-
-  /** The stream ended or could not be opened. What was on the screen is not kept: it would be a claim about a Runtime that is gone. */
-  fun detached(why: String): Home = copy(attachment = Attachment.Absent(why), overlay = null, selected = null, outputs = emptyMap())
 
   fun press(key: Key, frame: Frame = Frame(80, 24)): Step {
     if (key.name == "PageDown") return Step(scroll(this, frame, 5))
@@ -176,7 +211,7 @@ data class Home(
       ?: noWorkspace()
     "R" -> chipState?.let { state ->
       if (!state.broken) Step(say("'${state.workspace.name}' is not Broken; there is nothing to re-confirm."))
-      else Step(copy(overlay = Overlay.Confirm(Wording.reconfirm(state.workspace), Tone.Warn, Command.Perform(
+      else Step(copy(overlay = Overlay.Confirm(Wording.reconfirm(state.workspace) + "[y] re-confirm at Read · any other key cancels", Tone.Warn, Command.Perform(
         ManagementAct.Reconfirm(state.workspace.id), "Re-confirmed '${state.workspace.name}' at Read.",
       ))))
     } ?: noWorkspace()
@@ -196,7 +231,7 @@ data class Home(
     } else {
       Step(say("The connector is not Unconfirmed; there is nothing to acknowledge."))
     }
-    "X" -> Step(copy(overlay = Overlay.Confirm(Wording.stopRuntime(), Tone.Warn, Command.Perform(ManagementAct.Stop, "The Runtime stopped."))))
+    "X" -> Step(copy(overlay = Overlay.Confirm(Wording.stopRuntime() + "[y] stop the Runtime · any other key cancels", Tone.Warn, Command.Perform(ManagementAct.Stop, "The Runtime stopped."))))
     else -> Step(this)
   }
 
@@ -206,7 +241,7 @@ data class Home(
     val act = Command.Perform(ManagementAct.SetLevel(workspace.id, level), "'${workspace.name}' is now at $level.")
     // Raising to Command is the one change that is confirmed: it is the one that authorises
     // work nobody is watching, and the wording is the only chance to say so before it does.
-    if (level == AccessLevel.Command) return Step(copy(overlay = Overlay.Confirm(Wording.raiseToCommand(workspace), Tone.Bad, act)))
+    if (level == AccessLevel.Command) return Step(copy(overlay = Overlay.Confirm(Wording.raiseToCommand(workspace) + "[y] raise to Command · any other key cancels", Tone.Bad, act)))
     return Step(this, act)
   }
 
@@ -262,47 +297,11 @@ enum class Stage {
   fun next(): Stage = entries[(ordinal + 1).coerceAtMost(entries.lastIndex)]
 }
 
-/** Where this frontend stands with the Runtime. Only [Attached] carries anything the Runtime said. */
-sealed interface Attachment {
-  data object Attaching : Attachment
-  data object Starting : Attachment
-  data class Attached(val snapshot: RuntimeEvent.Snapshot) : Attachment
-  /** Not running, stopped, or refused to start — and [why], in the words that came back. */
-  data class Absent(val why: String) : Attachment
-}
-
 /** A row the cursor can rest on: one in the running-work band, or one in the feed. */
 sealed interface Target {
   data class Band(val entry: ActivityEntryId) : Target
   /** Names any entry of a folded row; the row is found by it. */
   data class Feed(val entry: ActivityEntryId) : Target
-}
-
-/** One row of the feed as drawn: an entry, or a run of `get_result` polls of one Handle folded into one. */
-data class FeedRow(val entries: List<ActivityEntry>) {
-  val id: ActivityEntryId get() = entries.last().id
-  operator fun contains(entry: ActivityEntryId): Boolean = entries.any { it.id == entry }
-}
-
-/** The name `run_command` goes by in Activity and in the catalog. */
-internal const val RUN_COMMAND = "run_command"
-private const val GET_RESULT = "get_result"
-
-/**
- * Consecutive polls of one Handle, one row. Only polls that agree fold — same Workspace, same
- * Handle, same outcome, same surface, same Runtime start — so a poll the lowered level refused
- * breaks the run rather than hiding inside it.
- */
-private fun folded(entries: List<ActivityEntry>): List<FeedRow> {
-  val rows = mutableListOf<MutableList<ActivityEntry>>()
-  for (entry in entries) {
-    val last = rows.lastOrNull()?.last()
-    val same = last != null && entry.tool == GET_RESULT && last.tool == GET_RESULT &&
-      entry.workspace == last.workspace && entry.arguments == last.arguments && entry.origin == last.origin &&
-      entry.runtimeStart == last.runtimeStart && entry.outcome.said == last.outcome.said
-    if (same) rows.last() += entry else rows += mutableListOf(entry)
-  }
-  return rows.map { FeedRow(it) }
 }
 
 /** A key as Mosaic names it: `ArrowUp`, `Enter`, `Backspace`, or the character typed. */
@@ -324,6 +323,13 @@ data class Notice(val text: String, val tone: Tone)
 
 enum class Tone { Plain, Dim, Good, Warn, Bad }
 
+/** The tone a TryOperation's outcome is said in, beside [Wording.tried]'s words for it. */
+val Outcome<*>.tone: Tone get() = when (this) {
+  is Outcome.Ok -> Tone.Good
+  is Outcome.Failed -> Tone.Warn
+  is Outcome.Uncertain -> Tone.Bad
+}
+
 /** What a Prompt's text is for. */
 sealed interface Purpose {
   data object RegisterRoot : Purpose
@@ -339,10 +345,6 @@ sealed interface Purpose {
     val argument: ArgumentSpec get() = asked[index]
   }
 }
-
-/** What a TryOperation asks for: everything but the Workspace, which is the pane's, and the key, which is minted. */
-internal fun askedOf(spec: OperationSpec): List<ArgumentSpec> =
-  spec.arguments.filter { it.name != Operation.WORKSPACE_ARGUMENT && it.name != Operation.KEY_ARGUMENT }
 
 /** Something drawn over the feed that takes every key until it is closed. */
 sealed interface Overlay {
@@ -434,7 +436,7 @@ sealed interface Overlay {
         val command = Command.Perform(act, "Registered ${purpose.root} at Read.")
         val overlaps = overlaps(Path.of(purpose.root), home.workspaces)
         if (overlaps.isEmpty()) Step(home, command)
-        else Step(home.copy(overlay = Confirm(Wording.overlap(purpose.root, overlaps), Tone.Warn, command)))
+        else Step(home.copy(overlay = Confirm(Wording.overlap(purpose.root, overlaps) + "[y] register anyway, at Read · any other key cancels", Tone.Warn, command)))
       }
       is Purpose.Rename -> {
         val name = text.trim()
@@ -457,11 +459,14 @@ sealed interface Overlay {
 private fun tried(home: Home, purpose: Purpose.TryArgument): Step {
   val back = home.copy(overlay = purpose.pane)
   return try {
-    Step(back.say("Trying ${purpose.spec.name} against '${purpose.workspace}'…", Tone.Dim), Command.Try(operationFrom(purpose.spec.name, purpose.workspace, purpose.given), purpose.spec.name, purpose.workspace))
+    Step(back.say("Trying ${purpose.spec.name} against '${purpose.workspace}'…", Tone.Dim), Command.Try(operationFrom(CALLER, purpose.spec.name, purpose.workspace, purpose.given), purpose.spec.name, purpose.workspace))
   } catch (refused: IllegalArgumentException) {
     Step(back.say("${refused.message} Nothing was tried."))
   }
 }
+
+/** What this dashboard's `request_id`s start with: a TryOperation from here is a `tui-` one. */
+private const val CALLER = "tui"
 
 /** The element [by] places from [from], held at either end; null for an empty list. */
 private fun <T> List<T>.moved(from: Int, by: Int): T? = if (isEmpty()) null else this[(from + by).coerceIn(0, lastIndex)]

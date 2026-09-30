@@ -257,7 +257,7 @@ The dashboard currently instructs you to recreate connections when the tool cata
 
 ## Development
 
-The project uses Kotlin/JVM, Ktor, the MCP Kotlin SDK, and a Mosaic terminal UI. Its modules separate the core behavior, MCP endpoint, local control interface, Runtime, and dashboard.
+The project uses Kotlin/JVM, Ktor, the MCP Kotlin SDK, and a Mosaic terminal UI. Its modules separate the core behavior, MCP endpoint, local control interface, Runtime, what every frontend shares, and the dashboard.
 
 From the repository root:
 

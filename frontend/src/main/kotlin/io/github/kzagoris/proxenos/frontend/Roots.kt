@@ -1,4 +1,4 @@
-package io.github.kzagoris.proxenos.tui
+package io.github.kzagoris.proxenos.frontend
 
 import io.github.kzagoris.proxenos.coreapi.Workspace
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
@@ -7,7 +7,7 @@ import java.nio.file.Path
 
 /**
  * A Root as typed, made absolute here. The Runtime resolves a relative Root against its own
- * working directory, which is not this terminal's, so a relative path sent as typed would
+ * working directory, which is not this frontend's, so a relative path sent as typed would
  * register some other directory.
  */
 fun absoluteRoot(typed: String, home: Path = Path.of(System.getProperty("user.home"))): Path {

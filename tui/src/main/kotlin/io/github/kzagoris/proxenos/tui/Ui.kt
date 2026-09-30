@@ -19,7 +19,8 @@ import com.jakewharton.mosaic.ui.Row
 import com.jakewharton.mosaic.ui.Text
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
-import java.io.IOException
+import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.Wording
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -28,12 +29,13 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The interactive home screen. Everything it shows is [render] of a [Home]; everything a key
- * does is [Home.press]. What is left here is the terminal, the stream, and carrying out the
+ * does is [Home.press]. What is left here is the terminal, the attachment, and carrying out the
  * [Command] a key asked for.
  */
-fun runHome(management: WorkspaceManagement, launcher: RuntimeLauncher) = runMosaicMain {
-  var home by remember { mutableStateOf(Home(attachment = if (launcher.running()) Attachment.Attaching else Attachment.Starting)) }
-  // Bumped to attach again: after a start, or a Runtime that was not there the first time.
+fun runHome(attachment: RuntimeAttachment) = runMosaicMain {
+  val management = attachment.management
+  var home by remember { mutableStateOf(Home()) }
+  // Bumped to attach again, starting the Runtime if nothing answers: [S] after it went away.
   var attempt by remember { mutableIntStateOf(0) }
   var quit by remember { mutableStateOf(false) }
   // What keys ask for, carried out by the effect below rather than by a remembered scope: a
@@ -41,26 +43,11 @@ fun runHome(management: WorkspaceManagement, launcher: RuntimeLauncher) = runMos
   // it is still running — so it would outlive `q`.
   val commands = remember { Channel<Command>(Channel.UNLIMITED) }
 
-  suspend fun start() {
-    home = home.copy(attachment = Attachment.Starting)
-    try {
-      launcher.start()
-      attempt++
-    } catch (failed: StartFailed) {
-      // Say it where [S] was pressed, not only in Review: a start that fails silently reads
-      // as a key that did nothing.
-      home = home.detached("refused to start: ${failed.message} · [S] try again")
-        .say("The Runtime did not start. ${failed.message}", Tone.Bad)
-    }
-  }
-
   // Every effect is gated on this, so dropping them all is the exit. The Runtime is not touched
   // by quitting: closing a frontend leaves exposure exactly as it was.
   if (!quit) {
     LaunchedEffect(Unit) {
-      // The Runtime is started when it is not running: the first thing this frontend does.
-      if (home.attachment == Attachment.Starting) launch { start() }
-      for (command in commands) launch { carryOut(command, management, { home }, { home = it }, ::start) }
+      for (command in commands) launch { carryOut(command, management, { home }, { home = it }) { attempt++ } }
     }
 
     // What each running command has printed, read again while the band has anything in it: the
@@ -83,15 +70,10 @@ fun runHome(management: WorkspaceManagement, launcher: RuntimeLauncher) = runMos
       }
     }
 
+    // Opening the dashboard starts the Runtime when it is not running, as every frontend does,
+    // and [S] opens it again. When the stream ends this ends too, and it stays detached.
     LaunchedEffect(attempt) {
-      if (home.attachment == Attachment.Starting && attempt == 0) return@LaunchedEffect
-      try {
-        management.observe().collect { home = home.observed(it) }
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        home = home.detached(NOT_RUNNING)
-      }
+      attachment.open().collect { home = home.observed(it) }
     }
   }
 
@@ -128,15 +110,15 @@ private suspend fun carryOut(
   management: WorkspaceManagement,
   home: () -> Home,
   update: (Home) -> Unit,
-  start: suspend () -> Unit,
+  start: () -> Unit,
 ) {
   when (command) {
     Command.Quit -> Unit
     Command.StartRuntime -> start()
     is Command.Try -> update(
       try {
-        val (said, tone) = Wording.tried(command.tool, command.workspace, management.perform(ManagementAct.TryOperation(command.op)))
-        home().say(said, tone)
+        val outcome = management.perform(ManagementAct.TryOperation(command.op))
+        home().say(Wording.tried(command.tool, command.workspace, outcome), outcome.tone)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (refused: Exception) {
@@ -154,7 +136,7 @@ private suspend fun carryOut(
           home().say(refused.message ?: refused::class.simpleName.orEmpty(), Tone.Bad)
         },
       )
-      if (command.act == ManagementAct.Stop) update(home().detached(STOPPED))
+      if (command.act == ManagementAct.Stop) update(home().stoppedHere())
     }
   }
 }

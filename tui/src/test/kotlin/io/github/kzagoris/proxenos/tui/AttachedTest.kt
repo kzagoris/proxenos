@@ -1,7 +1,6 @@
 package io.github.kzagoris.proxenos.tui
 
 import io.github.kzagoris.proxenos.control.ControlServer
-import io.github.kzagoris.proxenos.control.ManagementClient
 import io.github.kzagoris.proxenos.core.Activity
 import io.github.kzagoris.proxenos.core.ConnectorAcknowledgement
 import io.github.kzagoris.proxenos.core.RuntimeConfig
@@ -12,9 +11,11 @@ import io.github.kzagoris.proxenos.core.TunnelCredentials
 import io.github.kzagoris.proxenos.core.WorkspaceOperationsPipeline
 import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.*
+import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.Wording
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermissions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -31,8 +32,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The home screen attached as it is in use: over the control socket, to a real core. Keys go
- * through [Home.press] and the acts they ask for through the management client, exactly as the
- * Mosaic surface carries them out.
+ * through [Home.press] and the acts they ask for through the management client, and the stream
+ * arrives through the attachment, exactly as the Mosaic surface carries them out.
  */
 class AttachedTest {
   @TempDir
@@ -75,13 +76,14 @@ class AttachedTest {
     pipeline.stop()
   }
 
-  /** One TUI: its screen state, moved on by the stream and by the keys it is given. */
+  /** One TUI: its screen state, moved on by the attachment and by the keys it is given. */
   private inner class Tui {
-    val management = ManagementClient(socket)
+    private val attachment = RuntimeAttachment(socket, executable = null)
+    val management = attachment.management
     val home = MutableStateFlow(Home())
 
     init {
-      scope.launch { management.observe().collect { event -> home.value = home.value.observed(event) } }
+      scope.launch { attachment.attach(startIfAbsent = false).collect { home.value = home.value.observed(it) } }
     }
 
     suspend fun press(vararg keys: String) {
@@ -94,8 +96,8 @@ class AttachedTest {
             home.value = home.value.say(command.done)
           }
           is Command.Try -> {
-            val (said, tone) = Wording.tried(command.tool, command.workspace, management.perform(ManagementAct.TryOperation(command.op)))
-            home.value = home.value.say(said, tone)
+            val outcome = management.perform(ManagementAct.TryOperation(command.op))
+            home.value = home.value.say(Wording.tried(command.tool, command.workspace, outcome), outcome.tone)
           }
           null -> Unit
           else -> fail("unexpected $command")
@@ -150,18 +152,12 @@ class AttachedTest {
   @Test
   fun `a Stop from one TUI leaves the other detached, with nothing of the gone Runtime on its screen`() = runBlocking {
     val first = Tui()
-    val watching = MutableStateFlow<Home>(Home())
-    scope.launch {
-      try {
-        ManagementClient(socket).observe().collect { watching.value = watching.value.observed(it) }
-      } catch (_: Exception) {
-        watching.value = watching.value.detached(NOT_RUNNING)
-      }
-    }
+    val watching = Tui()
     first.until("attached") { it.snapshot != null }
-    withTimeout(5.seconds) { watching.first { it.snapshot != null } }
+    watching.until("attached") { it.snapshot != null }
     first.press("i", "Enter", "X", "y")
-    val detached = withTimeout(5.seconds) { watching.first { it.attachment is Attachment.Absent } }
+    val detached = watching.until("the stream's end reaches the other TUI") { it.attachment is Attachment.Absent }
+    assertNull(detached.snapshot)
     assertTrue(render(detached, Frame(140, 40)).any { "[S] Start" in it.plain })
   }
 
@@ -195,16 +191,5 @@ class AttachedTest {
     val ended = tui.until("the band empties once it is reaped") { it.band.isEmpty() }
     assertFalse(render(ended, Frame(160, 40)).any { it.plain.startsWith("Running") })
     assertIs<ActivityOutcome.Uncertain>(ended.feed.single { it.id == promoted.band.single().entry }.outcome)
-  }
-
-  @Test
-  fun `a Runtime that refuses to start is reported in its own words`() = runBlocking {
-    val stub = temporary.resolve("runtime")
-    Files.writeString(stub, "#!/bin/sh\necho 'runtime: will not start. No credentials file at /x/credentials.' >&2\nexit 78\n")
-    Files.setPosixFilePermissions(stub, PosixFilePermissions.fromString("rwx------"))
-    val launcher = RuntimeLauncher(temporary.resolve("elsewhere/control.sock"), stub)
-    assertFalse(launcher.running())
-    val refused = assertFailsWith<StartFailed> { launcher.start() }
-    assertEquals("will not start. No credentials file at /x/credentials.", refused.message)
   }
 }

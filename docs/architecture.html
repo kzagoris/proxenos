@@ -457,7 +457,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">2 · The code</span>
-      <h2>Six modules, strict walls between them</h2>
+      <h2>Seven modules, strict walls between them</h2>
       <p>Each Gradle module has one job. The build itself refuses a module that reaches one it has not declared (<code>build-logic/…/ModuleBoundaryRules.kt</code>), so the walls below are enforced by the compiler, not by good intentions.</p>
     </div>
     <div class="modules" id="module-cards"></div>
@@ -769,7 +769,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
       files: ["control/…/ManagementClient.kt"] },
     tui: { kind: "module · frontend", title: "tui", what: "The terminal app, built with Mosaic (Compose for terminals). It starts the runtime if it is not running, then attaches to it.",
       points: ["Home screen: status bar, banners, Workspace chips with levels, a band of running commands, then the Activity feed.", "Keys: n new, e rename, 0–3 set level, w Workspace detail, i runtime detail, s then y to stop, a acknowledge, d disconnect, q quit.", "Workspace detail shows all 11 tools against that level, with a try-it action.", "Closing it changes nothing about what is exposed."],
-      files: ["Main.kt", "Home.kt", "Screen.kt", "Ui.kt", "Wording.kt", "RuntimeLauncher.kt", "Roots.kt", "Tryable.kt"] },
+      files: ["Main.kt", "Home.kt", "Screen.kt", "Ui.kt", "frontend/…/RuntimeAttachment.kt", "frontend/…/Wording.kt"] },
     disk: { kind: "your machine", title: "Disk", what: "The folders you registered as Workspaces, plus the runtime's own state folder.",
       points: ["File tools are confined to the Workspace's Root, following symlinks first and then checking.", "run_command is not confined: it runs with your full Linux account.", "Writes go to a temp file and are renamed into place atomically."],
       files: ["~/.local/state/proxenos/", "~/.config/proxenos/credentials"] }
@@ -815,7 +815,8 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
     { n: "mcp", role: "ChatGPT's door", d: "MCP server on a Unix socket, renders the catalog and replies.", reach: ["core", "core-api"] },
     { n: "control", role: "The settings door", d: "Wire protocol, socket server, and the ManagementClient library.", reach: ["core-api"] },
     { n: "runtime", role: "The background program", d: "main(), configuration, single-instance lock, wiring, tunnel child.", reach: ["core-api", "core", "mcp", "control"] },
-    { n: "tui", role: "The terminal app", d: "Mosaic screen that attaches to the runtime over the control socket.", reach: ["core-api", "control"] }
+    { n: "frontend", role: "What every frontend shares", d: "Attaching, starting the runtime, and the domain's wording. Draws nothing.", reach: ["core-api", "control"] },
+    { n: "tui", role: "The terminal app", d: "Mosaic screen that attaches to the runtime over the control socket.", reach: ["core-api", "control", "frontend"] }
   ];
   $("#module-cards").innerHTML = MODS.map(function (m) {
     return '<div class="panel pad mod"><span class="name">' + m.n + '</span><span class="role">' + m.role + '</span><p class="muted">' + m.d + '</p><span class="reach">May use: ' + (m.reach.length ? m.reach.map(function (r) { return "<b>" + r + "</b>"; }).join(", ") : "<b>nothing</b>") + "</span></div>";

@@ -2,12 +2,17 @@ package io.github.kzagoris.proxenos.tui
 
 import io.github.kzagoris.proxenos.control.ConfigRefused
 import io.github.kzagoris.proxenos.control.ControlSocket
-import io.github.kzagoris.proxenos.control.ManagementClient
+import io.github.kzagoris.proxenos.control.NotSent
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
+import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.Reason
+import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import java.io.IOException
 import java.nio.file.Path
 import kotlin.system.exitProcess
-import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -33,24 +38,23 @@ fun main(args: Array<String>) {
     System.err.println("tui: ${refused.message} Or name the control socket with --control-socket.")
     exitProcess(78)
   }
-  val launcher = RuntimeLauncher(socket, RuntimeLauncher.executableFrom(environment))
-  val management: WorkspaceManagement = ManagementClient(socket)
+  val attachment = RuntimeAttachment(socket, RuntimeAttachment.executable(environment))
   when (options.command) {
-    "start" -> exitProcess(start(launcher))
-    "stop" -> exitProcess(stop(launcher, management))
-    null -> if (options.dump) exitProcess(dump(management, launcher, options)) else interactive(management, launcher)
+    "start" -> exitProcess(start(attachment, socket))
+    "stop" -> exitProcess(stop(attachment.management))
+    null -> if (options.dump) exitProcess(dump(attachment, options)) else interactive(attachment)
   }
 }
 
 /** Keep the launch command and debugger output outside the dashboard, restoring them on exit. */
-private fun interactive(management: WorkspaceManagement, launcher: RuntimeLauncher) {
+private fun interactive(attachment: RuntimeAttachment) {
   val alternate = System.console() != null && System.getenv("TERM") != "dumb"
   if (alternate) {
     print("\u001b[?1049h\u001b[H")
     System.out.flush()
   }
   try {
-    runHome(management, launcher)
+    runHome(attachment)
   } finally {
     if (alternate) {
       print("\u001b[?1049l")
@@ -59,21 +63,32 @@ private fun interactive(management: WorkspaceManagement, launcher: RuntimeLaunch
   }
 }
 
-private fun start(launcher: RuntimeLauncher): Int {
-  if (launcher.running()) return 0.also { println("The Runtime is already running on ${launcher.socket}.") }
-  return try {
-    runBlocking { launcher.start() }
-    println("The Runtime is running on ${launcher.socket}. There is no autostart: after a reboot, start it again.")
-    0
-  } catch (failed: StartFailed) {
-    System.err.println("tui: the Runtime ${failed.message}")
-    1
+/** Attaches, starting the Runtime when nothing answers, and leaves again once it has answered. */
+private fun start(attachment: RuntimeAttachment, socket: Path): Int {
+  var started = false
+  val settled = runBlocking {
+    attachment.attach(startIfAbsent = true)
+      .onEach { if (it == Attachment.Starting) started = true }
+      .firstOrNull { it is Attachment.Attached || it is Attachment.Absent }
   }
+  val reason = (settled as? Attachment.Absent)?.reason ?: return 0.also {
+    println(if (started) "The Runtime is running on $socket. There is no autostart: after a reboot, start it again." else "The Runtime is already running on $socket.")
+  }
+  System.err.println(
+    when (reason) {
+      is Reason.StartFailed -> "tui: the Runtime ${reason.words}"
+      Reason.NotAnswering -> "tui: the Runtime is not answering on $socket."
+    },
+  )
+  return 1
 }
 
-private fun stop(launcher: RuntimeLauncher, management: WorkspaceManagement): Int {
-  if (!launcher.running()) return 0.also { println("The Runtime is not running.") }
-  runBlocking { management.perform(ManagementAct.Stop) }
+private fun stop(management: WorkspaceManagement): Int {
+  try {
+    runBlocking { management.perform(ManagementAct.Stop) }
+  } catch (_: NotSent) {
+    return 0.also { println("The Runtime is not running.") }
+  }
   println("The Runtime stopped. Every Operation it was running is left Uncertain; registrations survive.")
   return 0
 }
@@ -83,31 +98,43 @@ private fun stop(launcher: RuntimeLauncher, management: WorkspaceManagement): In
  * the stream ends or [Options.frames] have been drawn. It never starts the Runtime: it is for
  * looking, and a look that started something would not be one.
  */
-private fun dump(management: WorkspaceManagement, launcher: RuntimeLauncher, options: Options): Int {
+private fun dump(attachment: RuntimeAttachment, options: Options): Int {
   val frame = { Frame(columns = options.columns, rows = options.rows) }
-  if (!launcher.running()) {
-    render(Home().detached(NOT_RUNNING), frame()).forEach { println(it.plain.trimEnd()) }
-    return 1
-  }
+  val management = attachment.management
   var home = Home()
   var drawn = 0
-  return try {
-    runBlocking {
-      val events = management.observe()
-      (if (options.frames != null) events.take(options.frames) else events).collect { event ->
-        home = home.observed(event)
-        // Each band row's line is read as the screen draws it, from the buffer get_result reads.
-        for (running in home.band) home = home.read(running.entry, management.perform(ManagementAct.ReadOutput(running.entry)))
-        println("=== frame ${++drawn} ===")
-        render(home, frame()).forEach { println(it.plain.trimEnd()) }
-        System.out.flush()
+  runBlocking {
+    // Stops at the frame limit, or when the stream ends: Absent is always the last value.
+    attachment.attach(startIfAbsent = false).firstOrNull { next ->
+      home = home.observed(next)
+      when (next) {
+        is Attachment.Attached -> {
+          // Each band row's line is read as the screen draws it, from the buffer get_result reads.
+          // A Runtime gone between the event and the read leaves the line unread; the stream's end
+          // follows and is said as such.
+          for (running in home.band) {
+            val output = try {
+              management.perform(ManagementAct.ReadOutput(running.entry))
+            } catch (_: IOException) {
+              null
+            }
+            home = home.read(running.entry, output)
+          }
+          println("=== frame ${++drawn} ===")
+          render(home, frame()).forEach { println(it.plain.trimEnd()) }
+          System.out.flush()
+          drawn == options.frames
+        }
+        is Attachment.Absent -> {
+          if (drawn == 0) render(home, frame()).forEach { println(it.plain.trimEnd()) }
+          else println("=== the Runtime closed the stream ===")
+          true
+        }
+        else -> false
       }
     }
-    0
-  } catch (_: java.io.IOException) {
-    println("=== the Runtime closed the stream ===")
-    0
   }
+  return if (drawn == 0) 1 else 0
 }
 
 private data class Options(

@@ -1,6 +1,9 @@
 package io.github.kzagoris.proxenos.tui
 
 import io.github.kzagoris.proxenos.coreapi.*
+import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.Reason
+import io.github.kzagoris.proxenos.frontend.Wording
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -213,7 +216,7 @@ class HomeScreenTest {
     )
     // It stays in every state: the caveat explains the signal, not one reading of it.
     assertTrue(Wording.CONNECTED_CAVEAT in attached(state = RuntimeState.Failed(null)).keys("i", "ArrowDown", "r").prose())
-    assertTrue(Wording.CONNECTED_CAVEAT in Home().detached(NOT_RUNNING).keys("i", "ArrowDown", "r").prose())
+    assertTrue(Wording.CONNECTED_CAVEAT in Home().observed(Attachment.Absent(Reason.NotAnswering)).keys("i", "ArrowDown", "r").prose())
   }
 
   @Test
@@ -229,7 +232,7 @@ class HomeScreenTest {
 
   @Test
   fun `a Runtime that is not running is started with S, and one that is running is not started again`() {
-    val absent = Home().detached(NOT_RUNNING)
+    val absent = Home().observed(Attachment.Absent(Reason.NotAnswering))
     assertEquals(Command.StartRuntime, absent.press(Key("S")).command)
     assertNull(attached().press(Key("S")).command)
     // Review does not take the shortcut away: its Runtime row points at [S] in the reason line.
@@ -238,7 +241,7 @@ class HomeScreenTest {
 
   @Test
   fun `the Review list is the three stages in the order they are fixed, and can't-tell is never a fault`() {
-    val detached = Home().detached("refused to start: cannot find the Runtime to start. · [S] try again")
+    val detached = Home().observed(Attachment.Absent(Reason.StartFailed("cannot find the Runtime to start.")))
     val rows = render(detached.keys("i"), frame).filter { line -> Stage.entries.any { "${it.name} · " in line.plain } }
     assertEquals(
       listOf("> Runtime · Not running", "Tunnel · Can't tell", "Connector · Can't tell"),
