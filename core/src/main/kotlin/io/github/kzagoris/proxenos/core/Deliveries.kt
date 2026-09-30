@@ -8,7 +8,7 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.CompletableDeferred
 
 /**
- * What tells one arrival of a mutation from a repeat of it (SPEC §6.4, ADR 0004): the
+ * What tells one arrival of a mutation from a repeat of it (ADR 0004): the
  * caller-supplied key, the Operation it arrived with, and the reply that was sent.
  *
  * **Not a second account of what happened.** It holds a key, the Activity entry it names and
@@ -23,7 +23,7 @@ import kotlinx.coroutines.CompletableDeferred
  * its own and never with a `failed` dressed as the recorded result of an operation performed.
  */
 internal class Deliveries(
-  /** §6.4: 10 minutes past the **reply**, not past the outcome. Configuration so a test need not wait them out. */
+  /** 10 minutes past the **reply**, not past the outcome. Configuration so a test need not wait them out. */
   private val retention: Duration = RETENTION,
   private val recordCap: Int = RECORD_CAP,
   private val keyCap: Int = KEY_CAP,

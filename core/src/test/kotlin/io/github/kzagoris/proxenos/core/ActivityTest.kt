@@ -192,8 +192,8 @@ class ActivityTest {
 
   @Test
   fun `a carry appended before the outcome it would settle settles nothing`() {
-    // Why the order a promoted command writes its records in is a decision and not a detail
-    // (SPEC §6.2, §10.1): settling is what a *later* arrival does, so a fact that arrives first
+    // Why the order a promoted command writes its records in is a decision and not a detail:
+    // settling is what a *later* arrival does, so a fact that arrives first
     // is superseded by the outcome it precedes. A Runtime that published a collectable result
     // before writing the records would strand the entry here, unresolved and unsettleable.
     val activity = activity()
@@ -238,7 +238,7 @@ class ActivityTest {
     val root = Files.createDirectory(stateDirectory.resolve("root"))
     val activity = activity()
     val id = activity.open(Origin.ChatGpt, "api", "run_command", "command=make")
-    // SPEC §6.5 caps an Operation's output at 64 KiB and there is no overflow-to-file: a spill
+    // An Operation's output is capped at 64 KiB and there is no overflow-to-file: a spill
     // file outside every Root is a path the model is told about and cannot read.
     val output = "x".repeat(Operation.OUTPUT_CAP_BYTES)
     activity.complete(id, ActivityOutcome.Ok(output))

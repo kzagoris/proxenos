@@ -8,7 +8,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 
 /**
- * One directory, sorted, bounded by the byte cap (SPEC §6.5). The confinement is the pipeline's
+ * One directory, sorted, bounded by the byte cap. The confinement is the pipeline's
  * — a directory reached through a symlink out of the Root never arrives here — so what is left
  * is the listing itself and the promise that what it left out is counted rather than silent.
  */

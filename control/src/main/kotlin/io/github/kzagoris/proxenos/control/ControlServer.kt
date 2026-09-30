@@ -22,13 +22,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 
 /**
- * The Runtime's end of the control socket (SPEC §9): a [WorkspaceManagement] served to whoever
+ * The Runtime's end of the control socket: a [WorkspaceManagement] served to whoever
  * dials [socket] — provided the kernel says they are [owner].
  *
  * **Peer credentials, not file permissions, are the authentication.** The socket is created
  * owner-only in an owner-only directory, and that is a second fence; the first is `SO_PEERCRED`,
  * the uid the kernel attests for the process on the other end. A frontend cannot claim it.
- * A future Windows port loses this (SPEC §12): Windows AF_UNIX carries no ancillary data.
+ * A future Windows port loses this: Windows AF_UNIX carries no ancillary data.
  *
  * It is a separate socket from MCP's on purpose. Management acts served on the catalog ChatGPT
  * enumerates would make raising an Access Level something a conversation could attempt; here

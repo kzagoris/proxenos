@@ -33,7 +33,7 @@ private val CONFIG = listOf(
 private const val COMPLAINT_CAP_BYTES = 4 * 1024
 
 /**
- * The three read-only Git tools (SPEC §4): `git_status`, `git_diff` and `git_log`, at Read, so a
+ * The three read-only Git tools: `git_status`, `git_diff` and `git_log`, at Read, so a
  * Workspace can show what changed without granting command execution.
  *
  * Two decisions are worth keeping. The first is **scoping**: where the Root sits inside a larger
@@ -41,7 +41,7 @@ private const val COMPLAINT_CAP_BYTES = 4 * 1024
  * every answer carries [GitScope] saying so — an empty `git_status` that did not say it had been
  * scoped would be read as "the repository is clean", which is the whole reason the label exists.
  *
- * The second is that `git` is **optional** (§14). Whether a Root is a repository is read from
+ * The second is that `git` is **optional**. Whether a Root is a repository is read from
  * Git's own on-disk layout ([enclosingGitRepository]), so the catalog entry is there and answers
  * whether or not the program is installed; a machine without it takes the same plain `failed`
  * path as a Root with no repository above it.

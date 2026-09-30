@@ -7,7 +7,7 @@ import java.util.HexFormat
 import kotlin.text.Charsets.UTF_8
 
 /**
- * The catalog, hashed as the data the core owns (SPEC §11.5, ADR 0007). ChatGPT snapshots the
+ * The catalog, hashed as the data the core owns (ADR 0007). ChatGPT snapshots the
  * catalog when the connector is created and never refreshes it, so a build whose catalog hashes
  * differently from the one the user last confirmed is a build their connector does not match.
  *

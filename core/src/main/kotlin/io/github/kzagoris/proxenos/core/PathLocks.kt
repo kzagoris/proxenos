@@ -4,7 +4,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Mutations serialize on the target's resolved real path (SPEC §6.6). The key is the real path
+ * Mutations serialize on the target's resolved real path. The key is the real path
  * and not the Workspace precisely because the access rules permit nested and overlapping Roots:
  * two Workspaces reaching one file must contend, and per-Workspace serialization would let them
  * past each other.

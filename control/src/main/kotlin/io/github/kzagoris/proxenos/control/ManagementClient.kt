@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.runInterruptible
 
 /**
- * [WorkspaceManagement] over the control socket (SPEC §9): the design's one real seam. A
+ * [WorkspaceManagement] over the control socket: the design's one real seam. A
  * frontend holds this as the interface and cannot tell it from the core — every act is
  * serialize, send, deserialize, so there is no per-act method here to drift from the core.
  *

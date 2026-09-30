@@ -13,7 +13,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * The official `tunnel-client`, run as this Runtime's child (SPEC §7). The Runtime owns it
+ * The official `tunnel-client`, run as this Runtime's child. The Runtime owns it
  * rather than the other way round, so a tunnel that dies takes no registration and no running
  * Operation with it: it is reported, and started again.
  *
@@ -22,17 +22,17 @@ import kotlin.time.TimeSource
  * change anyway, and so never into a `run_command` child either.
  *
  * This restarts a child that **dies**, not a link that is lost: `tunnel-client` never gives up
- * and never exits on a bad key (§8.4), so a death is a crash or a kill, and it is answered by
+ * and never exits on a bad key, so a death is a crash or a kill, and it is answered by
  * starting it again after a delay that grows while the deaths keep coming. Nothing here reads
  * the link at all; that is [Tunnel]'s judgement, and it never restarts anything.
  *
- * A child is wanted or not: Disconnect ends it and starts no other until Connect (§8.1).
+ * A child is wanted or not: Disconnect ends it and starts no other until Connect.
  */
 internal class TunnelChild(
   private val executable: Path,
   private val arguments: List<String>,
   private val credentials: TunnelCredentials,
-  /** How long the tree is given after TERM before it is killed (§6.3's grace). */
+  /** How long the tree is given after TERM before it is killed (the kill's grace). */
   private val grace: Duration,
   /** Where the child writes its health base URL. Removed before each launch (see [supervise]). */
   private val healthUrlFile: Path,
@@ -164,7 +164,7 @@ internal class TunnelChild(
   }
 
   /**
-   * The tree alone, not the tree and the group as §6.3's one kill does for a command: the child
+   * The tree alone, not the tree and the group as the one kill does for a command: the child
    * is started in the Runtime's own process group, so signalling that group would signal the
    * Runtime in the middle of its own shutdown. What the group arm exists to catch — a
    * descendant that detached with `setsid` — is not something `tunnel-client` does.
@@ -180,7 +180,7 @@ internal class TunnelChild(
   }
 
   companion object {
-    /** The names `tunnel-client run` takes the credential under (SPEC §11.1). */
+    /** The names `tunnel-client run` takes the credential under. */
     const val TUNNEL_ID = "CONTROL_PLANE_TUNNEL_ID"
     const val API_KEY = "CONTROL_PLANE_API_KEY"
 
@@ -192,7 +192,7 @@ internal class TunnelChild(
 }
 
 /**
- * The tunnel ID and runtime key (SPEC §11.1). Held in memory and handed to the tunnel child's
+ * The tunnel ID and runtime key. Held in memory and handed to the tunnel child's
  * environment, and to nothing else. [toString] never prints the key, so a stray log line or an
  * exception message cannot carry it out.
  */

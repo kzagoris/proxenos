@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The one home every Operation passes through (SPEC §9):
+ * The one home every Operation passes through:
  *
  * > resolve Workspace -> check Access Level -> confine path -> check the Delivery key ->
  * > take the real-path lock -> write Activity -> shape the Outcome
@@ -27,43 +27,43 @@ class WorkspaceOperationsPipeline internal constructor(
   private val registry: WorkspaceRegistry,
   private val activity: Activity,
   /**
-   * How long a `search` is given before it answers with what it has (§4). Configuration rather
+   * How long a `search` is given before it answers with what it has. Configuration rather
    * than a literal for the same reason the tunnel budget is: a test sets a short one and
    * exercises the marker, instead of building a project big enough to run the real one out.
    */
   private val searchBudget: Duration,
   /**
-   * The mutation lock (§6.6). Handed in for the same reason the budget is: holding it is the
+   * The mutation lock. Handed in for the same reason the budget is: holding it is the
    * only way to ask, in a test and without a race, what a call does while a mutation on that
    * path is in flight — which is how "reads take no lock" is a fact rather than a claim.
    */
   private val locks: PathLocks,
   /**
-   * How `git` is started (§4). Handed in like the budget above, so a test can ask what the
+   * How `git` is started. Handed in like the budget above, so a test can ask what the
    * three Git tools do with no usable `git` on the machine without uninstalling it.
    */
   private val git: GitTools = GitTools(),
   /**
-   * How long a `run_command` is given before it is **Promoted** (§6.2). Configuration for the
+   * How long a `run_command` is given before it is **Promoted**. Configuration for the
    * same reason as the two above: a test sets a short one and watches promotion happen, instead
    * of waiting out the Runtime's real 45 seconds.
    */
   private val commandBudget: Duration = Operation.COMMAND_BUDGET,
   /**
-   * How a command is started and stopped (§6.3). Handed in so a test can shorten the grace
+   * How a command is started and stopped. Handed in so a test can shorten the grace
    * between TERM and SIGKILL, which is otherwise five seconds of every reaping test.
    */
   private val runner: CommandRunner = CommandRunner(),
   /**
-   * The Delivery records (§6.4). Handed in so a test can shorten the 10 minutes a record is
+   * The Delivery records. Handed in so a test can shorten the 10 minutes a record is
    * kept, and ask what a key reused after expiry is answered without waiting them out.
    */
   private val deliveries: Deliveries = Deliveries(),
-  /** §6.6: concurrent commands per Runtime. Configuration, like the budget above it. */
+  /** Concurrent commands per Runtime. Configuration, like the budget above it. */
   commandConcurrency: Int = Operation.COMMAND_CONCURRENCY_CAP,
 ) {
   /**
-   * Where a command that outran its call goes, the cap on concurrent commands (§6.6), and the
+   * Where a command that outran its call goes, the cap on concurrent commands, and the
    * Stop that reaches both. Held by the pipeline because all three are per **Runtime** and not
    * per Workspace: one model in a retry loop reaching four Workspaces is the case the cap
    * exists for, and Stop ends every Operation there is.
@@ -76,7 +76,7 @@ class WorkspaceOperationsPipeline internal constructor(
     searchBudget: Duration = Operation.SEARCH_BUDGET,
   ) : this(registry, activity, searchBudget, PathLocks())
 
-  /** What the composition root builds: every tunable from the one [RuntimeConfig] (SPEC §11). */
+  /** What the composition root builds: every tunable from the one [RuntimeConfig]. */
   constructor(registry: WorkspaceRegistry, activity: Activity, config: RuntimeConfig) : this(
     registry,
     activity,
@@ -111,17 +111,17 @@ class WorkspaceOperationsPipeline internal constructor(
    * would starve the SDK's CPU-sized pool, and that failure looks like an unrelated hang.
    */
   private suspend fun <R> perform(origin: Origin, op: Operation<R>): Outcome<R> = withContext(Dispatchers.IO) {
-    // Marked first, because §6.2's budget runs from the frame's arrival and not from the first
+    // Marked first, because the budget runs from the frame's arrival and not from the first
     // step this Runtime chooses to take with it.
     val arrivedAt = TimeSource.Monotonic.markNow()
     val spec = OperationCatalog.specFor(op)
     val scoped = op as? Operation.Scoped<*>
 
     // A repeat Delivery is answered before anything else, and above admission on purpose: an
-    // Access Level lowered between Deliveries does not change the answer (§6.4). A repeat is
+    // Access Level lowered between Deliveries does not change the answer. A repeat is
     // not a new decision by anybody, the change is already on disk, and refusing would withhold
     // from the model that the mutation happened. It opens no entry of its own either — an
-    // Operation is recorded once, and each later Delivery appends a fact against it (§10.1).
+    // Operation is recorded once, and each later Delivery appends a fact against it.
     val key = scoped?.deliveryKey?.takeIf { it.isNotBlank() }
     var claim = key?.let { deliveries.claim(it, op) }
     while (claim is Deliveries.Claim.Repeat) {
@@ -154,7 +154,7 @@ class WorkspaceOperationsPipeline internal constructor(
       //
       // Unless the work outlived the call: a `run_command` whose answer was discarded is still
       // running, and closing its entry here would be this Runtime saying an Operation ended
-      // that it is at this moment carrying to completion (§6.2). What its first Delivery would
+      // that it is at this moment carrying to completion. What its first Delivery would
       // have answered is then the Handle, and a repeat is owed that.
       val carried = commands.promotedReply(entry)
       val reply: Outcome<*> = if (carried != null) Outcome.Ok(carried) else {
@@ -170,7 +170,7 @@ class WorkspaceOperationsPipeline internal constructor(
       first?.let { deliveries.replied(it, reply) }
       throw interrupted
     }
-    // A Promoted reply precedes its outcome (§6.2), so there is nothing to complete yet: the
+    // A Promoted reply precedes its outcome, so there is nothing to complete yet: the
     // entry stays open, reads InFlight, and is closed by the Runtime-scoped coroutine carrying
     // the command. Every other Operation is completed here.
     if (!outcome.isPromotion()) {
@@ -197,7 +197,7 @@ class WorkspaceOperationsPipeline internal constructor(
     arrival: Arrival,
     claim: Deliveries.Claim?,
   ): Outcome<R> {
-    // §6.3: Stop refuses new calls before it reaps anything, so nothing starts that the kill
+    // Stop refuses new calls before it reaps anything, so nothing starts that the kill
     // below it would then have to end. A `failed`, because nothing ran.
     if (commands.stopping) return Outcome.Failed(
       Failure.RuntimeStopping,
@@ -206,7 +206,7 @@ class WorkspaceOperationsPipeline internal constructor(
     )
 
     // Resolve the Workspace, then check the Access Level. Both live in the registry, which
-    // answers a withheld Workspace exactly as it answers an unregistered one (§2.3).
+    // answers a withheld Workspace exactly as it answers an unregistered one.
     val workspace = scoped?.let {
       // The reason stays NoSuchWorkspace: an absent argument resolves to no Workspace, and
       // the exposed names a frontend would show are the same either way.
@@ -217,7 +217,7 @@ class WorkspaceOperationsPipeline internal constructor(
 
     // Confine every path argument to the Root. `run_command`'s command is bounded by none of
     // this — the Root is routing context for it, not confinement — but its optional `cwd` is a
-    // path argument like any other and is confined here (§2.4, §4).
+    // path argument like any other and is confined here.
     val confined = scoped?.confinedPaths.orEmpty().map { argument ->
       confine(workspace!!, argument).valueOr { problem -> return problem }
     }
@@ -238,7 +238,7 @@ class WorkspaceOperationsPipeline internal constructor(
         "unique one for each operation you intend to perform.",
     )
     // The key was looked up on arrival, above admission, because a repeat is answered whatever
-    // the Access Level now is (§6.4). What was neither a repeat nor a first Delivery is refused
+    // the Access Level now is. What was neither a repeat nor a first Delivery is refused
     // here, in the pipeline's order — and a first Delivery refused anywhere above released its
     // key, since `failed` left nothing a second execution could do twice.
     when (claim) {
@@ -258,7 +258,7 @@ class WorkspaceOperationsPipeline internal constructor(
       else -> Unit
     }
 
-    // Take the real-path lock — for a mutation only; reads take none (§6.6). The key is the
+    // Take the real-path lock — for a mutation only; reads take none. The key is the
     // target's resolved real path, so overlapping Roots reaching one file contend on it. It is
     // the path already resolved above, never a second resolution: between two of them a symlink
     // can move, and a mutation holding the lock for a path it is not writing to locks nothing.
@@ -285,7 +285,7 @@ class WorkspaceOperationsPipeline internal constructor(
   } catch (failure: IOException) {
     val detail = failure.message ?: failure.toString()
     // A Root that breaks mid-operation is not policed mid-operation; it surfaces as whatever
-    // the I/O did. A read guarantees nothing changed, a mutation cannot (§5).
+    // the I/O did. A read guarantees nothing changed, a mutation cannot.
     if (mutating) Outcome.Uncertain(
       // Mutating means Scoped, and a Scoped Operation reaches here only through admission.
       Uncertainty.RootBrokeMidOperation(requireNotNull(workspace).name),
@@ -315,16 +315,16 @@ class WorkspaceOperationsPipeline internal constructor(
     is Operation.WriteFile -> writeFile(op, workspace!!, paths.single())
     is Operation.EditFile -> editFile(op, workspace!!, paths.single())
     // No lock above: a command with full account authority has nothing meaningful to lock on,
-    // and it is the concurrency cap inside that guards the machine instead (§6.6).
+    // and it is the concurrency cap inside that guards the machine instead.
     is Operation.RunCommand -> runCommand(op, workspace!!, paths.single(), arrival, runner, commandBudget, commands)
     // It names no path, so there is none in [paths]: what it collects already ran, wherever it
     // was confined to then. The Access Level was re-checked above like any other call's, which
-    // is the whole of what closes the route when a Workspace drops below Command (§4).
+    // is the whole of what closes the route when a Workspace drops below Command.
     is Operation.GetResult -> commands.collect(op, workspace!!)
   } as Outcome<R>
 
   /**
-   * A repeat Delivery (§6.4): the first reply **verbatim**, marked as the recorded result of an
+   * A repeat Delivery: the first reply **verbatim**, marked as the recorded result of an
    * Operation already performed, or a wait on the first while it is still in flight.
    *
    * The wait is the repeat's own, measured from its own arrival: a second delivery window
@@ -372,7 +372,7 @@ class WorkspaceOperationsPipeline internal constructor(
   }
 
   /**
-   * Runtime **Stop** (SPEC §6.3, §8.1). A frontend reaches it as `ManagementAct.Stop`, and the
+   * Runtime **Stop**. A frontend reaches it as `ManagementAct.Stop`, and the
    * shutdown hook reaches it directly: the act is the same either way.
    *
    * New calls are refused first, then the one kill is applied to every running Operation **in

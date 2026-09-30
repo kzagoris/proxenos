@@ -1,8 +1,8 @@
 # A systemd --user unit that starts the Proxenos Runtime at login.
 #
-# The product does not install this, and it never offers to (SPEC §8.2, §11.4). Starting at
+# The product does not install this, and it never offers to. Starting at
 # login boots the machine into a state where a Workspace at Command is reachable from ChatGPT
-# with nobody present and no human act in between. Without it the cost is the one SPEC §8.2
+# with nobody present and no human act in between. Without it the cost is the one this
 # accepts: after a reboot, ChatGPT's calls fail until you start the Runtime once.
 #
 # If you have read that and still want it:
@@ -22,7 +22,7 @@
 
 [Unit]
 Description=Proxenos Runtime
-Documentation=https://github.com/kzagoris/proxenos/blob/master/docs/SPEC.md
+Documentation=https://github.com/kzagoris/proxenos/blob/master/README.md
 
 [Service]
 Type=simple

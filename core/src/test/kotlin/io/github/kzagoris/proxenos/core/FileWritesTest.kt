@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
 
 /**
- * SPEC §4 and §6.6: the two mutating file tools, what they refuse, what they preserve, and the
+ * The two mutating file tools, what they refuse, what they preserve, and the
  * lock they serialize on. Everything here goes through the pipeline rather than the functions
  * behind it, because confinement, the Access Level and the lock are steps of the pipeline and
  * a test that skipped them would prove the wrong thing.
@@ -51,7 +51,7 @@ class FileWritesTest {
     registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
   }
 
-  /** One key per call unless a test says otherwise: a reused key is a repeat Delivery (§6.4). */
+  /** One key per call unless a test says otherwise: a reused key is a repeat Delivery. */
   private fun freshKey(): String = java.util.UUID.randomUUID().toString()
 
   private fun write(path: String, content: String, key: String = freshKey()) =
@@ -235,7 +235,7 @@ class FileWritesTest {
     assertEquals("one\r\nfour\r\nfive\r\nthree\r\n", String(Files.readAllBytes(file)))
     assertEquals(mode, Files.getPosixFilePermissions(file))
 
-    // Quoted with bare newlines it does not match: the match is byte for byte (§4), and a
+    // Quoted with bare newlines it does not match: the match is byte for byte, and a
     // near-enough edit is not one. Nothing changed, so the model can read and quote again.
     val bare = assertIs<Outcome.Failed>(operations.perform(edit("windows.txt", "four\nfive\n", "six\n")))
     assertEquals(Failure.NoMatch("api", "windows.txt"), bare.reason)
@@ -322,7 +322,6 @@ class FileWritesTest {
     assertContains(recorded.arguments, "request_id=abc-123")
   }
 
-  /** Scenario 12 of SPEC §13.2. */
   @Test
   fun `a mutation in flight when the Runtime dies reads back as Lost, and the entry survives`() = runBlocking<Unit> {
     val (registry, _, operations, locks) = wiring()
@@ -410,13 +409,12 @@ class FileWritesTest {
     writable(registry, root)
 
     // 'aa' sits at two places in 'aaa'. Counting them as one would be first-one-wins by
-    // arithmetic, which is the one thing §4 rules out.
+    // arithmetic, which is the one thing the design rules out.
     val several = assertIs<Outcome.Failed>(operations.perform(edit("notes.md", "aa", "b")))
     assertEquals(Failure.SeveralMatches("api", "notes.md", 2), several.reason)
     assertEquals("aaa\n", Files.readString(file))
   }
 
-  /** Scenario 3 of SPEC §13.2. */
   @Test
   fun `two edits on one file through two overlapping Roots serialize on the resolved real path`() =
     runBlocking<Unit> {

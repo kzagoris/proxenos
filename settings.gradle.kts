@@ -1,4 +1,4 @@
-// The six artifacts of SPEC §1. Their dependency directions are not a convention anyone has to
+// The six artifacts. Their dependency directions are not a convention anyone has to
 // remember: `proxenos.module-boundaries`, applied by the convention plugins in
 // build-logic, fails the build when a module reaches something it has not declared.
 
@@ -27,7 +27,7 @@ dependencyResolutionManagement {
   repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
     mavenCentral()
-    // SPEC §12: `tui` needs this. Compose pulls androidx.lifecycle:lifecycle-runtime and
+    // `tui` needs this. Compose pulls androidx.lifecycle:lifecycle-runtime and
     // androidx.annotation:annotation, neither of which is on Maven Central. Leave it out
     // and the failure is a plain "Could not find androidx.lifecycle:lifecycle-runtime"
     // that says nothing about Compose.

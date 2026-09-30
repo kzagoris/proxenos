@@ -16,7 +16,7 @@ and the advisory is published once users have had a chance to update.
 ## In scope
 
 - A call that reads, writes or runs anything beyond its Workspace's Access Level, or outside its
-  Root where confinement applies (see `CONTEXT.md` and `docs/SPEC.md`).
+  Root where confinement applies (see `CONTEXT.md`).
 - A withheld (None) or Broken Workspace that is visible or reachable from a tool call.
 - The control socket accepting a peer other than the owning user.
 - Credentials leaking into logs, Activity, child process environments or tool output.

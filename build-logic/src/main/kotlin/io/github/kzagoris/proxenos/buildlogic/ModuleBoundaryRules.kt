@@ -29,7 +29,7 @@ internal fun boundaryReport(
   append(
     "Everything on $subject's compile and runtime classpath has to be named in a " +
       "moduleBoundaries { mayReach(...) } block, transitive arrivals included. If the " +
-      "dependency is wanted, declare it there and say why in SPEC §1; if it is not, the " +
+      "dependency is wanted, declare it there and say why in the change; if it is not, the " +
       "build has just caught what discipline would not have.",
   )
 }

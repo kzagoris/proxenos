@@ -12,7 +12,6 @@ shows Activity. Linux only.
 
 - `CONTEXT.md` — the domain language. Use its terms exactly (Workspace, Root, Access Level,
   Operation, Activity, …) and avoid the synonyms it lists.
-- `docs/SPEC.md` — the canonical implementation spec. Code comments cite it by section (`§8.4`).
 - `docs/adr/` — decisions whose reasoning a future change would otherwise undo. Read the relevant
   ADR before changing the behaviour it covers; record a new one when you reverse it.
 
@@ -28,13 +27,13 @@ python3 tui/drive.py            # pty harness for the dashboard; needs installDi
 
 ## Modules
 
-`core-api`, `core`, `mcp`, `control`, `runtime`, `tui` (SPEC §1). Each module declares what it may
+`core-api`, `core`, `mcp`, `control`, `runtime`, `tui`. Each module declares what it may
 reach in a `moduleBoundaries { mayReach(...) }` block, and the build fails when a module reaches
 anything else, transitively. If a new dependency is wanted, declare it there and justify it in
-SPEC §1; frontends must reach the core only through `core-api` and the control socket.
+the change; frontends must reach the core only through `core-api` and the control socket.
 
 ## Conventions
 
 - Tests exercise behaviour through public interfaces. No tautological or change-detector tests.
 - Credentials never live inside a checkout; `.gitignore` refuses `credentials` and `.env`.
-- Keep comments at the density of the surrounding code: they explain *why*, citing SPEC or an ADR.
+- Keep comments at the density of the surrounding code: they explain *why*, citing an ADR where one applies.

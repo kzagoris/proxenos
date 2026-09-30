@@ -16,7 +16,7 @@ import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import java.nio.file.Path
 
 /**
- * The home screen's state (SPEC §10.2), and everything a key does to it. Nothing here draws,
+ * The home screen's state, and everything a key does to it. Nothing here draws,
  * dials or waits: a key yields the next [Home] and at most one [Command] for the caller to carry
  * out, so the screen's behaviour is testable without a terminal, a Runtime or Mosaic.
  *
@@ -30,7 +30,7 @@ data class Home(
   val scroll: Int = 0,
   /** Selected workspace identity. Manage never falls back to another workspace after removal. */
   val chip: WorkspaceId? = null,
-  /** The stage the Review cursor rests on (SPEC §10.2). */
+  /** The stage the Review cursor rests on. */
   val stage: Stage = Stage.Runtime,
   /** The selected band or feed row, by identity, for the same reason. Null is no selection. */
   val selected: Target? = null,
@@ -39,7 +39,7 @@ data class Home(
   val notice: Notice? = null,
   /**
    * What each running command has said so far, as last read with [ManagementAct.ReadOutput]:
-   * the buffer `get_result` reads, never a copy of it kept up by this screen (SPEC §6.5).
+   * the buffer `get_result` reads, never a copy of it kept up by this screen.
    */
   val outputs: Map<ActivityEntryId, RunningCommand> = emptyMap(),
 ) {
@@ -56,13 +56,13 @@ data class Home(
 
   /**
    * The feed's rows **in the order they are drawn**, oldest at the top: consecutive `get_result`
-   * polls of one Handle fold into one counted row (SPEC §10.2) — a display fold, never an edit,
+   * polls of one Handle fold into one counted row — a display fold, never an edit,
    * so every poll is still in [feed].
    */
   val feedRows: List<FeedRow> get() = folded(feed)
 
   /**
-   * The running-work band (SPEC §10.2): every `run_command` running, oldest at the top. Bounded
+   * The running-work band: every `run_command` running, oldest at the top. Bounded
    * by the Runtime-wide cap, so it cannot crowd out the feed, and empty — drawn as nothing at all
    * — when nothing is running.
    */
@@ -71,7 +71,7 @@ data class Home(
   /**
    * The cursor's target list **in display order**: the band, then the feed's rows beneath it.
    * There is no other: a list walked in one order while drawn in the other moves the arrow keys
-   * the wrong way (SPEC §13.1).
+   * the wrong way.
    */
   val targets: List<Target> get() = band.map { Target.Band(it.entry) } + feedRows.map { Target.Feed(it.id) }
 
@@ -245,7 +245,7 @@ data class Home(
 enum class Page { Workspaces, Manage, Activity, Review }
 
 /**
- * One link in the chain a ChatGPT call travels (SPEC §10.2), in the order they can be measured
+ * One link in the chain a ChatGPT call travels, in the order they can be measured
  * and fixed: the Runtime must run before the tunnel can link, and the tunnel must link before
  * the connector matters. Each is measured on its own, and none is inferred from another.
  */
@@ -314,7 +314,7 @@ data class Step(val home: Home, val command: Command? = null)
 /** What a key asks the caller to do beyond changing the screen. */
 sealed interface Command {
   data class Perform(val act: ManagementAct<*>, val done: String) : Command
-  /** TryOperation, whose answer is the Operation's own outcome and is said as one (SPEC §9). */
+  /** TryOperation, whose answer is the Operation's own outcome and is said as one. */
   data class Try(val op: Operation<*>, val tool: String, val workspace: String) : Command
   data object StartRuntime : Command
   data object Quit : Command
@@ -349,7 +349,7 @@ sealed interface Overlay {
   fun press(key: Key, home: Home): Step
 
   /**
-   * One stage's detail (SPEC §10.2): what its state means, and the one action the stage owns —
+   * One stage's detail: what its state means, and the one action the stage owns —
    * `[S]`/`[X]` on the Runtime, `[d]` on the Tunnel, `[C]` on the Connector. Actions live here
    * rather than on the Review list, so a fix sits with the stage it fixes.
    */
@@ -370,7 +370,7 @@ sealed interface Overlay {
   }
 
   /**
-   * The per-Workspace detail pane (SPEC §10.2): the catalog against this Workspace's current
+   * The per-Workspace detail pane: the catalog against this Workspace's current
    * level, and TryOperation on the entry under the cursor, in the same view.
    */
   data class WorkspaceDetail(val workspace: WorkspaceId, val tool: Int = 0) : Overlay {
@@ -391,7 +391,7 @@ sealed interface Overlay {
   }
 
   /**
-   * `s`, then `y` stops; any other key cancels (SPEC §10.2). The Operation is named by entry and
+   * `s`, then `y` stops; any other key cancels. The Operation is named by entry and
    * read from the stream when drawn, so the elapsed time it states is the one at the moment of
    * reading, and a command that ended while this was open is not confirmed as though it ran.
    */

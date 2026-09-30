@@ -6,7 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * What this machine keeps about the connector in ChatGPT (SPEC §11.5, ADR 0007), which it cannot
+ * What this machine keeps about the connector in ChatGPT (ADR 0007), which it cannot
  * see at all: the catalog fingerprint the user last said their connector was built against — the
  * one persisted fact in the design about something outside this machine — compared with the
  * [fingerprint] of the catalog this Runtime serves.

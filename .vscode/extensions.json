@@ -10,7 +10,7 @@
     "tamasfe.even-better-toml",
     // scripts/wizard and scripts/install-tunnel-client.
     "timonwong.shellcheck",
-    // SPEC, ADRs, CONTEXT.md.
+    // ADRs, CONTEXT.md.
     "davidanson.vscode-markdownlint",
     // Issues and PRs live on GitHub.
     "github.vscode-pull-request-github",

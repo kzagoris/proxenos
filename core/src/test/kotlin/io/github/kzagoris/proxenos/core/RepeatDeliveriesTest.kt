@@ -17,7 +17,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * SPEC §6.4 and scenario 8 of §13.2: the same `request_id` arriving again. The transport mints
+ * The same `request_id` arriving again. The transport mints
  * the repeat byte for byte, so everything here goes through [WorkspaceOperations] with the same
  * Operation handed in twice — which is exactly what a repeat Delivery is by the time it reaches
  * the core.

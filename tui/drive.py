@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The pty harness for the `tui` artifact (SPEC §13.1).
+"""The pty harness for the `tui` artifact.
 
 Drives the installed `tui` through a pseudo-terminal against a real `runtime`, in a throwaway
 HOME, and judges what the keys did by reading the screen back — not merely that a key was

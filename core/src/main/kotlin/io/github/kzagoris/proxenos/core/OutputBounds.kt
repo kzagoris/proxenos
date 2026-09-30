@@ -34,7 +34,7 @@ internal fun String.takeUtf8(budget: Int): String {
 internal class HeadAndTail<T>(val kept: List<T>, val droppedBytes: Int, val droppedItems: Int)
 
 /**
- * SPEC §6.5's bound, as one implementation rather than as each caller's own arithmetic: keep
+ * The output bound, as one implementation rather than as each caller's own arithmetic: keep
  * what fits in [head] from the front and what fits in [tail] from the back, and name the bytes
  * between them. Truncation is never silent, and the marker is a byte count.
  *
@@ -72,7 +72,7 @@ internal fun <T> headAndTail(items: List<T>, head: Int, tail: Int, weight: (T) -
 internal class BoundedText(val text: String, val droppedBytes: Int)
 
 /**
- * SPEC §6.5's bound over a stream of bytes: 32 KiB from the front, 32 KiB from the back, and a
+ * The output bound over a stream of bytes: 32 KiB from the front, 32 KiB from the back, and a
  * count of what fell between them. Streamed rather than collected, because a generated file's
  * diff — and a long build's output — is megabytes, and holding it whole to then throw away the
  * middle is how a Runtime runs out of memory.

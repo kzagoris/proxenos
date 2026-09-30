@@ -19,9 +19,9 @@ import java.nio.file.Path
 import kotlinx.serialization.json.JsonObject
 
 /**
- * The logical host the tunnel dials this Runtime by (SPEC §11.2). It is never registered with
+ * The logical host the tunnel dials this Runtime by. It is never registered with
  * OpenAI and the user never sees it: it is a local flag the Runtime passes to the child it
- * launched, so the Runtime owns both ends of the coupling §7 found and **one value seeds
+ * launched, so the Runtime owns both ends of the coupling and **one value seeds
  * them**. Two fields that can disagree is exactly how the bare
  * `403 {"code":-32000,"message":"Invalid Host: ..."}` gets built.
  *
@@ -41,7 +41,7 @@ data class LogicalHost(val name: String = DEFAULT) {
   val allowedHosts: List<String> get() = listOf(name)
 
   companion object {
-    /** SPEC §11.2: the compiled-in constant. A `config.toml` override replaces this one value. */
+    /** The compiled-in constant. A `config.toml` override replaces this one value. */
     const val DEFAULT: String = "proxenos.internal"
 
     /** The SDK's own default endpoint path. `/`, `/api/mcp`, `/message` and `/sse` are 404. */
@@ -50,12 +50,12 @@ data class LogicalHost(val name: String = DEFAULT) {
 }
 
 /**
- * The catalog, served over a Unix domain socket (SPEC §3, §7). One of the two seams: this is
+ * The catalog, served over a Unix domain socket. One of the two seams: this is
  * what the tunnel child dials into, and it carries the eleven and nothing else — the
  * management acts live behind the separate control socket, so raising an Access Level is not
  * something a conversation can attempt.
  *
- * [operations] arrives with its Origin already stamped in by the composition root (§9), so
+ * [operations] arrives with its Origin already stamped in by the composition root, so
  * nothing here can claim an Origin that is not its own.
  */
 class McpEndpoint(
@@ -91,7 +91,7 @@ class McpEndpoint(
 
   /**
    * One MCP server per session, carrying the catalog as the core holds it. `listChanged` is
-   * false and honest: the catalog is flat and static (§3), and a dynamic one would ride on
+   * false and honest: the catalog is flat and static, and a dynamic one would ride on
    * `tools/list_changed` reaching ChatGPT, which is not established.
    */
   private fun server(): Server {
@@ -112,7 +112,7 @@ class McpEndpoint(
   }
 
   /**
-   * An operation-level problem is a tool result, never a JSON-RPC protocol error (§5): the
+   * An operation-level problem is a tool result, never a JSON-RPC protocol error: the
    * model has to read it and act on it, and a protocol error is the client library's to
    * handle. Measured about this SDK, and why nothing here throws to make the distinction: a
    * handler that throws has its exception caught and returned as an `isError` result anyway,
@@ -138,7 +138,7 @@ class McpEndpoint(
   private companion object {
     const val SERVER_NAME = "proxenos"
 
-    /** What the handshake reports. Packaging (SPEC §14 item 15) is what makes this a build fact. */
+    /** What the handshake reports. Packaging is what makes this a build fact. */
     const val SERVER_VERSION = "0.1.0"
   }
 }

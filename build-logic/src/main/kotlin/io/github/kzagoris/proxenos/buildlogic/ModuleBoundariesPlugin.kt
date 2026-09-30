@@ -25,10 +25,10 @@ abstract class ModuleBoundariesExtension {
 }
 
 /**
- * Turns SPEC §1's dependency directions from a convention into a build failure.
+ * Turns the modules' dependency directions from a convention into a build failure.
  *
  * The check runs on the main classpaths only. Test classpaths are deliberately left alone:
- * SPEC §13.1 wants the control protocol driven by the management client against an in-process
+ * The control protocol is driven by the management client against an in-process
  * core, which means one test somewhere legitimately sees both sides. The guarantee this plugin
  * defends is about what the shipped module can reach.
  */

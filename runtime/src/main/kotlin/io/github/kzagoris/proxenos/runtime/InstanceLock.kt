@@ -7,7 +7,7 @@ import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
 
 /**
- * One Runtime at a time (SPEC §8.2). [forSocket] is the lock §8.2 names, on a file beside the
+ * One Runtime at a time. [forSocket] is the lock, on a file beside the
  * MCP socket rather than on the socket file itself, and it is taken **before** anything binds:
  * Ktor unlinks and rebinds over a socket file it finds, so a second Runtime that got
  * as far as binding would already have taken the first one's socket away from it.

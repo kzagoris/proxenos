@@ -12,7 +12,7 @@ import kotlin.test.*
 
 /**
  * The shipped `install-tunnel-client` script, judged by the one reader that matters: the
- * Runtime's own lookup of `tunnel-client` (SPEC §11). A release is served from a directory laid
+ * Runtime's own lookup of `tunnel-client`. A release is served from a directory laid
  * out as GitHub lays out `releases/download/`, so nothing here reaches the network.
  */
 class TunnelClientInstallTest {

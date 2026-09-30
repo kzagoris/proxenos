@@ -12,7 +12,7 @@ import kotlin.test.*
 import kotlin.time.Duration
 
 /**
- * The three Git tools (SPEC §4). Run against a real `git` and real temporary repositories, per
+ * The three Git tools. Run against a real `git` and real temporary repositories, per
  * [ADR 0002](../../../../../../../../docs/adr/0002-no-abstraction-below-the-core.md): a fake
  * `git` would agree with whatever this file believed about porcelain, which is the one thing
  * worth checking.
@@ -235,7 +235,7 @@ class GitToolsTest {
         val failed = assertIs<Outcome.Failed>(operations.perform(op), "$op")
         assertEquals(Failure.NoRepository("api", root.toString()), failed.reason)
       }
-      // Flat and static (§3): the entries are there whether or not there is anything to read.
+      // Flat and static: the entries are there whether or not there is anything to read.
       assertTrue(operations.catalog.map { it.name }.containsAll(listOf("git_status", "git_diff", "git_log")))
     }
 
@@ -265,12 +265,12 @@ class GitToolsTest {
   }
 
   @Test
-  fun `the chokepoint runs at the repository root, with the flag and the environment §4 fixes`() {
+  fun `the chokepoint runs at the repository root, with the fixed flag and environment`() {
     // The argument vectors the three tools really send are checked above, against a recording
     // `git`. This is the shape of the chokepoint itself, which is where those two arrive.
     val builder = GitTools().builder(temporary, listOf("status"))
     assertEquals("--no-optional-locks", builder.command()[1])
-    // §4: a repository needing credentials fails instead of hanging on a prompt nobody can see.
+    // A repository needing credentials fails instead of hanging on a prompt nobody can see.
     assertEquals("0", builder.environment()["GIT_TERMINAL_PROMPT"])
     assertEquals(listOf("-C", temporary.toString()), builder.command().subList(2, 4))
   }

@@ -7,7 +7,7 @@ dependencies {
   // core does not leak into anyone who later depends on mcp.
   implementation(project(":core"))
   implementation(libs.mcp.server)
-  // kotlin-sdk-server ships no engine (SPEC §12), so the adapter brings its own. CIO is the
+  // kotlin-sdk-server ships no engine, so the adapter brings its own. CIO is the
   // only Ktor engine that can serve a Unix socket.
   implementation(libs.ktor.server.cio)
 

@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * The append-only account of what the Runtime did (SPEC §10.1). It is load-bearing
+ * The append-only account of what the Runtime did. It is load-bearing
  * rather than a convenience precisely because there is no per-call approval prompt and a
  * Workspace left at Command can run anything with nobody present.
  *
@@ -130,18 +130,18 @@ class Activity(
   }
 
   /**
-   * A running command was handed to the Runtime past its call (§6.2). Told to a frontend and not
+   * A running command was handed to the Runtime past its call. Told to a frontend and not
    * written: what the account says of it is its outcome, once it has one.
    */
   fun promoted(id: ActivityEntryId) = feed.publish(RuntimeEvent.Change.OperationPromoted(id))
 
-  /** The one kill has reached [phase] on a running command (§6.3). Told, not written, like [promoted]. */
+  /** The one kill has reached [phase] on a running command. Told, not written, like [promoted]. */
   fun stopping(id: ActivityEntryId, phase: StopPhase) = feed.publish(RuntimeEvent.Change.OperationStopping(id, phase))
 
-  /** The Operation completed and its answer never reached ChatGPT (§10.1). */
+  /** The Operation completed and its answer never reached ChatGPT. */
   fun undelivered(id: ActivityEntryId) = appendFact(UNDELIVERED, id)
 
-  /** A Promoted Operation completed and nobody has collected its outcome (§10.1). */
+  /** A Promoted Operation completed and nobody has collected its outcome. */
   fun unclaimed(id: ActivityEntryId) = appendFact(UNCLAIMED, id)
 
   /**
@@ -155,7 +155,7 @@ class Activity(
     )
   }
 
-  /** The user has seen an unresolved outcome. An appended fact, never an edit (§10.1). */
+  /** The user has seen an unresolved outcome. An appended fact, never an edit. */
   fun acknowledge(id: ActivityEntryId) = appendFact(ACK, id)
 
   /** The account as the frontend reads it, oldest first, with expired entries already gone. */
@@ -414,7 +414,7 @@ class Activity(
   companion object {
     private const val NEWLINE: Byte = '\n'.code.toByte()
 
-    /** SPEC §11: 30 days. A tunable, which is how a test asks a question about expiry in a second. */
+    /** 30 days. A tunable, which is how a test asks a question about expiry in a second. */
     val DEFAULT_RETENTION: Duration = 30.days
 
     /** How often a Runtime that never restarts compacts anyway. */

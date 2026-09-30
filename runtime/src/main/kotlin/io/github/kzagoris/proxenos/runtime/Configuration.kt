@@ -23,10 +23,10 @@ data class Configuration(
 )
 
 /**
- * Sources the Runtime's configuration (SPEC §11), and **the user supplies exactly one thing**:
+ * Sources the Runtime's configuration, and **the user supplies exactly one thing**:
  * the credentials file. Everything else has a default.
  *
- * Precedence, lowest first: the defaults in §11's table, then `config.toml` beside the
+ * Precedence, lowest first: the defaults, then `config.toml` beside the
  * credentials file, then environment variables. `config.toml` may override any path or tunable
  * and never the credential. The environment may override paths only, and never the credential
  * either — a key in a shell profile or a unit file is a key in a backup — so
@@ -56,7 +56,7 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration {
         "it from a login session, or set mcp_socket and control_socket in $tomlFile.",
     )
   val mcpSocket = socket("mcp.sock", "mcp_socket", "PROXENOS_MCP_SOCKET")
-  // The tunnel child is told the MCP socket inside a comma-separated flag (SPEC §11.2), so a
+  // The tunnel child is told the MCP socket inside a comma-separated flag, so a
   // comma in the path would be read as the start of another field.
   if (',' in mcpSocket.toString()) throw StartRefused("The MCP socket path $mcpSocket contains a comma, which the tunnel child's --mcp.server-url flag cannot carry.")
   val controlSocket = socket("control.sock", "control_socket", "PROXENOS_CONTROL_SOCKET")
@@ -114,7 +114,7 @@ private val MAX_POLL_TIMEOUT = 10.minutes
 private val HOSTNAME = Regex("[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*")
 
 /**
- * The one value both ends of the tunnel coupling are derived from (SPEC §11.2). An override
+ * The one value both ends of the tunnel coupling are derived from. An override
  * replaces the host and nothing else: the scheme stays `http://`, because the tunnel child
  * terminates no TLS on the way to a Unix socket.
  */
@@ -140,7 +140,7 @@ private fun refuseUnbindable(socket: Path) {
 
 private const val SUN_PATH_BYTES = 108
 
-/** SPEC §11: `tunnel-client` on `PATH`, else the state directory's `tools/`. */
+/** `tunnel-client` on `PATH`, else the state directory's `tools/`. */
 private fun findTunnelClient(searchPath: String, tools: Path): Path {
   // `+ listOf(...)`, not `+ path`: a Path is an Iterable of its own name segments.
   val candidates = searchPath.split(':').filter { it.isNotEmpty() }.map { Path.of(it).resolve(TUNNEL_CLIENT) } +

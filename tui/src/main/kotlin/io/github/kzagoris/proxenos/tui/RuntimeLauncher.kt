@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 class StartFailed(message: String) : Exception(message)
 
 /**
- * Finds the Runtime on the control socket, and starts it when it is not there (SPEC §10.2).
+ * Finds the Runtime on the control socket, and starts it when it is not there.
  *
  * A Runtime started here outlives this frontend — closing the TUI leaves exposure exactly as it
  * was — so it is started in a session of its own, with no terminal: a Ctrl-C or a closed window

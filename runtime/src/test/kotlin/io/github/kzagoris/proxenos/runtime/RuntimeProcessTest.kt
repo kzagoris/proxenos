@@ -26,7 +26,7 @@ import kotlin.test.*
 
 /**
  * The `runtime` artifact as it is actually run: its own JVM, started from `main()`, with a stub
- * script standing in for `tunnel-client` (SPEC §13.1). Nothing here can be asked of an object
+ * script standing in for `tunnel-client`. Nothing here can be asked of an object
  * in this test's JVM — whose environment the Runtime has, what its shutdown leaves behind,
  * whether a second one starts — so each test asks it of a real process.
  *

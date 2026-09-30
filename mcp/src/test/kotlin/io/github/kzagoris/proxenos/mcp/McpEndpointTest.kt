@@ -48,7 +48,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * The transport, tested as a transport. SPEC §13.1 exercises the eleven through
+ * The transport, tested as a transport. The eleven are exercised through
  * `WorkspaceOperations` with no transport at all, which is what leaves this file its subject:
  * a real MCP client over the real Unix socket, so the handshake, the rendered catalog and the
  * envelope around an Outcome are observed rather than inferred.
@@ -80,7 +80,7 @@ class McpEndpointTest {
 
   @Test
   fun `a repeat Delivery reads as the first reply verbatim, saying it is a recorded result`() = runBlocking {
-    // SPEC §6.4: the transport repeats a call byte for byte. The second edit_file finds zero
+    // The transport repeats a call byte for byte. The second edit_file finds zero
     // matches if it runs, and zero matches is `failed` about a change already made.
     val root = Files.createDirectory(temporary.resolve("project"))
     Files.writeString(root.resolve("notes.md"), "alpha\n")
@@ -193,7 +193,7 @@ class McpEndpointTest {
 
   @Test
   fun `a Promoted reply carries its Handle and is not worded as success`() = runBlocking {
-    // SPEC §6.2, ADR 0003: Promoted is a reply, not a fourth outcome, and a sentence that read
+    // ADR 0003: Promoted is a reply, not a fourth outcome, and a sentence that read
     // like a success is a model's cue to move on from a build it has not seen the end of.
     val handle = Handle.of("h-1")
     val running = RunningCommand("make", ".", 45.seconds, "compiling\n", 0)
@@ -370,7 +370,7 @@ class McpEndpointTest {
     }
   }
 
-  /** What the composition root does (SPEC §9): one pipeline, and the ChatGPT surface's view of it. */
+  /** What the composition root does: one pipeline, and the ChatGPT surface's view of it. */
   private fun pipeline(): Pair<WorkspaceRegistry, WorkspaceOperations> {
     val registry = WorkspaceRegistry(temporary.resolve("registry.properties"))
     val activity = Activity(temporary.resolve("activity"))

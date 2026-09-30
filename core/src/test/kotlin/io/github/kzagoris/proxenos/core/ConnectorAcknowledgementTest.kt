@@ -9,7 +9,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * SPEC §13.2 scenario 14, and all it can prove: the banner behaves. Its subject is the connector
+ * All this can prove: the banner behaves. Its subject is the connector
  * in ChatGPT, which nothing here can see, so every "confirmed" below is the user's word read back
  * and never a claim that a connector exists.
  *

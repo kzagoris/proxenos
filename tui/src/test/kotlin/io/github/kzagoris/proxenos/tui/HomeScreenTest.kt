@@ -209,9 +209,9 @@ class HomeScreenTest {
       "Connected means the tunnel between this machine and OpenAI is up. It does not mean ChatGPT still has a " +
         "connector pointed at it: deleting the connector in ChatGPT leaves this reading unchanged, and its catalog " +
         "is a snapshot that never refreshes." in tunnel,
-      "the SPEC's sentence, word for word",
+      "the caveat's sentence, word for word",
     )
-    // SPEC §10.3 keeps it in every state: the caveat explains the signal, not one reading of it.
+    // It stays in every state: the caveat explains the signal, not one reading of it.
     assertTrue(Wording.CONNECTED_CAVEAT in attached(state = RuntimeState.Failed(null)).keys("i", "ArrowDown", "r").prose())
     assertTrue(Wording.CONNECTED_CAVEAT in Home().detached(NOT_RUNNING).keys("i", "ArrowDown", "r").prose())
   }

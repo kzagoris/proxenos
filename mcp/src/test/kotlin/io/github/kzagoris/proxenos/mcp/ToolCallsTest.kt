@@ -56,7 +56,7 @@ class ToolCallsTest {
 
   @Test
   fun `a tool name no Operation is bound to is answered rather than decoded`() {
-    // The catalog is flat and static (§3), and an entry is published whether or not its
+    // The catalog is flat and static, and an entry is published whether or not its
     // Operation has landed — so a call to one is answered rather than quietly dropped.
     val unbound = OperationSpec("some_later_tool", "Not in this build.", AccessLevel.Read, emptyList())
     assertEquals(ToolCall.Unbound("some_later_tool"), decode(unbound, fullyPopulated(unbound)))
@@ -64,8 +64,8 @@ class ToolCallsTest {
 
   /**
    * The two the core has something to say about, handed on the way it expects them: a Workspace
-   * that did not arrive is null, so the failure names the exposed Workspaces (§3), and a
-   * Delivery key that did not arrive is blank, so the failure says a mutation needs one (§6.4).
+   * that did not arrive is null, so the failure names the exposed Workspaces, and a
+   * Delivery key that did not arrive is blank, so the failure says a mutation needs one.
    */
   @Test
   fun `an absent workspace and an absent request_id are the core's to answer`() {

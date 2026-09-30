@@ -6,7 +6,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 interface WorkspaceOperations {
-  /** The catalog as data (SPEC §3): the core owns it, an adapter only renders it. */
+  /** The catalog as data: the core owns it, an adapter only renders it. */
   val catalog: List<OperationSpec>
 
   suspend fun <R> perform(op: Operation<R>): Outcome<R>
@@ -55,30 +55,30 @@ sealed interface Operation<R> {
   sealed interface Scoped<R> : Operation<R> {
     /**
      * Null is the argument not arriving. It is never defaulted — not even when exactly one
-     * Workspace is exposed (SPEC §3), because a stale selection edits the right file in the
+     * Workspace is exposed, because a stale selection edits the right file in the
      * wrong project and nothing in the transcript looks wrong.
      */
     val workspace: String?
 
-    /** Path arguments resolved against the Root and confined to it before the work runs (§2.4). */
+    /** Path arguments resolved against the Root and confined to it before the work runs. */
     val confinedPaths: List<String>
 
     /**
-     * The path this Operation writes to, whose resolved real path keys the mutation lock
-     * (§6.6); null for a read. It must be one of [confinedPaths], so that the path locked and
+     * The path this Operation writes to, whose resolved real path keys the mutation lock;
+     * null for a read. It must be one of [confinedPaths], so that the path locked and
      * the path written are one resolution: between two of them a symlink can move, and a
      * mutation holding the lock for a path it is not writing to locks nothing.
      */
     val mutatedPath: String?
 
     /**
-     * The Delivery key this Operation carries (§6.4); null for one that carries none, which
+     * The Delivery key this Operation carries; null for one that carries none, which
      * is every read. A step of the pipeline like the others here, so that a mutating
      * Operation whose author forgot the key does not compile — the key is what tells one
      * arrival of an Operation from a repeat of it, and a mutation without one is the case
      * ADR 0004 exists to prevent.
      *
-     * Named for what it is rather than for the wire, where §4 fixes it as `request_id`:
+     * Named for what it is rather than for the wire, where it is `request_id`:
      * "request" is a word the glossary rules out, since one Delivery is not one Operation.
      */
     val deliveryKey: String?
@@ -99,7 +99,7 @@ sealed interface Operation<R> {
   }
 
   /**
-   * The Root's own entries when [path] is absent. The path is confined like any other (§2.4),
+   * The Root's own entries when [path] is absent. The path is confined like any other,
    * so a directory reached through a symlink that leaves the Root is refused rather than listed.
    */
   @Serializable
@@ -116,7 +116,7 @@ sealed interface Operation<R> {
   }
 
   /**
-   * Filename and content in one call (§4). How it enumerates is a decision rather than a
+   * Filename and content in one call. How it enumerates is a decision rather than a
    * detail: inside a repository it asks Git, which is how the project's own ignore rules apply
    * without anybody reimplementing `.gitignore`.
    */
@@ -140,7 +140,7 @@ sealed interface Operation<R> {
   }
 
   /**
-   * The three read-only Git tools (§4). They sit at [AccessLevel.Read], so a Workspace can show
+   * The three read-only Git tools. They sit at [AccessLevel.Read], so a Workspace can show
    * what changed without granting command execution; Git *mutation* is not in the first release,
    * and `run_command` reaches it once commands are enabled.
    *
@@ -158,7 +158,7 @@ sealed interface Operation<R> {
     override val deliveryKey: String? get() = null
   }
 
-  /** Parsed from porcelain output rather than from the human-readable form (§4). */
+  /** Parsed from porcelain output rather than from the human-readable form. */
   @Serializable
   data class GitStatus(override val workspace: String?) : Git<GitStatusReport>
 
@@ -181,7 +181,7 @@ sealed interface Operation<R> {
   ) : Git<GitLogReport>
 
   /**
-   * A file written whole (§4). Missing parent directories are **not** created: a hallucinated
+   * A file written whole. Missing parent directories are **not** created: a hallucinated
    * path fails loudly rather than growing a tree.
    *
    * It lands by temp file and atomic rename, which replaces the inode — so hardlinks to the
@@ -192,7 +192,7 @@ sealed interface Operation<R> {
     override val workspace: String?,
     val path: String,
     val content: String,
-    /** Required, and `request_id` on the wire (§6.4): a repeat Delivery of it is answered with
+    /** Required, and `request_id` on the wire: a repeat Delivery of it is answered with
      * the first's reply rather than doing the work again. */
     override val deliveryKey: String,
   ) : Scoped<FileWritten> {
@@ -201,7 +201,7 @@ sealed interface Operation<R> {
   }
 
   /**
-   * One byte-exact replacement that must match **exactly once** (§4). Zero matches and several
+   * One byte-exact replacement that must match **exactly once**. Zero matches and several
    * are both refused, and several names the count rather than taking the first: the uniqueness
    * requirement *is* the concurrency check — if another process changed that region the match
    * no longer hits — which is why there is no mtime or hash precondition argument here, and
@@ -214,7 +214,7 @@ sealed interface Operation<R> {
     /** Byte-exact text that must occur exactly once; never empty, which occurs everywhere. */
     val oldText: String,
     val newText: String,
-    /** Required, and `request_id` on the wire (§6.4): a repeat Delivery of it is answered with
+    /** Required, and `request_id` on the wire: a repeat Delivery of it is answered with
      * the first's reply rather than doing the work again. */
     override val deliveryKey: String,
   ) : Scoped<FileWritten> {
@@ -223,17 +223,17 @@ sealed interface Operation<R> {
   }
 
   /**
-   * A command run through `/bin/sh -c` (§4) — the shell semantics a model actually writes, and
+   * A command run through `/bin/sh -c` — the shell semantics a model actually writes, and
    * a fixed interpreter rather than whatever `$SHELL` happens to be.
    *
    * **The Root is routing context here, not confinement.** A command at [AccessLevel.Command]
    * runs with the full authority of the user's Linux account, which is wider than the Root: it
-   * can read `~/.ssh` whatever §2.4 says about a path argument. [cwd] is a path argument like
+   * can read `~/.ssh` whatever confinement says about a path argument. [cwd] is a path argument like
    * any other and *is* confined, so the Root stops confining what a command does, not where the
    * Runtime starts it. Mandatory sandboxing was considered and rejected by the user; this is the
    * one place the workspace metaphor stops being true, and it must not be quietly narrowed.
    *
-   * It takes no mutation lock (§6.6) — there is nothing meaningful to lock on a command with
+   * It takes no mutation lock — there is nothing meaningful to lock on a command with
    * full account authority — and is bounded instead by [COMMAND_CONCURRENCY_CAP].
    */
   @Serializable
@@ -243,7 +243,7 @@ sealed interface Operation<R> {
     val command: String,
     /** Working directory relative to the Root; null is the Root itself. */
     val cwd: String? = null,
-    /** Required, and `request_id` on the wire (§6.4). */
+    /** Required, and `request_id` on the wire. */
     override val deliveryKey: String,
   ) : Scoped<CommandReply> {
     /** The working directory as it is spoken of: the argument, or the Root it defaults to. */
@@ -255,12 +255,12 @@ sealed interface Operation<R> {
   }
 
   /**
-   * Collects a Promoted Operation's output once the call that started it has ended (§4, §6.2).
+   * Collects a Promoted Operation's output once the call that started it has ended.
    *
    * **The Access Level is re-checked here on every call**, and that is the point of the entry
    * rather than a side effect of the pipeline: a Workspace lowered to Read stops the model
    * collecting output from a command already in flight, which is what a user lowering the dial
-   * means by it. Note the deliberate asymmetry with a repeat Delivery (§6.4), which serves the
+   * means by it. Note the deliberate asymmetry with a repeat Delivery, which serves the
    * stored reply whatever the level now is — that is not a fresh decision by anybody, and this
    * is a call the model chose to make.
    *
@@ -284,21 +284,21 @@ sealed interface Operation<R> {
   }
 
   companion object {
-    /** SPEC §4: the default ceiling, above which a model pages deliberately. */
+    /** The default ceiling, above which a model pages deliberately. */
     const val DEFAULT_LINE_CEILING: Int = 2000
 
-    /** SPEC §6.5: 64 KiB per Operation. Truncation is never silent. */
+    /** 64 KiB per Operation. Truncation is never silent. */
     const val OUTPUT_CAP_BYTES: Int = 64 * 1024
 
     /**
-     * SPEC §6.5: a cut output keeps both ends — where it began and how it ended. The two are
+     * A cut output keeps both ends — where it began and how it ended. The two are
      * derived from the one cap rather than written down again, so they cannot drift past it.
      */
     const val OUTPUT_HEAD_BYTES: Int = OUTPUT_CAP_BYTES / 2
     const val OUTPUT_TAIL_BYTES: Int = OUTPUT_CAP_BYTES - OUTPUT_HEAD_BYTES
 
     /**
-     * What a search returns at most (§4). A search is a locator — the model reads what it
+     * What a search returns at most. A search is a locator — the model reads what it
      * found with `read_file` — so the cap is on hits rather than on bytes, and it is low
      * enough that a one-letter query over a large project is answered rather than endured.
      */
@@ -311,16 +311,16 @@ sealed interface Operation<R> {
     const val SEARCH_LINE_CAP_BYTES: Int = 1024
 
     /**
-     * §4, §6.2: search is time-bounded rather than Promoted, and the bound sits well inside
+     * Search is time-bounded rather than Promoted, and the bound sits well inside
      * the Runtime's 45s budget so that what it found is still serialized and answered.
      */
     val SEARCH_BUDGET: Duration = 30.seconds
 
-    /** SPEC §4: what a `git_log` with no `limit` returns. */
+    /** What a `git_log` with no `limit` returns. */
     const val GIT_LOG_COMMITS: Int = 20
 
     /**
-     * §4, §6.2: how long one Git invocation is given. There is no Promotion for a Git tool and
+     * How long one Git invocation is given. There is no Promotion for a Git tool and
      * none of them can plausibly take this long, so the budget is not a bound anybody is meant
      * to meet — it is what keeps a `git` that has parked on a slow filesystem from holding a
      * Runtime thread for the rest of the process's life. Well inside the 45s call budget, so
@@ -329,7 +329,7 @@ sealed interface Operation<R> {
     val GIT_BUDGET: Duration = 30.seconds
 
     /**
-     * §6.2: the Runtime-wide budget, measured from frame arrival, with no per-call override —
+     * The Runtime-wide budget, measured from frame arrival, with no per-call override —
      * the model cannot buy time the transport will not give it, and asking for more produces
      * *more executions* rather than a longer one. A configured constant the Runtime owns and
      * re-cuts when the transport is re-measured, never a value derived from anything.
@@ -337,14 +337,14 @@ sealed interface Operation<R> {
     val COMMAND_BUDGET: Duration = 45.seconds
 
     /**
-     * §6.3, §6.6: the runaway guard, since a command takes no lock and has no maximum lifetime.
+     * The runaway guard, since a command takes no lock and has no maximum lifetime.
      * It counts Promoted commands too — a promoted command holds its slot until it finishes or
      * is stopped — and sits comfortably inside the transport's 10 concurrent requests.
      */
     const val COMMAND_CONCURRENCY_CAP: Int = 4
 
     /**
-     * §6.3: how long the one kill on this machine waits between TERM and SIGKILL. Long enough
+     * How long the one kill on this machine waits between TERM and SIGKILL. Long enough
      * for a build to put its own children down, short enough that a Runtime Stop is one grace
      * period and not a hang.
      */
@@ -354,7 +354,7 @@ sealed interface Operation<R> {
     const val THIS_DIRECTORY: String = "."
 
     /**
-     * SPEC §3: the mandatory routing argument's name on the wire. Here rather than in the
+     * The mandatory routing argument's name on the wire. Here rather than in the
      * catalog alone because an adapter has to read it out of a call by that name, and a
      * catalog that said `workspace` while an adapter read `workspace_name` would route
      * every call to no Workspace at all.
@@ -362,7 +362,7 @@ sealed interface Operation<R> {
     const val WORKSPACE_ARGUMENT: String = "workspace"
 
     /**
-     * SPEC §6.4: the Delivery key's name on the wire. Named once for the same reason
+     * The Delivery key's name on the wire. Named once for the same reason
      * [WORKSPACE_ARGUMENT] is — the catalog declares it, an adapter reads it and the
      * pipeline checks it, and three spellings of one argument is a key nobody checks.
      */
@@ -382,7 +382,7 @@ data class FileContent(
   val lineCount: Int,
   val totalLines: Int,
   /**
-   * The byte cap, not the line ceiling, ended this read. Truncation is never silent (§6.5);
+   * The byte cap, not the line ceiling, ended this read. Truncation is never silent;
    * a read is cut at the head rather than head-and-tail because it is the offset a model
    * pages with, and a hole in the middle of a file is not something to page past.
    */
@@ -409,7 +409,7 @@ data class FileWritten(
  * itself is [exitCode]'s to say, and the model reads it.
  *
  * Standard output and standard error arrive **interleaved in one stream**, in the order the
- * command wrote them, because that is the account a command gives of itself and because §6.5
+ * command wrote them, because that is the account a command gives of itself and because the output cap
  * bounds one buffer per Operation rather than two that would each need half a cap.
  */
 @Serializable
@@ -420,7 +420,7 @@ data class CommandResult(
   val exitCode: Int,
   val output: String,
   /**
-   * Bytes the 64 KiB bound dropped from the **middle** (§6.5); 0 when the output is whole. The
+   * Bytes the 64 KiB bound dropped from the **middle**; 0 when the output is whole. The
    * middle is what a long build repeats; the two ends are where the command said what it was
    * doing and how it ended.
    */
@@ -430,7 +430,7 @@ data class CommandResult(
 }
 
 /**
- * What a `run_command` call is answered with (SPEC §6.2). Two shapes, because a command that
+ * What a `run_command` call is answered with. Two shapes, because a command that
  * outran the 45-second budget is **Promoted** rather than killed, and its reply then precedes
  * its outcome.
  *
@@ -446,7 +446,7 @@ sealed interface CommandReply {
   data class Finished(val result: CommandResult) : CommandReply
 
   /**
-   * It outran the call and is still running (§6.2). **Never worded as success**: no outcome
+   * It outran the call and is still running. **Never worded as success**: no outcome
    * exists yet, and the only thing this says about the command is that it has not ended.
    *
    * Promotion is automatic and is never asked for — there is no `background` argument, because
@@ -466,7 +466,7 @@ data class RunningCommand(
   /** How long it has been running when this was taken. */
   val elapsed: Duration,
   /**
-   * The live buffer, bounded by the same 64 KiB that bounds everything else (§6.5). It is the
+   * The live buffer, bounded by the same 64 KiB that bounds everything else. It is the
    * buffer the frontend's preview reads too, which is what keeps the screen and the tool
    * agreeing about what exists.
    */
@@ -476,7 +476,7 @@ data class RunningCommand(
 )
 
 /**
- * What a Handle resolved to (SPEC §4, §6.2). `get_result` returns either Promoted again — still
+ * What a Handle resolved to. `get_result` returns either Promoted again — still
  * running, with the output captured so far — or the finished Operation with its outcome.
  */
 @Serializable
@@ -511,7 +511,7 @@ sealed interface Collected {
 }
 
 /**
- * A process the one kill (§6.3) left running. **Survivors are never rounded off to "stopped"**:
+ * A process the one kill left running. **Survivors are never rounded off to "stopped"**:
  * a reaping that did not finish names the pids still alive, and says of each whether it was
  * signalled at all — one that forked after the snapshot and had already left the group was not,
  * and saying it was stopped would be a plain untruth about this machine.
@@ -530,7 +530,7 @@ data class DirectoryListing(
   val entries: List<DirectoryEntry>,
   val totalEntries: Int,
   /**
-   * Bytes of names the cap left out (§6.5); 0 when the listing is whole. Truncation is never
+   * Bytes of names the cap left out; 0 when the listing is whole. Truncation is never
    * silent, and the marker names a byte count like every other.
    *
    * Cut 32 KiB head and 32 KiB tail, like a command's output: a listing has no offset to page
@@ -564,7 +564,7 @@ data class SearchResults(
   val bounds: SearchBounds,
 )
 
-/** How the files to search were enumerated (§4). */
+/** How the files to search were enumerated. */
 @Serializable
 enum class Enumeration {
   /** `git ls-files --cached --others --exclude-standard`: the project's own ignore rules. */
@@ -595,7 +595,7 @@ sealed interface SearchHit {
 }
 
 /**
- * Every way this search returned less than it might have. All four are `ok` (§4): a search is
+ * Every way this search returned less than it might have. All four are `ok`: a search is
  * read-only and capped by design, so having found less is a result, never an [Outcome.Uncertain].
  */
 @Serializable
@@ -604,7 +604,7 @@ data class SearchBounds(
   val cappedByResults: Boolean,
   /** [Operation.SEARCH_BUDGET] ran out: truncated by time, with what it found so far. */
   val cappedByTime: Boolean,
-  /** Bytes dropped from the middle by the 64 KiB head-and-tail bound (§6.5); 0 when none were. */
+  /** Bytes dropped from the middle by the 64 KiB head-and-tail bound; 0 when none were. */
   val droppedBytes: Int,
   /** How many hits those bytes were. */
   val droppedHits: Int,
@@ -622,8 +622,8 @@ data class SearchBounds(
 @Serializable
 sealed interface Outcome<out R> {
   /**
-   * This is the first Delivery's reply, answered again to a repeat Delivery of the same key
-   * (§6.4): the recorded result of an Operation already performed, which was not performed a
+   * This is the first Delivery's reply, answered again to a repeat Delivery of the same key:
+   * the recorded result of an Operation already performed, which was not performed a
    * second time. The reply beside it is the first one **verbatim**; this is the sentence that
    * says so, and every surface is obliged to carry it — see [RECORDED_RESULT].
    */
@@ -664,7 +664,7 @@ sealed interface Outcome<out R> {
 
   companion object {
     /**
-     * What a [recorded] reply says beside the first reply (§6.4). Written once, in the core's
+     * What a [recorded] reply says beside the first reply. Written once, in the core's
      * words, so that no surface paraphrases a repeat into something that reads like a second
      * execution — or like a fresh one the model should act on as new.
      */
@@ -674,7 +674,7 @@ sealed interface Outcome<out R> {
   }
 }
 
-/** The same reply, marked as the recorded result of an Operation already performed (§6.4). */
+/** The same reply, marked as the recorded result of an Operation already performed. */
 @Suppress("UNCHECKED_CAST") // Each variant keeps its own type; only the marker changes.
 fun <R> Outcome<R>.asRecorded(): Outcome<R> = when (this) {
   is Outcome.Ok -> copy(recorded = true)
@@ -708,13 +708,13 @@ sealed interface Failure {
   @Serializable
   data class NoMatch(val workspace: String, val path: String) : Failure
 
-  /** `edit_file` found [count] occurrences where it needs one. Never first-one-wins (§4). */
+  /** `edit_file` found [count] occurrences where it needs one. Never first-one-wins. */
   @Serializable
   data class SeveralMatches(val workspace: String, val path: String, val count: Int) : Failure
 
   /**
    * Nothing above the Root is a Git repository, so there is nothing for a Git tool to read. The
-   * tool is in the catalog all the same — the catalog is flat and static (§3) — and this is the
+   * tool is in the catalog all the same — the catalog is flat and static — and this is the
    * plain error it answers with.
    */
   @Serializable
@@ -727,7 +727,7 @@ sealed interface Failure {
    * For `search` that means its ignore rules could not be read, and it is refused rather than
    * walked — a plain walk would hand back the very files the project ignores, and doing that
    * quietly is the one outcome a user who wrote a `.gitignore` would not forgive. For the Git
-   * tools it is the plain error §4 gives them when `git` is absent. Distinct from
+   * tools it is the plain error they get when `git` is absent. Distinct from
    * [NoRepository], because the two name different things to fix: install `git`, against a Root
    * that is not in a repository at all.
    */
@@ -748,7 +748,7 @@ sealed interface Failure {
   data class NoSuchHandle(val handle: String) : Failure
 
   /**
-   * The Handle resolves, and to an Operation against another Workspace (§4). Refused rather
+   * The Handle resolves, and to an Operation against another Workspace. Refused rather
    * than served: a Workspace is the unit the Access Level dial governs, and a Handle that
    * crossed between them would collect output from a Workspace this call never named.
    */
@@ -756,7 +756,7 @@ sealed interface Failure {
   data class HandleNotInWorkspace(val handle: String, val workspace: String) : Failure
 
   /**
-   * The Runtime is Stopping, so this call was refused before anything was started (§6.3).
+   * The Runtime is Stopping, so this call was refused before anything was started.
    * Deliberately a `failed` like [CommandCapReached]: **nothing ran**, so the "nothing changed"
    * guarantee is literally true, and nothing about it is unresolved.
    */
@@ -764,15 +764,15 @@ sealed interface Failure {
   data object RuntimeStopping : Failure
 
   /**
-   * [Operation.COMMAND_CONCURRENCY_CAP] commands are already running, so this one did not start
-   * (§6.3). Deliberately a `failed` rather than an [Uncertainty]: **nothing ran**, so a retry is
+   * [Operation.COMMAND_CONCURRENCY_CAP] commands are already running, so this one did not start.
+   * Deliberately a `failed` rather than an [Uncertainty]: **nothing ran**, so a retry is
    * safe, which is the guarantee doing its job rather than being worked around.
    */
   @Serializable
   data class CommandCapReached(val cap: Int) : Failure
 
   /**
-   * A mutation arrived without its Delivery key (§6.4). Its own reason rather than an
+   * A mutation arrived without its Delivery key. Its own reason rather than an
    * [InvalidArgument]: it is the one missing argument that says the caller cannot tell its
    * own repeats apart, which is a different thing for a frontend to act on.
    */
@@ -780,7 +780,7 @@ sealed interface Failure {
   data object MissingKey : Failure
 
   /**
-   * The key arrived before with different arguments (§6.4). Literally a `failed`: nothing
+   * The key arrived before with different arguments. Literally a `failed`: nothing
    * changed on *this* Delivery. Keys are unique Runtime-wide, so the same key naming another
    * Workspace lands here too, which is the safe direction.
    */
@@ -788,7 +788,7 @@ sealed interface Failure {
   data class KeyConflict(val key: String) : Failure
 
   /**
-   * The key's record has expired and the bare key is still remembered (§6.4), so this is
+   * The key's record has expired and the bare key is still remembered, so this is
    * refused rather than silently run a second time.
    */
   @Serializable
@@ -816,7 +816,7 @@ sealed interface Uncertainty {
    * past the budget is Promoted rather than killed; a Git tool past its own is `failed`, since
    * nothing ran that could have changed anything; and a `search` past its own is an `ok` with
    * less in it. Killing at a budget was the one thing manufacturing this outcome, and it is
-   * gone. It stays in the set because SPEC §5 names it and because a budget that reaps is a
+   * gone. It stays in the set because the outcome vocabulary names it and because a budget that reaps is a
    * thing this Runtime could acquire again — not because anything here reaches it.
    */
   @Serializable
@@ -839,7 +839,7 @@ sealed interface Uncertainty {
 
   /**
    * A repeat Delivery waited on the first, which was still running when the repeat's own
-   * budget ran out (§6.4). Never a `failed`: the first is changing the disk at that moment, so
+   * budget ran out. Never a `failed`: the first is changing the disk at that moment, so
    * "nothing changed" would be a lie.
    */
   @Serializable

@@ -24,7 +24,7 @@ private const val NEW_SESSION_PROGRAM = "setsid"
 private const val SIGNAL_PROGRAM = "kill"
 
 /**
- * SPEC §11.1: the Runtime passes these to the tunnel child and to nothing else — it does not
+ * The Runtime passes these to the tunnel child and to nothing else — it does not
  * put them in its own environment. Stripping them here is therefore defence in depth rather
  * than the only guard, which is what it should have been all along: without it, any command at
  * Command level could read the tunnel credentials out of its own environment and print them
@@ -52,13 +52,13 @@ private val SESSION_WAIT = 200.milliseconds
 private const val SIGNAL_TIMEOUT_MS = 2_000L
 
 /**
- * `run_command` (SPEC §4, §6.3), and the one kill mechanic on this machine.
+ * `run_command`, and the one kill mechanic on this machine.
  *
  * Two things here are decisions rather than details.
  *
  * The first is that **the Root does not confine what this runs**. A command at
  * [AccessLevel.Command] carries the full authority of the user's Linux account and can read
- * `~/.ssh` whatever §2.4 says; only [Operation.RunCommand.cwd] is confined, and it is confined
+ * `~/.ssh` whatever confinement says; only [Operation.RunCommand.cwd] is confined, and it is confined
  * by the pipeline like any other path argument. Mandatory sandboxing was considered and
  * rejected by the user. Nothing here may quietly narrow that.
  *
@@ -87,7 +87,7 @@ internal class CommandRunner(
 ) {
   /**
    * Started in a session of its own where this machine has `setsid`, and plainly where it does
-   * not. The fallback is not a detail: `setsid` is a dependency §4 never asked for, and failing
+   * not. The fallback is not a detail: `setsid` is a dependency the design never asked for, and failing
    * every command on a machine without it would be a worse answer than running the command with
    * one arm of the kill missing — which [CommandExecution.reap] then says out loud by naming the
    * survivors it could not reach, rather than by claiming a group was signalled.
@@ -109,9 +109,9 @@ internal class CommandRunner(
     val builder = ProcessBuilder(program)
       .directory(directory.toFile())
       // One stream, in the order the command wrote it: that is the account a command gives of
-      // itself, and §6.5 bounds one buffer per Operation rather than two halves of a cap.
+      // itself, and the cap bounds one buffer per Operation rather than two halves of it.
       .redirectErrorStream(true)
-    // Inherited from the Runtime process, less the two that must never reach a child (§4).
+    // Inherited from the Runtime process, less the two that must never reach a child.
     val inherited = builder.environment()
     inherited.clear()
     inherited.putAll(environment)
@@ -165,13 +165,13 @@ internal class CommandExecution(
 
   /**
    * The exit code, however long that takes. There is **no maximum lifetime for a promoted
-   * command** (§6.3): the runaway guard is the concurrency cap, which the command holds a slot
+   * command**: the runaway guard is the concurrency cap, which the command holds a slot
    * in until it finishes or is stopped.
    */
   fun awaitExit(): Int = process.waitFor()
 
   /**
-   * SPEC §6.3, in the one order that was measured to work:
+   * The kill, in the one order that was measured to work:
    *
    * > Snapshot the descendant tree, then signal **both the snapshotted tree and the process
    * > group**, **TERM**, wait a **5-second grace**, then **SIGKILL**.
@@ -194,7 +194,7 @@ internal class CommandExecution(
   /**
    * The first half of [reap]: the snapshot, taken and then **TERMed on both arms**, with the
    * grace not yet waited. Split out for Runtime Stop alone, which reaps every running command
-   * **in parallel so that Stop costs one grace period in total, not one per command** (§6.3) —
+   * **in parallel so that Stop costs one grace period in total, not one per command** —
    * the halves are never otherwise apart, which is why [reap] is what every other caller has.
    */
   fun term(): List<ProcessHandle> {
@@ -226,12 +226,12 @@ internal class CommandExecution(
   /**
    * What the command has said **so far**, without disturbing the drain. This is the same buffer
    * the frontend's one-line preview and its expanded tail read, which is what keeps the screen
-   * and the tool agreeing about what exists (§6.5).
+   * and the tool agreeing about what exists.
    */
   fun captured(): BoundedText = captured.text()
 
   /**
-   * What the command said, bounded (§6.5), with the drain ended. It is given a moment to finish
+   * What the command said, bounded, with the drain ended. It is given a moment to finish
    * and then has its pipe closed under it: a grandchild that outlived the kill still holds the
    * write end, and waiting on it would be waiting on the very process the kill failed to reap.
    */
@@ -321,7 +321,7 @@ private fun processGroupOf(pid: Long): Long? = try {
  *
  * Two paths hand the command over to [commands] and return without it:
  *
- * - the **budget** ran out, and the call is answered at once with a Handle (§6.2);
+ * - the **budget** ran out, and the call is answered at once with a Handle;
  * - the call was **cancelled**, so its answer is discarded — and the work is not. The Operation
  *   runs to completion, its result is kept under its Handle, and its entry reads Undelivered.
  */
@@ -358,11 +358,11 @@ internal suspend fun runCommand(
     }
     val running = commands.begin(arrival.entry, workspace.name, op, execution)
     val exit = try {
-      // What is left of the budget, not the whole of it: §6.2 measures from frame arrival, and
+      // What is left of the budget, not the whole of it: the budget is measured from frame arrival, and
       // admission has already spent some of it resolving a Root and confining a path.
       runInterruptible { execution.awaitExit(arrival.remaining(budget)) }
     } catch (discarded: CancellationException) {
-      // Work is never abandoned (§6.2). The answer is gone, so the Runtime carries the command
+      // Work is never abandoned. The answer is gone, so the Runtime carries the command
       // to completion, keeps its result under its Handle and marks the entry Undelivered.
       //
       // The cancellation is not swallowed by that: it is rethrown here, and the pipeline above
@@ -376,7 +376,7 @@ internal suspend fun runCommand(
       throw failed
     }
     if (exit == null) {
-      // §6.2: at the budget the command keeps running and the call returns at once with a
+      // At the budget the command keeps running and the call returns at once with a
       // Handle. Promotion is automatic and is never requested.
       handedOver = true
       return Outcome.Ok(commands.promote(running, Promotion.Budget))
@@ -392,7 +392,7 @@ internal suspend fun runCommand(
     return Outcome.Ok(CommandReply.Finished(result))
   } finally {
     // The slot goes back the moment this command stops holding one. A promoted command still
-    // holds its own, and gives it back in the coroutine carrying it (§6.3).
+    // holds its own, and gives it back in the coroutine carrying it.
     if (!handedOver) commands.releaseSlot()
   }
 }

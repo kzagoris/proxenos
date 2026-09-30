@@ -53,7 +53,7 @@ class WorkspaceRegistry(
     }
   }
 
-  /** What discovery shows: Workspaces at None and Broken ones are absent entirely (§2.3). */
+  /** What discovery shows: Workspaces at None and Broken ones are absent entirely. */
   fun listings(): List<WorkspaceListing> = synchronized(lock) {
     exposed().map {
       val workspace = it.workspace
@@ -164,7 +164,7 @@ class WorkspaceRegistry(
   private fun inodeKey(recorded: String): String =
     Regex("""\bino=(\d+)""").find(recorded)?.let { "ino=${it.groupValues[1]}" } ?: recorded
 
-  /** An attribute of the Root, discovered from Git's layout rather than from `git` (§2.1). */
+  /** An attribute of the Root, discovered from Git's layout rather than from `git`. */
   private fun isGitRepository(root: Path): Boolean = gitRepositoryAt(root)
 
 

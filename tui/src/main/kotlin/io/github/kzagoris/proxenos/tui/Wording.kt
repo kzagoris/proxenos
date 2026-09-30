@@ -11,7 +11,7 @@ import io.github.kzagoris.proxenos.coreapi.Workspace
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 
 /**
- * The sentences the screen is obliged to carry (SPEC §10.3), each at a place it could otherwise
+ * The sentences the screen is obliged to carry, each at a place it could otherwise
  * quietly lie. Kept together, as plain paragraphs, so what the screen says can be read and
  * checked in one place; the screen wraps them to its width.
  */
@@ -20,7 +20,7 @@ object Wording {
     listOf("Raise '${workspace.name}' to Command?") + commandAuthority(workspace) + "[y] raise to Command · any other key cancels"
 
   /**
-   * SPEC §10.3: what Command authorises. Said when raising to it, and kept in the Workspace
+   * What Command authorises. Said when raising to it, and kept in the Workspace
    * detail pane, which is the only place it survives once that confirmation is gone.
    */
   fun commandAuthority(workspace: Workspace): List<String> = listOf(
@@ -29,7 +29,7 @@ object Wording {
     "There is no per-call prompt. Once it is set, this level authorises every command while nobody is watching.",
   )
 
-  /** SPEC §10.2: the stop confirmation names the command, the Workspace, the start and the elapsed. */
+  /** The stop confirmation names the command, the Workspace, the start and the elapsed. */
   fun stopCommand(command: String, workspace: String?, started: String, elapsed: String): List<String> = listOf(
     "Stop `$command` in '${workspace ?: "—"}'? It started $started and has been running $elapsed.",
     "It ran with the full authority of your Linux account. Stopping it sends TERM to its process tree and group, " +
@@ -42,20 +42,20 @@ object Wording {
 
   /**
    * What is known once the stop has run its course — not that everything ended: survivors are
-   * never rounded off to "stopped" (§6.3), and the entry is where the reaping names them.
+   * never rounded off to "stopped", and the entry is where the reaping names them.
    */
   fun stopped(command: String): String =
     "The stop ran its course for `$command`: TERM, the grace, then SIGKILL. Its result is Uncertain and nothing was rolled back; " +
       "its entry in Activity says whether anything outlived the kill."
 
-  /** Where the one kill has got to (SPEC §6.3), for a row that is still in the band because it is still running. */
+  /** Where the one kill has got to, for a row that is still in the band because it is still running. */
   fun stopping(phase: StopPhase): String = when (phase) {
     StopPhase.Terminating -> "stopping (TERM sent, SIGKILL after the grace) · $ALREADY_STOPPING"
     StopPhase.Killing -> "stopping (SIGKILL sent, waiting to reap it) · $ALREADY_STOPPING"
   }
 
   /**
-   * SPEC §10.3: lowering a level does not stop running work. A promoted command's result can no
+   * Lowering a level does not stop running work. A promoted command's result can no
    * longer be collected either, and both are said: one without the other implies the wrong thing.
    */
   fun lowered(command: String, workspace: String, level: AccessLevel, started: String, promoted: Boolean): String =
@@ -66,13 +66,13 @@ object Wording {
       append("To end it, select it in the band and press [s].")
     }
 
-  /** SPEC §10.3: what an Undelivered entry means, where it is selected. */
+  /** What an Undelivered entry means, where it is selected. */
   const val UNDELIVERED: String =
     "Undelivered: this Operation completed on this machine and its answer never reached ChatGPT. ChatGPT saw a failure " +
       "and does not know the change was made. Nothing is replayed or retried: what it did stays done, and nothing here does it again."
 
   /**
-   * One catalog entry against one Workspace as it now stands (SPEC §10.2): whether a call naming
+   * One catalog entry against one Workspace as it now stands: whether a call naming
    * it would be admitted, and why — in terms of the level the pipeline checks, never a guess at
    * what the call would then do.
    */
@@ -152,14 +152,14 @@ object Wording {
     "[y] stop the Runtime · any other key cancels",
   )
 
-  /** SPEC §10.3 and §11.4: there is no autostart, and the silence after a reboot is expected. */
+  /** There is no autostart, and the silence after a reboot is expected. */
   const val NO_AUTOSTART: String =
     "There is no autostart, and that is deliberate: a Runtime started at login would leave a Command Workspace " +
       "reachable with nobody present. After a reboot every call from ChatGPT fails until the Runtime is started " +
       "once, so that silence is expected rather than a fault to hunt."
 
   /**
-   * SPEC §10.3 and §11.5: the Unconfirmed detail, in the Connector stage of Review. The literal
+   * The Unconfirmed detail, in the Connector stage of Review. The literal
    * steps, and plainly that nothing here can check them — so the key records the user's word,
    * and says so.
    */
@@ -175,7 +175,7 @@ object Wording {
     "Recorded your word that the connector was made again. That is not a measurement: nothing here checked it."
 
   /**
-   * SPEC §10.3 and §11.3: the first-run credential panel. The tunnel's words verbatim and the
+   * The first-run credential panel. The tunnel's words verbatim and the
    * three things only the user can check — and never which of them it is, because a deleted
    * tunnel and a rejected key are the same 401.
    */
@@ -195,13 +195,13 @@ object Wording {
   /** What any cancelled confirmation or prompt leaves on the screen. */
   const val CANCELLED: String = "Cancelled; nothing was changed."
 
-  /** SPEC §10.3, verbatim. */
+  /** Verbatim. */
   const val CONNECTED_CAVEAT: String =
     "Connected means the tunnel between this machine and OpenAI is up. It does not mean ChatGPT still has a " +
       "connector pointed at it: deleting the connector in ChatGPT leaves this reading unchanged, and its catalog " +
       "is a snapshot that never refreshes."
 
-  /** SPEC §10.2: this dashboard's side of the link to the Runtime — never the Runtime's own life. */
+  /** This dashboard's side of the link to the Runtime — never the Runtime's own life. */
   const val ATTACHED: String =
     "Attached: this dashboard holds the Runtime's stream. The Runtime runs whether or not a frontend is attached."
 
@@ -211,7 +211,7 @@ object Wording {
     "Starting: the Runtime was asked to start, and this dashboard is waiting for it to answer."
 
   /**
-   * SPEC §10.2: a stage below one that is not running. The link is the Runtime's to hold and the
+   * A stage below one that is not running. The link is the Runtime's to hold and the
    * catalog is the Runtime's to serve, so with no Runtime there is nothing to measure — and a red
    * reading would be a claim nothing has measured.
    */
@@ -221,7 +221,7 @@ object Wording {
   const val CANT_TELL_CONNECTOR: String =
     "Can't tell: there is no catalog to compare until the Runtime is running and serving one."
 
-  /** SPEC §10.2 and ADR 0007: what Confirmed can be — the user's word, never a measurement. */
+  /** ADR 0007: what Confirmed can be — the user's word, never a measurement. */
   const val CONNECTOR_CONFIRMED: String =
     "Confirmed by your word. Nothing on this machine can check the connector: a connector made again and one never made read the same here."
 }

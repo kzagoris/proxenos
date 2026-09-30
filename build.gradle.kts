@@ -1,9 +1,9 @@
 plugins {
   base
   // For jlink: the bundled distribution's runtime is cut from the same JDK 26 toolchain the code
-  // is compiled with, so it is provisioned the same way (SPEC §12) and never the launching JVM.
+  // is compiled with, so it is provisioned the same way and never the launching JVM.
   `jvm-toolchains`
-  // The one thing a user installs (SPEC §12): `runtime` and `tui` side by side in one
+  // The one thing a user installs: `runtime` and `tui` side by side in one
   // tree, plus the scripts and documents first run needs. `./gradlew installDist` lays it out in
   // build/install/proxenos/; `distTar` and `distZip` pack the same tree.
   distribution
@@ -29,7 +29,7 @@ distributions {
       from(files("runtime/build/install/runtime").builtBy(":runtime:installDist"))
       from(files("tui/build/install/tui").builtBy(":tui:installDist"))
       duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-      // Linux-first (SPEC §12): a Windows launcher would promise a port that does not exist.
+      // Linux-first: a Windows launcher would promise a port that does not exist.
       exclude("bin/*.bat")
       // An archive does not carry a file's mode from disk, so a launcher packed without this
       // unpacks as a text file that `Permission denied`s. This reaches the two installations'
@@ -52,8 +52,8 @@ distributions {
       into("docs") {
         // Under docs/ as in the repository, so its relative links hold in both places.
         from("docs/INSTALL.md")
-        // Documentation, not an installer: nothing in the product copies or enables this unit
-        // (SPEC §11.4). It ships so a user who reads the reason and disagrees has it to hand.
+        // Documentation, not an installer: nothing in the product copies or enables this unit.
+        // It ships so a user who reads the reason and disagrees has it to hand.
         into("systemd") {
           from("docs/systemd")
         }
@@ -66,7 +66,7 @@ distributions {
 // passes nothing says so rather than posing as a release.
 if (version == Project.DEFAULT_VERSION) version = "0.0.0-dev"
 
-// tar.gz only: Linux-only (SPEC §12), and a zip does not keep a launcher's mode.
+// tar.gz only: Linux-only, and a zip does not keep a launcher's mode.
 tasks.withType<Tar>().configureEach {
   compression = Compression.GZIP
   archiveExtension = "tar.gz"

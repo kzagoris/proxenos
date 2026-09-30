@@ -24,7 +24,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 
 /**
- * The MCP envelope, and nothing else (SPEC §5). The core has already decided the Outcome and
+ * The MCP envelope, and nothing else. The core has already decided the Outcome and
  * written the sentence the model reads; this file puts it in a `CallToolResult` and keeps the
  * text it was given **verbatim**. In particular an [Outcome.Uncertain] message carries
  * *effects uncertain, do not retry* (ADR 0001), and paraphrasing it here would reintroduce
@@ -43,7 +43,7 @@ internal fun reply(operation: Operation<*>, outcome: Outcome<*>): CallToolResult
 
 /**
  * A repeat Delivery's answer is the first reply **verbatim**, and then the sentence saying it is
- * the recorded result of an Operation already performed (§6.4). Appended rather than woven in,
+ * the recorded result of an Operation already performed. Appended rather than woven in,
  * so the first reply reads exactly as it did the first time.
  */
 private fun String.withRecordedNote(outcome: Outcome<*>): String =
@@ -72,7 +72,7 @@ internal fun text(body: String, isError: Boolean): CallToolResult =
  * exhaustive: a new Operation whose result nobody has said how to render would otherwise fall
  * back on `toString`, and a data class printed at a model is not an answer.
  *
- * Every bound that bit is said out loud, because truncation is never silent (§6.5) and a
+ * Every bound that bit is said out loud, because truncation is never silent and a
  * result that quietly stopped short reads as a complete one.
  */
 private fun render(operation: Operation<*>, value: Any?): String = when (operation) {
@@ -98,7 +98,7 @@ private fun render(operation: Operation<*>, value: Any?): String = when (operati
 private fun Any?.asList(): List<WorkspaceListing> = this as List<WorkspaceListing>
 
 /**
- * A Workspace at None is already absent from this list and a Broken one with it (§2.3), so
+ * A Workspace at None is already absent from this list and a Broken one with it, so
  * what arrives here is the whole of what the connector exposes and is presented as such.
  */
 private fun renderWorkspaces(workspaces: List<WorkspaceListing>): String =
@@ -142,7 +142,7 @@ private fun renderListing(listing: DirectoryListing): String = buildString {
   }
 }
 
-/** A symlink is reported as one rather than as what it points at, which is not followed (§4). */
+/** A symlink is reported as one rather than as what it points at, which is not followed. */
 private val EntryKind.said: String
   get() = when (this) {
     EntryKind.File -> "file"
@@ -184,7 +184,7 @@ private val Enumeration.said: String
 
 /**
  * Scope leads every Git answer. An empty `git_status` that did not say it had been Scoped
- * reads as "the repository is clean", which is a different, and wrong, fact (§4).
+ * reads as "the repository is clean", which is a different, and wrong, fact.
  */
 private fun GitScope.said(): String = scopedTo?.let {
   "Repository ${repository}, scoped to '$it': paths elsewhere in the repository were not looked at."
@@ -212,7 +212,7 @@ private fun renderLog(report: GitLogReport): String = buildString {
 }
 
 /**
- * **Promoted is not worded as success** (§6.2, ADR 0003). It is a reply that precedes its
+ * **Promoted is not worded as success** (ADR 0003). It is a reply that precedes its
  * Operation's outcome, so the first thing it says is that no outcome exists yet — a sentence
  * that read "started successfully" would be a model's cue to move on from a build it has not
  * seen the end of.
@@ -235,7 +235,7 @@ private fun renderPromoted(workspace: String?, handle: Handle, running: RunningC
 }
 
 /**
- * What a Handle resolved to (§4). The three shapes are the three true things there are to say:
+ * What a Handle resolved to. The three shapes are the three true things there are to say:
  * it is still running, it reached an outcome, or this Runtime is not the one that ran it and
  * the account is all there is.
  */
@@ -254,7 +254,7 @@ private fun renderCollected(operation: Operation.GetResult, collected: Collected
 
 /**
  * A Handle this Runtime holds no result for. A Handle whose Runtime has Stopped resolves to the
- * **Lost** Operation it points at (§6.2), and that is said plainly rather than dressed as a
+ * **Lost** Operation it points at, and that is said plainly rather than dressed as a
  * result: Lost produced nothing to trust or distrust.
  */
 private fun renderRecorded(collected: Collected.Recorded): String = buildString {
@@ -276,7 +276,7 @@ private fun renderRecorded(collected: Collected.Recorded): String = buildString 
 }
 
 /**
- * A non-zero exit is an `ok` (§5): the Operation ran the command it was asked to, and what the
+ * A non-zero exit is an `ok`: the Operation ran the command it was asked to, and what the
  * command thought of itself is its exit code's to say. Standard output and standard error
  * arrive interleaved, in the order the command wrote them.
  */
@@ -290,7 +290,7 @@ private fun renderCommand(result: CommandResult): String = buildString {
 /**
  * How many arrived against how many there are, and what a cap took. The two are one sentence
  * because they are one fact: a count that did not say what was left out reads as the whole of
- * it, and truncation is never silent (§6.5).
+ * it, and truncation is never silent.
  */
 private fun StringBuilder.tally(shown: Int, total: Int, one: String, many: String, dropped: String?) {
   append("$shown of $total ${plural(total, one, many)}")

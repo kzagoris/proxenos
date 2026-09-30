@@ -1,6 +1,6 @@
 # Installing Proxenos
 
-From nothing to ChatGPT answering its first call on this machine. Linux only (SPEC §12).
+From nothing to ChatGPT answering its first call on this machine. Linux only.
 
 The distribution is one directory tree. Every path below that starts with `bin/` or `docs/` is
 inside it, which these instructions put at `~/.local/opt/proxenos/`:
@@ -58,7 +58,7 @@ gh attestation verify proxenos-<version>-linux-x64.tar.gz --repo kzagoris/proxen
 ```
 
 Or build it from a checkout. The build brings its own JDK 26 toolchain if the machine has none
-(SPEC §12), so this needs only a JDK to launch Gradle:
+, so this needs only a JDK to launch Gradle:
 
 ```sh
 git clone https://github.com/kzagoris/proxenos.git
@@ -104,7 +104,7 @@ passes, and it says the hash it checked.
 **Where it lands: the state directory's `tools/`**, which is
 `$XDG_STATE_HOME/proxenos/tools/tunnel-client`, else
 `~/.local/state/proxenos/tools/tunnel-client`. Not `PATH`. The Runtime looks on `PATH`
-first and in `tools/` second (SPEC §11), and `tools/` is the place that:
+first and in `tools/` second, and `tools/` is the place that:
 
 - needs no root and no edit to a shell profile;
 - is found the same way whether the Runtime was started from a terminal, by `bin/tui`, or by a
@@ -162,7 +162,7 @@ workspace, create a runtime key, enable developer mode under **Settings → Secu
 and writes the one file the Runtime will not start without,
 `$XDG_CONFIG_HOME/proxenos/credentials` (default `~/.config/proxenos/credentials`),
 at mode `0600`. The key is read hidden and never echoed.
-This happens once; re-run it to rotate the key (SPEC §11.6).
+This happens once; re-run it to rotate the key.
 
 ## 6. Register a Workspace
 
@@ -190,7 +190,7 @@ its own state, and `[Enter]` opens the selected row's detail. On a fresh install
 line shows **Connector · Unconfirmed**; the Connector detail carries the instructions:
 **Plugins → Add → Create MCP App**, set **Connection** to **Tunnel** with your tunnel ID, and
 choose **No authentication**. Press `[C]` there once you have
-completed setup; this records your confirmation, not a connectivity measurement (SPEC §11.5).
+completed setup; this records your confirmation, not a connectivity measurement.
 A connection failure and the tunnel's own words are on the Tunnel row and its detail. A stage
 below a Runtime that is not running reads **Can't tell** rather than a fault, because there is
 nothing to measure.
@@ -209,7 +209,7 @@ you registered in step 6.
 ## After a reboot
 
 Nothing starts by itself, deliberately: a Runtime started at login would leave a Workspace at
-Command reachable from ChatGPT with nobody present (SPEC §8.2, §11.4). Until you start it once —
+Command reachable from ChatGPT with nobody present. Until you start it once —
 `bin/tui`, or `bin/runtime` — ChatGPT's calls fail, and the failure shows up there as tool errors
 rather than anywhere on this machine.
 

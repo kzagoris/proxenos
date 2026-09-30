@@ -85,7 +85,7 @@ fun render(home: Home, frame: Frame): List<Line> {
 }
 
 /**
- * The three links, one line, in the order of the chain a call travels (SPEC §10.2). Each is
+ * The three links, one line, in the order of the chain a call travels. Each is
  * measured on its own: the Runtime's attachment to this dashboard, the Runtime's tunnel link,
  * and the connector. What cannot be measured yet reads Can't tell, never a fault, and `[i]`
  * appears as the way to Review whenever one of them is worth reading about.
@@ -112,7 +112,7 @@ private fun tunnelTrouble(state: RuntimeState?): Boolean = state == RuntimeState
 
 private fun workspaceList(home: Home, frame: Frame): List<Line> = buildList {
   val snapshot = home.snapshot ?: return@buildList
-  // One Review action for a connection problem (SPEC §10.2). The connector does not banner
+  // One Review action for a connection problem. The connector does not banner
   // here: it is the Connector row's own state in the status line and in Review. Unlike the
   // status line's hint, this waits for the credential panel's words, so a bare Connecting —
   // nothing to quote yet — stays out of the workspace list.
@@ -157,7 +157,7 @@ private fun manage(home: Home, frame: Frame): List<Line> = buildList {
 }
 
 /**
- * Review (SPEC §10.2): one row per link in the chain a ChatGPT call travels, carrying its own
+ * Review: one row per link in the chain a ChatGPT call travels, carrying its own
  * state, and a stage that cannot be measured yet — the tunnel and the connector while the
  * Runtime is not running — reads Can't tell rather than broken. `[Enter]` opens the selected
  * stage's detail, where that stage's actions live.
@@ -250,7 +250,7 @@ private fun tunnelDetail(home: Home, frame: Frame): List<Line> {
       )
       RuntimeState.Disconnected -> addAll(paragraph("It is Disconnected, because you disconnected it. That is your decision, not a fault; [d] connects it again.", width))
     }
-    // SPEC §10.3: this is the meaning of the signal, kept in every state — not an annotation of
+    // This is the meaning of the signal, kept in every state — not an annotation of
     // the Connected reading alone.
     addAll(paragraph(Wording.CONNECTED_CAVEAT, width))
   }
@@ -265,7 +265,7 @@ private fun connectorDetail(home: Home, frame: Frame): List<Line> {
 }
 
 /**
- * The running-work band (SPEC §10.2), between the banners and the feed — and nothing at all when
+ * The running-work band, between the banners and the feed — and nothing at all when
  * nothing is running: the screen changing shape is the signal. Each row carries the last line
  * the command printed; the selected one expands in place to the buffer `get_result` reads,
  * labelled so the screen and the tool agree about what exists. Bounded by the cap, and the
@@ -386,7 +386,7 @@ private fun overlay(overlay: Overlay, home: Home, frame: Frame): List<Line> {
 }
 
 /**
- * The per-Workspace detail pane (SPEC §10.2): the whole catalog against this Workspace's current
+ * The per-Workspace detail pane: the whole catalog against this Workspace's current
  * level, each entry permitted or not and why, with TryOperation on the entry under the cursor.
  */
 private fun workspaceDetail(pane: Overlay.WorkspaceDetail, home: Home, frame: Frame): List<Line> {

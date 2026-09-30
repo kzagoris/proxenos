@@ -18,14 +18,14 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
 /**
- * The composition root (SPEC §1, §9): the one place that sees every artifact. It sources the
+ * The composition root: the one place that sees every artifact. It sources the
  * configuration, takes the single-instance lock, builds the core, hands the ChatGPT-stamped view
  * of it to the MCP endpoint, and starts the tunnel child that dials back in.
  *
  * Nothing here reads standard input. A frontend starts the Runtime with no terminal attached,
  * so every reason not to start is said once on standard error and the process exits.
  *
- * There is no autostart at login, and nothing here offers one (§8.2, §11.4): that would boot
+ * There is no autostart at login, and nothing here offers one: that would boot
  * the machine into a state where a Command Workspace is reachable with nobody present. The
  * systemd `--user` unit in `docs/` is for a user who has read why and disagrees.
  */
@@ -68,7 +68,7 @@ private fun start(environment: Map<String, String>) {
   val pipeline = WorkspaceOperationsPipeline(registry, activity, config)
   // Read before the control socket opens, so no frontend attaches to a judgement not yet made.
   val connector = ConnectorAcknowledgement(config.connectorFile, feed, catalogFingerprint(pipeline.catalog))
-  // The two surfaces, each with its own Origin stamped here and nowhere else (§9). ChatGPT gets
+  // The two surfaces, each with its own Origin stamped here and nowhere else. ChatGPT gets
   // the operations and nothing more; the management acts are on the control socket alone, so
   // raising an Access Level is not on any path a conversation has.
   val endpoint = McpEndpoint(pipeline.operationsFor(Origin.ChatGpt), config.mcpSocket, logicalHost)
@@ -82,7 +82,7 @@ private fun start(environment: Map<String, String>) {
   val control = ControlServer(management, config.controlSocket)
 
   // Stop: the tunnel and every running Operation at once, so the whole costs one grace period
-  // rather than two (§6.3) — the pipeline refuses new calls before it reaps, so nothing arriving
+  // rather than two — the pipeline refuses new calls before it reaps, so nothing arriving
   // through a tunnel still dying can start. What was running is left Uncertain rather than
   // Lost. Then the socket, and last the locks.
   Runtime.getRuntime().addShutdownHook(
@@ -104,7 +104,7 @@ private fun start(environment: Map<String, String>) {
   tunnel.join()
 }
 
-/** Created owner-only, because the sockets in it are this Linux user's alone (§7). */
+/** Created owner-only, because the sockets in it are this Linux user's alone. */
 internal fun privateDirectory(directory: Path) {
   if (Files.isDirectory(directory)) return
   Files.createDirectories(directory, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))

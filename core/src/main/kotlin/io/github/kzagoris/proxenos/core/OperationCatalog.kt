@@ -3,14 +3,14 @@ package io.github.kzagoris.proxenos.core
 import io.github.kzagoris.proxenos.coreapi.*
 
 /**
- * The eleven, as data (SPEC §3, §4). All eleven ship at once because ChatGPT snapshots the
+ * The eleven, as data. All eleven ship at once because ChatGPT snapshots the
  * catalog with no refresh: adding a tool later is not a version bump, it is every user deleting
  * and re-creating their connector by hand. The entries whose Operation has not landed yet are
  * still catalog, and [specFor] is where an Operation is bound to one.
  */
 internal object OperationCatalog {
   private const val WORKSPACE = "The Workspace this call names. Required; there is no default."
-  // SPEC §6.4 fixes this wording: the tool description is the only lever on a repeat the model
+  // This wording is fixed: the tool description is the only lever on a repeat the model
   // initiates itself, so it is phrased as an instruction rather than as documentation.
   private const val REQUEST_ID =
     "Supply a fresh unique request_id for each operation you intend to perform. If a call " +
@@ -153,7 +153,7 @@ internal object OperationCatalog {
   }
 
   /**
-   * The arguments as Activity summarises them (SPEC §10.1). Exhaustive for the same reason
+   * The arguments as Activity summarises them. Exhaustive for the same reason
    * [specFor] is: an Operation whose arguments nobody has said how to summarise would show up
    * in the account as a tool name and nothing else, which is a line the user cannot act on.
    */
@@ -190,7 +190,7 @@ internal object OperationCatalog {
    * to render would otherwise fall back on `toString`, and an account that reads like a
    * debugger is not one anybody reviews an unattended afternoon with.
    *
-   * A command's output arrives here whole (§6.5) — there is no overflow-to-file. A read's does
+   * A command's output arrives here whole — there is no overflow-to-file. A read's does
    * not: the account is of what ran, and the file it read is still where it was.
    */
   fun outputOf(op: Operation<*>, value: Any?): String = when (op) {
@@ -232,11 +232,11 @@ internal object OperationCatalog {
       "${if (it.created) "created" else "replaced"}, ${it.bytes} bytes"
     }
     is Operation.EditFile -> "edited, ${(value as FileWritten).bytes} bytes"
-    // A command's output arrives whole (§6.5) — capped where it was produced, and with no
+    // A command's output arrives whole — capped where it was produced, and with no
     // overflow-to-file, Activity is where the whole of an unattended afternoon lives.
     //
     // A Promoted reply never reaches here: it precedes its outcome, so the entry it belongs to
-    // is still open and is closed later by the Runtime-scoped coroutine carrying it (§6.2). The branch is
+    // is still open and is closed later by the Runtime-scoped coroutine carrying it. The branch is
     // written out all the same, because an exhaustive `when` is what keeps this honest.
     is Operation.RunCommand -> when (val reply = value as CommandReply) {
       is CommandReply.Finished -> reply.result.let {

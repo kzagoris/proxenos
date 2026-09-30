@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
  * Where a Git tool ran, and how much of the repository it was allowed to see. Part of every
  * answer rather than a detail: where the Root sits *inside* a larger repository the tool runs
  * at the repository root but is pathspec-scoped to the Root, and an empty `git_status` that did
- * not say so would be read as "the repository is clean" (§4).
+ * not say so would be read as "the repository is clean".
  */
 @Serializable
 data class GitScope(
@@ -22,7 +22,7 @@ data class GitScope(
 }
 
 /**
- * One porcelain line of `git status` (§4). [index] and [workTree] are Git's own two status
+ * One porcelain line of `git status`. [index] and [workTree] are Git's own two status
  * characters, a space where that side is unchanged and `?` on both for an untracked file, kept
  * as Git prints them rather than translated into a vocabulary of our own.
  */
@@ -38,7 +38,7 @@ data class GitStatusEntry(
 
 /**
  * What `git status` found. [totalEntries] against `entries.size` is how the caller knows what
- * the byte cap left out — truncation is never silent (§6.5).
+ * the byte cap left out — truncation is never silent.
  */
 @Serializable
 data class GitStatusReport(
@@ -62,7 +62,7 @@ data class GitDiffReport(
   /** The staged changes alone, rather than the working tree against `HEAD`. */
   val staged: Boolean,
   val patch: String,
-  /** Bytes cut from the middle by the 32 KiB head-and-tail bound (§6.5); 0 when none were. */
+  /** Bytes cut from the middle by the 32 KiB head-and-tail bound; 0 when none were. */
   val droppedBytes: Int,
 ) {
   val cappedByBytes: Boolean get() = droppedBytes > 0

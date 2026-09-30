@@ -1,4 +1,4 @@
-# SPEC §12: the build compiles against a JDK 26 toolchain and Gradle 9.7.1. mise supplies the
+# The build compiles against a JDK 26 toolchain and Gradle 9.7.1. mise supplies the
 # JDK that launches Gradle and the Gradle version itself; the committed wrapper pins Gradle
 # again for anyone arriving without mise, so this file and
 # gradle/wrapper/gradle-wrapper.properties move together.

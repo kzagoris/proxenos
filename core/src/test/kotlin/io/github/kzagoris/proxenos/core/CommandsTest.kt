@@ -13,7 +13,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * `run_command` and the one kill (SPEC §4, §6.3), against real child processes and real stub
+ * `run_command` and the one kill, against real child processes and real stub
  * scripts: nothing below the core is abstracted, and the budget, the grace and the inherited
  * environment are configuration instead (ADR 0002).
  */
@@ -93,7 +93,7 @@ class CommandsTest {
 
   @Test
   fun `the Root does not confine what a command reads`() {
-    // SPEC §2.4: a command at Command level runs with the full authority of the user's Linux
+    // A command at Command level runs with the full authority of the user's Linux
     // account, which is wider than the Root. Mandatory sandboxing was rejected by the user, and
     // this test is what stops it being quietly reintroduced.
     val root = Files.createDirectory(temporary.resolve("project"))
@@ -135,7 +135,7 @@ class CommandsTest {
 
   @Test
   fun `a command that calls setsid and traps TERM is reaped by both arms and then by SIGKILL`() {
-    // SPEC §13.2 scenario 4. Neither arm alone is sufficient: `left-group` leaves the process
+    // Neither arm alone is sufficient: `left-group` leaves the process
     // group while staying a descendant, and `left-tree` leaves the descendant tree while
     // staying in the group. TERM reaches neither: the ignored disposition is inherited.
     val execution = start(
@@ -221,7 +221,7 @@ class CommandsTest {
 
   @Test
   fun `Runtime Stop leaves a promoted command Uncertain, never Lost`() {
-    // SPEC §6.3: the Runtime chose to end it and knows that it did. Lost is reserved for a
+    // The Runtime chose to end it and knows that it did. Lost is reserved for a
     // Runtime taken from the machine.
     val commands = commandRuntime()
     val script = script("trapped.sh", "trap '' TERM\n$READY\n$IDLE\n")
@@ -244,7 +244,7 @@ class CommandsTest {
 
   @Test
   fun `Stop costs one grace period in total, not one per command`() {
-    // SPEC §6.3: the kill is applied to every running Operation in parallel. Four commands that
+    // The kill is applied to every running Operation in parallel. Four commands that
     // each trap TERM would cost four graces if it were not.
     val commands = commandRuntime()
     val script = script("stubborn.sh", "trap '' TERM\n$READY\n$IDLE\n")
@@ -266,7 +266,7 @@ class CommandsTest {
 
   @Test
   fun `after Stop begins, a promoted command is still run to completion and recorded`() {
-    // Work is never abandoned (§6.2): the Operation reaches an outcome whether or not anyone is
+    // Work is never abandoned: the Operation reaches an outcome whether or not anyone is
     // left to hear it.
     val commands = commandRuntime()
     val promoted = assertIs<CommandReply.Promoted>(
@@ -292,7 +292,7 @@ class CommandsTest {
 
   @Test
   fun `a machine without setsid still runs commands, with the kill down to its tree arm`() {
-    // `setsid` is a dependency SPEC §4 never asked for. Failing every command on a machine
+    // `setsid` is a dependency the design never asked for. Failing every command on a machine
     // without it would be a worse answer than running one with an arm of the kill missing —
     // and the reaping says which processes it could not reach rather than claiming otherwise.
     val without = CommandRunner(newSession = "no-such-program-on-this-machine", grace = GRACE)
@@ -335,7 +335,7 @@ class CommandsTest {
 
   @Test
   fun `output past the cap keeps both ends and names the bytes that fell between them`() {
-    // SPEC §6.5: the middle is what a long build repeats; the two ends are where the command
+    // The middle is what a long build repeats; the two ends are where the command
     // said what it was doing and how it ended.
     val filler = "x".repeat(60)
     val lines = 2000

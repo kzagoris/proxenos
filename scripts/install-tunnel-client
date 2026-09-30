@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Installs the official tunnel-client executable where the Runtime looks for it, after checking
-# the release archive against the release's own SHA256SUMS.txt (SPEC §11, §12).
+# the release archive against the release's own SHA256SUMS.txt.
 #
 #   install-tunnel-client
 #

@@ -45,7 +45,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
 /**
- * The Runtime's link to the tunnel (SPEC §8.4): the tunnel child it supervises, and the
+ * The Runtime's link to the tunnel: the tunnel child it supervises, and the
  * judgement of whether that child's link works (ADR 0005).
  *
  * **One number backs every state**: `commands_poll_last_successful_timestamp_seconds`, read from
@@ -73,7 +73,7 @@ import kotlinx.serialization.json.intOrNull
  * since the last success is quoted when the link is judged Failed. `/healthz` and `/readyz` are
  * never asked: the first checks nothing, and the second answered ready while every poll failed.
  *
- * **A Connecting that lasts gets words too** (§11.3): once one long-poll wait has passed with no
+ * **A Connecting that lasts gets words too**: once one long-poll wait has passed with no
  * success, [connectingWords] carries the tunnel's complaint — a rejected key loops on a 401
  * forever, and Connecting is still all that is true about it. At that moment
  * `/health/control-plane` is asked once, a feature probe: where the client has the route its
@@ -84,7 +84,7 @@ import kotlinx.serialization.json.intOrNull
  */
 class Tunnel(
   private val config: RuntimeConfig,
-  /** The logical URL the child forwards MCP to, `http://<logical host>/mcp` (§11.2). */
+  /** The logical URL the child forwards MCP to, `http://<logical host>/mcp`. */
   mcpUrl: String,
   credentials: TunnelCredentials,
   private val log: (String) -> Unit,
@@ -154,9 +154,9 @@ class Tunnel(
   fun join() = child.join()
 
   /**
-   * Takes the transport down (§8.1): the child's tree is ended and no other is started. Nothing
+   * Takes the transport down: the child's tree is ended and no other is started. Nothing
    * else is touched — this holds no registration, no Access Level and no running Operation.
-   * The intent is written first, so a restart comes back Disconnected (§8.2).
+   * The intent is written first, so a restart comes back Disconnected.
    */
   suspend fun disconnect(): Unit = acts.withLock { disconnecting() }
 

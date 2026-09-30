@@ -41,7 +41,7 @@ is always said out loud, because an empty `git_status` that did not say it had b
 reads as "the repository is clean" — which is a different, and wrong, fact about the machine.
 It is not the sense of the word Access Level rules out: nothing Scoped says what a Workspace
 permits, and the two never appear in one sentence.
-_Avoid_: Filtered, limited, restricted, confined (that is what §2.4 does to a path argument)
+_Avoid_: Filtered, limited, restricted, confined (that is what confinement does to a path argument)
 
 **Command**:
 The Access Level at which a Workspace may run programs. It carries the full authority of

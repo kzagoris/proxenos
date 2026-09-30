@@ -1,7 +1,7 @@
 # A release bundles its Java runtime, for linux-x64, beside the portable archive
 
 The code is compiled for Java 26, which is not an LTS release and which few machines have. A
-release therefore publishes two archives of the one distribution tree (SPEC §12):
+release therefore publishes two archives of the one distribution tree:
 `proxenos-<version>-linux-x64.tar.gz`, which adds a `jlink`ed runtime in `jre/`, and
 `proxenos-<version>.tar.gz`, which carries none and runs on any architecture that has a Java 26.
 The bundled launchers use `jre/` unconditionally, ignoring `JAVA_HOME`.

@@ -7,7 +7,7 @@ import java.nio.file.Path
 import kotlin.text.Charsets.UTF_8
 
 /**
- * Bounded twice over: the line ceiling and the byte cap (SPEC §6.5), whichever binds first. The
+ * Bounded twice over: the line ceiling and the byte cap, whichever binds first. The
  * reply states the file's total line count, so a model knows what it has not seen and can page
  * deliberately rather than guess.
  */

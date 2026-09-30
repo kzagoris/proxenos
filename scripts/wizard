@@ -195,7 +195,7 @@ finish() {
 
 TOTAL_STAGES=6
 
-# Where the credentials file lives (SPEC §11.1). The Runtime reads exactly
+# Where the credentials file lives. The Runtime reads exactly
 # this path and nothing else; `config.toml` may move other paths, never this.
 CRED_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/proxenos"
 CRED_FILE="$CRED_DIR/credentials"

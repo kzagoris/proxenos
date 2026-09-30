@@ -31,7 +31,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * The Connected state machine (SPEC §8.4, §13.1), driven the way §13.1 says it must be: a fake
+ * The Connected state machine, driven the way it has to be: a fake
  * `/metrics` responder on a Unix socket with a gauge value the test controls, and a stub script
  * standing in for `tunnel-client` (ADR 0002). The stub does what the real one does at the edges
  * this reads — it writes its health base URL to `--health.url-file` and keeps running — and

@@ -7,7 +7,7 @@ import java.nio.file.Path
 
 /**
  * Whether a directory is a Git repository, read from Git's own on-disk layout rather than by
- * asking the `git` executable — discovery is an attribute of a Root (SPEC §2.1) and must not
+ * asking the `git` executable — discovery is an attribute of a Root and must not
  * depend on an optional program being installed.
  *
  * https://git-scm.com/docs/gitrepository-layout

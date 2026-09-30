@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /**
- * What a frontend does (SPEC §9), in one place: the acts that change a registration go to the
+ * What a frontend does, in one place: the acts that change a registration go to the
  * registry, and the acts that are about the Runtime's own account go where they belong. The
  * management client in `control` implements this same interface over the control socket, so
  * the TUI now and a GUI later program against the type the core implements in-process.
@@ -64,7 +64,7 @@ class RuntimeManagement(
     // Not Activity's: creating a connector in a browser is not an Operation (ADR 0007).
     ManagementAct.AcknowledgeConnector -> connector.acknowledge() as R
     // The link, and nothing else: no registration, no Access Level and no running Operation is
-    // reachable from here, which is what keeps Disconnect from ever meaning Revoke or Stop (§8.1).
+    // reachable from here, which is what keeps Disconnect from ever meaning Revoke or Stop.
     ManagementAct.Disconnect -> tunnel.disconnect() as R
     ManagementAct.Connect -> tunnel.connect() as R
     // Everything running first, in one grace period, then the link, then the process. The

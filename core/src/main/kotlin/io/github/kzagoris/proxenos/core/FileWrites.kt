@@ -14,10 +14,10 @@ import java.util.UUID
 import kotlin.text.Charsets.UTF_8
 
 /**
- * The two mutating file tools (SPEC §4). Both land the same way — a temp file beside the target
+ * The two mutating file tools. Both land the same way — a temp file beside the target
  * and an atomic rename — so that a reader of the file sees the whole of one version or the whole
  * of the other, never a half-written file. Both are called holding the mutation lock the
- * pipeline took on the target's resolved real path (§6.6).
+ * pipeline took on the target's resolved real path.
  *
  * What lands is the file's own convention, not the caller's: permission bits, line endings and
  * the presence or absence of a trailing newline all survive a write, because a tool that
@@ -29,7 +29,7 @@ import kotlin.text.Charsets.UTF_8
  */
 internal fun writeFile(op: Operation.WriteFile, workspace: Workspace, file: Path): Outcome<FileWritten> {
   val target = Target(workspace, op.path, file)
-  // Not created, only found: a hallucinated path fails loudly rather than growing a tree (§4).
+  // Not created, only found: a hallucinated path fails loudly rather than growing a tree.
   val parent = file.parent
   if (parent == null || !Files.isDirectory(parent)) return Outcome.Failed(
     Failure.NotADirectory(workspace.name, target.parentLabel),
@@ -46,7 +46,7 @@ internal fun writeFile(op: Operation.WriteFile, workspace: Workspace, file: Path
 }
 
 /**
- * One byte-exact replacement that must match exactly once (§4). Zero matches and several are
+ * One byte-exact replacement that must match exactly once. Zero matches and several are
  * both a `failed` that changed nothing — several names the count rather than taking the first,
  * because a model that meant one of them is better told than guessed at.
  *
@@ -70,7 +70,7 @@ internal fun editFile(op: Operation.EditFile, workspace: Workspace, file: Path):
       "text to edit.",
   )
 
-  // Byte for byte, with nothing normalised on the way in (§4): text quoted back from
+  // Byte for byte, with nothing normalised on the way in: text quoted back from
   // `read_file` already carries the file's own line endings and matches as it stands, and a
   // quote that does not match is a `failed` that changed nothing rather than a near-enough
   // edit. What the file's convention governs is the replacement, below.
@@ -199,12 +199,12 @@ private fun Convention.withTrailingNewlineOf(existing: ByteArray?, text: String)
 }
 
 /**
- * Temp file beside the target, then an atomic rename (§4).
+ * Temp file beside the target, then an atomic rename.
  *
  * The two halves answer differently on purpose. Everything before the rename leaves the target
  * exactly as it was, so a failure there is an ordinary `failed` — nothing changed, safe to
  * retry. The rename itself is where that guarantee ends: an [IOException] from it goes up to
- * the pipeline, which shapes a mutation's broken I/O as **Uncertain** (§5).
+ * the pipeline, which shapes a mutation's broken I/O as **Uncertain**.
  */
 private fun Target.land(bytes: ByteArray, created: Boolean): Outcome<FileWritten> {
   val temporary = try {

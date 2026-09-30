@@ -14,7 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /*
- * The control protocol (SPEC §9): one JSON document per line over a Unix socket, one connection
+ * The control protocol: one JSON document per line over a Unix socket, one connection
  * per act or per observer.
  *
  * Newline framing is safe because JSON escapes every newline inside a string, so a line is

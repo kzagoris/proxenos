@@ -11,17 +11,17 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * What a `tools/call` turned out to be. The adapter builds an Operation or it does not; it
  * never half-builds one, and it never decides an Operation's outcome — that is the core's,
- * down the one pipeline (§9).
+ * down the one pipeline.
  */
 internal sealed interface ToolCall {
   data class Ready(val operation: Operation<*>) : ToolCall
 
-  /** No Operation can be built from these arguments, so none was attempted (§5). */
+  /** No Operation can be built from these arguments, so none was attempted. */
   data class Malformed(val complaint: String) : ToolCall
 
   /**
    * A catalog entry whose Operation has not landed in this build. The catalog is flat and
-   * static (§3), so an entry is published all the same, and a call to it is answered rather
+   * static, so an entry is published all the same, and a call to it is answered rather
    * than quietly dropped. All eleven are bound now; this stays because the catalog is data and
    * an entry added to it is not obliged to arrive with its Operation on the same day.
    */
@@ -31,8 +31,8 @@ internal sealed interface ToolCall {
 /**
  * The call, as an Operation. Two arguments are read the way the core expects them to arrive
  * rather than refused here, because the core has something to say about each and the adapter
- * does not: an absent `workspace` is answered by naming the Workspaces that are exposed
- * (§3), and an absent `request_id` by the failure that says a mutation needs one (§6.4).
+ * does not: an absent `workspace` is answered by naming the Workspaces that are exposed,
+ * and an absent `request_id` by the failure that says a mutation needs one.
  * Every other missing or mistyped argument leaves no Operation to have an outcome at all.
  */
 internal fun decode(spec: OperationSpec, arguments: JsonObject?): ToolCall = try {
@@ -70,7 +70,7 @@ internal fun decode(spec: OperationSpec, arguments: JsonObject?): ToolCall = try
 
 /**
  * The promise a refusal from this adapter carries, written once. It is the same guarantee a
- * `failed` Outcome makes (§5) and it has to be as strong, because a call the adapter would not
+ * `failed` Outcome makes and it has to be as strong, because a call the adapter would not
  * build is a call that never reached the disk at all — and a model that cannot tell that from
  * an [Outcome.Uncertain] is the hazard ADR 0001 exists for.
  */
@@ -87,7 +87,7 @@ private class MalformedCall(val complaint: String) : RuntimeException(complaint)
 private class Arguments(private val tool: String, private val arguments: JsonObject?) {
   fun workspace(): String? = text(Operation.WORKSPACE_ARGUMENT)
 
-  /** Blank is how the pipeline reads a Delivery key that did not arrive (§6.4). */
+  /** Blank is how the pipeline reads a Delivery key that did not arrive. */
   fun key(): String = text(Operation.KEY_ARGUMENT) ?: ""
 
   fun text(name: String): String? = primitive(name)?.let {

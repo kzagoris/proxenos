@@ -16,7 +16,7 @@ apply<ModuleBoundariesPlugin>()
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 kotlin {
-  // SPEC §12. A toolchain, not sourceCompatibility: the JVM that launches Gradle is then
+  // A toolchain, not sourceCompatibility: the JVM that launches Gradle is then
   // free to be anything, and what we compile against stays 26 on every machine.
   jvmToolchain(libs.findVersion("jdk").get().requiredVersion.toInt())
 }

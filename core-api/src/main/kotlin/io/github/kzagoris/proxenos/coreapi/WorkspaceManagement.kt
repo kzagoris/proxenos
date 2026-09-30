@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
 
 /**
- * What a frontend does (SPEC §9). Implemented twice, and only here in the design: by the core
+ * What a frontend does. Implemented twice, and only here in the design: by the core
  * in-process, and by the management client over the control socket. A frontend is handed this
  * type and never learns which one it holds.
  */
@@ -38,7 +38,7 @@ sealed interface ManagementAct<R> {
   data class Register(val root: String, val name: String? = null) : OnRegistry<Workspace>
   @Serializable
   data class Rename(val id: WorkspaceId, val name: String) : OnRegistry<Workspace>
-  /** At [AccessLevel.None] this is **Revoke** (SPEC §8.1): per-Workspace, and it stops nothing already running. */
+  /** At [AccessLevel.None] this is **Revoke**: per-Workspace, and it stops nothing already running. */
   @Serializable
   data class SetLevel(val id: WorkspaceId, val level: AccessLevel) : OnRegistry<Workspace>
   /** Omitting root re-confirms the current Root; supplying it rebinds the same Workspace id. */
@@ -49,7 +49,7 @@ sealed interface ManagementAct<R> {
   data class Forget(val id: WorkspaceId) : OnRegistry<Unit>
 
   /**
-   * The user has seen an entry's unresolved outcome (SPEC §10.1). It **appends** a fact and
+   * The user has seen an entry's unresolved outcome. It **appends** a fact and
    * settles the entry by folding; it never edits the entry, which is the one thing Activity
    * forbids. So *when* an unattended command was noticed is itself part of the account.
    */
@@ -58,7 +58,7 @@ sealed interface ManagementAct<R> {
 
   /**
    * The user says their connector in ChatGPT was built against the catalog this Runtime serves
-   * (SPEC §11.5, ADR 0007), which stores the current catalog fingerprint. It records the user's
+   * (ADR 0007), which stores the current catalog fingerprint. It records the user's
    * word and **not a measurement**: nothing on this machine can see the connector, so nothing
    * here checks that the steps were done.
    */
@@ -66,7 +66,7 @@ sealed interface ManagementAct<R> {
   data object AcknowledgeConnector : ManagementAct<Unit>
 
   /**
-   * Takes the transport down (SPEC §8.1). The Runtime stays up, registrations are untouched, and
+   * Takes the transport down. The Runtime stays up, registrations are untouched, and
    * it changes no Access Level and stops no running work. The intent survives a restart.
    */
   @Serializable
@@ -77,7 +77,7 @@ sealed interface ManagementAct<R> {
   data object Connect : ManagementAct<Unit>
 
   /**
-   * Ends the Runtime itself (SPEC §6.3, §8.1): new calls are refused, every running Operation
+   * Ends the Runtime itself: new calls are refused, every running Operation
    * is ended and left Uncertain, and the process exits. Not [Disconnect], and not a Revoke.
    */
   @Serializable
@@ -91,7 +91,7 @@ sealed interface ManagementAct<R> {
   data class StopOperation(val entry: ActivityEntryId) : ManagementAct<Unit>
 
   /**
-   * What a running command has said so far: the **same buffer** `get_result` reads (SPEC §6.5),
+   * What a running command has said so far: the **same buffer** `get_result` reads,
    * taken the same way, so the screen and the tool cannot disagree about what exists. Null once
    * [entry] names no command running here — it finished, or it was never a command.
    */
@@ -128,21 +128,21 @@ sealed interface RuntimeEvent {
      */
     val activity: List<ActivityEntry> = emptyList(),
     /**
-     * This Runtime's start — the one boundary the feed draws (SPEC §10.2). Null only before
+     * This Runtime's start — the one boundary the feed draws. Null only before
      * Activity has been read, which no frontend attaching to a running Runtime can observe.
      */
     val start: RuntimeStart? = null,
     /**
      * No catalog fingerprint the user acknowledged, or one that differs from what this Runtime
-     * serves (SPEC §11.5). Derived at every Start, never stored, and says nothing about the link
+     * serves. Derived at every Start, never stored, and says nothing about the link
      * or about whether a connector exists. True until the Runtime has read the acknowledgement,
      * which no frontend attaching to a running Runtime can observe: an unread one is not one.
      */
     val connectorUnconfirmed: Boolean = true,
-    /** Words beside a Connecting that has lasted one long-poll wait (SPEC §11.3); never a state. */
+    /** Words beside a Connecting that has lasted one long-poll wait; never a state. */
     val connectingWords: ConnectingWords? = null,
     /**
-     * The catalog ChatGPT is served, as data (SPEC §3), so a frontend shows exactly what ChatGPT
+     * The catalog ChatGPT is served, as data, so a frontend shows exactly what ChatGPT
      * sees from the one source of truth. Static for the Runtime's life, so no change carries it.
      */
     val catalog: List<OperationSpec> = emptyList(),
@@ -186,11 +186,11 @@ sealed interface RuntimeEvent {
     @Serializable
     data class OperationEnded(val entry: ActivityEntryId) : Change
 
-    /** A command outran its call, or its call was discarded, and the Runtime is carrying it (§6.2). */
+    /** A command outran its call, or its call was discarded, and the Runtime is carrying it. */
     @Serializable
     data class OperationPromoted(val entry: ActivityEntryId) : Change
 
-    /** The one kill (§6.3) has reached [phase] on a running command. It is still running until it ends. */
+    /** The one kill has reached [phase] on a running command. It is still running until it ends. */
     @Serializable
     data class OperationStopping(val entry: ActivityEntryId, val phase: StopPhase) : Change
 
@@ -243,7 +243,7 @@ data class RunningOperation(
   val stopping: StopPhase? = null,
 )
 
-/** The one kill on the machine (SPEC §6.3), as far as it has got. There is no second, harder stop. */
+/** The one kill on the machine, as far as it has got. There is no second, harder stop. */
 @Serializable
 enum class StopPhase {
   /** TERM sent to the snapshotted tree and the process group; the grace is running. */

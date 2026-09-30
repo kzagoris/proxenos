@@ -4,7 +4,7 @@ Two modules put Ktor on the Runtime's classpath. `mcp` brings `ktor-server-cio`,
 `kotlin-sdk-server` ships no engine, and `core` brings `ktor-client-cio` to read the tunnel
 child's `/metrics` over a Unix socket. The SDK itself also depends on Ktor — its
 `mcpStreamableHttp` is a Ktor server plugin — so there is one Ktor on the classpath whatever we
-write, and the only question is who picks its version. SPEC §12 left that owed: **track the
+write, and the only question is who picks its version. That was left owed: **track the
 version the SDK resolves, or float ahead of it**.
 
 We track it. The Ktor pin in `gradle/libs.versions.toml` is the version `kotlin-sdk-server`

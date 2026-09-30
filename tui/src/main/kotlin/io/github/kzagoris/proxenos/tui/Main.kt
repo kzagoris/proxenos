@@ -13,7 +13,7 @@ import kotlinx.coroutines.runBlocking
  * home screen. `tui start` and `tui stop` do the one thing each says and exit. `tui --dump`
  * draws each frame as plain lines on standard output with no terminal needed.
  *
- * A frontend and nothing more (SPEC §1): everything here goes through [WorkspaceManagement]
+ * A frontend and nothing more: everything here goes through [WorkspaceManagement]
  * over the control socket, never the core, so quitting leaves the Runtime and every Workspace
  * exactly as they were.
  */

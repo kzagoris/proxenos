@@ -5,7 +5,7 @@ plugins {
 dependencies {
   // The composition root, and the only place that is allowed to see everything: it builds the
   // core, hands one Origin-stamped view to mcp and another to the control socket, and owns
-  // the tunnel child (SPEC §7, §9).
+  // the tunnel child.
   implementation(project(":core"))
   implementation(project(":mcp"))
   implementation(project(":control"))

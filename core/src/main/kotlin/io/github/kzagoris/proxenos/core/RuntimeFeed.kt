@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * What `observe()` streams (SPEC §9): the Runtime's state as a frontend sees it, kept here as
+ * What `observe()` streams: the Runtime's state as a frontend sees it, kept here as
  * its own copy and moved on by every [RuntimeEvent.Change] the registry, Activity and the tunnel
  * publish.
  *

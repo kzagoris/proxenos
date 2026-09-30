@@ -265,7 +265,7 @@ From the repository root:
 ./gradlew build
 ```
 
-Further reading: [specification](docs/SPEC.md), [domain terminology](CONTEXT.md), and [architecture decisions](docs/adr/).
+Further reading: [domain terminology](CONTEXT.md), and [architecture decisions](docs/adr/).
 
 ## Security
 

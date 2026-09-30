@@ -203,7 +203,7 @@ class WorkspaceRegistryTest {
     assertFalse(changed.value.single().isGitRepository)
   }
 
-  /** Discovery is an Operation, so it is reached the way every Operation is (SPEC §9). */
+  /** Discovery is an Operation, so it is reached the way every Operation is. */
   private fun operations(registry: WorkspaceRegistry): WorkspaceOperations =
     WorkspaceOperationsPipeline(registry, activity()).operationsFor(Origin.ChatGpt)
 

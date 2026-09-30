@@ -46,7 +46,7 @@ private const val RESULTS_KEPT = 16
  * One Delivery, as the pipeline knows it before any Operation-specific step runs: the Activity
  * entry it opened, and when the frame arrived.
  *
- * The pairing is the point. SPEC §6.2 measures the budget **from frame arrival**, not from the
+ * The pairing is the point. The budget is measured **from frame arrival**, not from the
  * moment a process starts — admission resolves a Root and stats a path, and time spent there is
  * time the transport has already spent waiting. No response deadline is forwarded to this
  * machine, so a mark taken here is the only clock there is.
@@ -59,13 +59,13 @@ internal class Arrival(
   fun remaining(budget: Duration): Duration = at.remaining(budget)
 }
 
-/** What is left of [budget] since this mark: the one clock a Delivery has (§6.2). */
+/** What is left of [budget] since this mark: the one clock a Delivery has. */
 internal fun TimeMark.remaining(budget: Duration): Duration = (budget - elapsedNow()).coerceAtLeast(Duration.ZERO)
 
 /** Why a command was handed to the Runtime, which is what its entry reads as once it finishes. */
 internal enum class Promotion {
   /**
-   * The 45-second budget ran out and the call was answered with a Handle (§6.2). Nobody has
+   * The 45-second budget ran out and the call was answered with a Handle. Nobody has
    * heard the outcome yet, so the entry reads **Unclaimed** until a `get_result` carries it
    * through or the user acknowledges it.
    */
@@ -75,13 +75,13 @@ internal enum class Promotion {
    * The answer was discarded — the call that started the work is gone. **Work is never
    * abandoned**: the Operation runs to completion, its result is retained under its Handle, and
    * the entry reads **Undelivered**, because the Runtime knows what happened and only the reply
-   * was lost (§6.2).
+   * was lost.
    */
   Discarded,
 }
 
 /**
- * The Runtime-scoped home of every `run_command` that is running (SPEC §6.2, §6.3).
+ * The Runtime-scoped home of every `run_command` that is running.
  *
  * Three things live here together because they are one fact about this machine rather than
  * three: the **4-slot cap**, which a promoted command holds a slot in until it finishes or is
@@ -95,7 +95,7 @@ internal enum class Promotion {
 internal class CommandRuntime(
   private val activity: Activity,
   /**
-   * SPEC §6.3, §6.6: `run_command` takes no lock — there is nothing meaningful to lock on a
+   * `run_command` takes no lock — there is nothing meaningful to lock on a
    * command with full account authority — and is capped instead at this many concurrent
    * executions per Runtime, so a model in a retry loop cannot spawn twenty builds and take the
    * machine down. Configuration so a test can ask what the fifth call does without starting four.
@@ -110,7 +110,7 @@ internal class CommandRuntime(
   private val commands = ConcurrentHashMap<String, InFlightCommand>()
   private val sequence = AtomicLong()
 
-  /** After Stop begins, new calls are refused (§6.3). */
+  /** After Stop begins, new calls are refused. */
   @Volatile
   var stopping: Boolean = false
     private set
@@ -147,7 +147,7 @@ internal class CommandRuntime(
   }
 
   /**
-   * Hands a running command to the Runtime and answers its call with a Handle (§6.2).
+   * Hands a running command to the Runtime and answers its call with a Handle.
    *
    * The launch is on this class's own scope rather than on the caller's, which is the whole
    * mechanism: the request coroutine returns immediately, the work does not, and the Operation
@@ -170,7 +170,7 @@ internal class CommandRuntime(
     commands[entry.value]?.takeIf { it.promoted }?.let { CommandReply.Promoted(Handle(it.entry), it.report()) }
 
   /**
-   * What a repeat Delivery hands over, given the reply its first Delivery recorded (§6.4).
+   * What a repeat Delivery hands over, given the reply its first Delivery recorded.
    *
    * A repeat of a Promoted command gets **the same Handle**, never a second command, and a
    * Handle is not the answer: it carries nothing through. The exception is a command whose
@@ -199,14 +199,14 @@ internal class CommandRuntime(
   }
 
   /**
-   * What a running command has said so far — the buffer `get_result` reads, taken the same way
-   * (§6.5). Null once it has an outcome, or for an entry that is no command here.
+   * What a running command has said so far — the buffer `get_result` reads, taken the same way.
+   * Null once it has an outcome, or for an entry that is no command here.
    */
   fun output(entry: ActivityEntryId): RunningCommand? =
     commands[entry.value]?.takeIf { it.outcome == null }?.report()
 
   /**
-   * `get_result` (§4). The Access Level was re-checked by the pipeline above, which is what
+   * `get_result`. The Access Level was re-checked by the pipeline above, which is what
    * closes the collecting route when a Workspace drops below Command.
    */
   fun collect(op: Operation.GetResult, workspace: Workspace): Outcome<Collected> {
@@ -225,7 +225,7 @@ internal class CommandRuntime(
       // Collecting is what settles the Unclaimed entry: a later arrival carries the outcome
       // through, and nobody has to have seen it. Once, though — `get_result` is idempotent, and
       // an entry that read "4 deliveries" for one command nobody delivered twice would be the
-      // account inventing the transport's behaviour rather than revealing it (§10.1).
+      // account inventing the transport's behaviour rather than revealing it.
       if (held.claimCarried()) activity.delivery(held.entry, carried = true)
       return Outcome.Ok(Collected.Reached(handle, outcome))
     }
@@ -241,7 +241,7 @@ internal class CommandRuntime(
   }
 
   /**
-   * Runtime Stop (§6.3): refuse new calls, then apply the one kill to every running Operation —
+   * Runtime Stop: refuse new calls, then apply the one kill to every running Operation —
    * **in parallel, so Stop costs one grace period in total, not one per command**.
    *
    * Work in flight is left **Uncertain**, not **Lost**: the Runtime chose to end it and knows
@@ -278,7 +278,7 @@ internal class CommandRuntime(
   }
 
   /**
-   * StopOperation (SPEC §9): the same kill as [stop], applied to one command, with new calls
+   * StopOperation: the same kill as [stop], applied to one command, with new calls
    * still admitted. False when [entry] names no command still running here — one that already
    * finished has nothing left to end, and only a command runs long enough to be worth stopping.
    */
@@ -316,7 +316,7 @@ internal class CommandRuntime(
       if (command.claimRecord()) record(command, outcome)
     } finally {
       // The slot goes back here and nowhere else: a promoted command holds one of the four
-      // until it finishes or is stopped (§6.3).
+      // until it finishes or is stopped.
       slots.release()
       command.settled.complete(Unit)
     }
@@ -379,7 +379,7 @@ internal class CommandRuntime(
  */
 internal class InFlightCommand(
   val entry: ActivityEntryId,
-  /** The Workspace the call named, which is the one a Handle may be collected through (§4). */
+  /** The Workspace the call named, which is the one a Handle may be collected through. */
   val workspace: String,
   val op: Operation.RunCommand,
   val execution: CommandExecution,
@@ -434,7 +434,7 @@ internal class InFlightCommand(
   /** True the first time an outcome is collected, which is the arrival that settles the entry. */
   fun claimCarried(): Boolean = carried.compareAndSet(false, true)
 
-  /** What it has said so far, taken without disturbing the drain (§6.5). */
+  /** What it has said so far, taken without disturbing the drain. */
   fun report(): RunningCommand {
     val captured = execution.captured()
     return RunningCommand(op.command, op.label, since.elapsedNow(), captured.text, captured.droppedBytes)
@@ -466,7 +466,7 @@ internal class InFlightCommand(
   fun unreapable(): Outcome.Uncertain = endedByStop(reaping)
 
   /**
-   * The one sentence a Runtime Stop leaves behind, in the one shape §6.3 gives it: **Uncertain**
+   * The one sentence a Runtime Stop leaves behind, in the one shape the kill gives it: **Uncertain**
    * rather than `failed`, since the command had already begun and `failed`'s "nothing changed"
    * cannot be promised of it — and naming the pids the reaping could not reach, because
    * survivors are never rounded off to "stopped".

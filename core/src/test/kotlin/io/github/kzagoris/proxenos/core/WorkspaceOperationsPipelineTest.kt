@@ -29,7 +29,7 @@ class WorkspaceOperationsPipelineTest {
     return wiring.registry to wiring.operations
   }
 
-  /** What the composition root does (SPEC §9): one pipeline, and one view per surface. */
+  /** What the composition root does: one pipeline, and one view per surface. */
   private fun wiring(origin: Origin = Origin.ChatGpt): Wiring {
     val registry = WorkspaceRegistry(temporary.resolve("registry.properties"))
     val activity = Activity(temporary.resolve("activity"))
@@ -60,7 +60,7 @@ class WorkspaceOperationsPipelineTest {
   private data class Wiring(
     val registry: WorkspaceRegistry,
     val activity: Activity,
-    /** The Runtime itself, which is what Stop is driven through (SPEC §6.3, §8.1). */
+    /** The Runtime itself, which is what Stop is driven through. */
     val pipeline: WorkspaceOperationsPipeline,
     val operations: WorkspaceOperations,
   )
@@ -104,7 +104,7 @@ class WorkspaceOperationsPipelineTest {
       ),
       catalog.associate { it.name to it.requiredLevel },
     )
-    // §6.4: the wording of the key's description is the only lever on a repeat the model
+    // The wording of the key's description is the only lever on a repeat the model
     // initiates itself, so it is a decision, not a detail.
     val key = catalog.single { it.name == "write_file" }.arguments.single { it.name == "request_id" }
     assertContains(key.description, "same request_id")
@@ -117,7 +117,7 @@ class WorkspaceOperationsPipelineTest {
       listOf("write_file", "edit_file", "run_command"),
       catalog.filter { spec -> spec.arguments.any { it.name == "request_id" } }.map { it.name },
     )
-    // §6.2: promotion is automatic and never requested, and the model cannot buy time the
+    // Promotion is automatic and never requested, and the model cannot buy time the
     // transport will not give it — so neither argument exists to be asked for.
     val asked = catalog.flatMap { it.arguments }.map { it.name }
     listOf("background", "timeout", "timeout_seconds", "async", "detach").forEach {
@@ -217,7 +217,7 @@ class WorkspaceOperationsPipelineTest {
       assertEquals(Failure.OutsideRoot("api", path), refused.reason)
       assertContains(refused.message, path)
     }
-    // §2.4 rejects traversal as such, including the kind that would have landed back inside.
+    // Confinement rejects traversal as such, including the kind that would have landed back inside.
     Files.writeString(root.resolve("file.txt"), "contents\n")
     Files.createDirectory(root.resolve("sub"))
     val traversal = assertIs<Outcome.Failed>(operations.perform(Operation.ReadFile("api", "sub/../file.txt")))
@@ -558,7 +558,7 @@ class WorkspaceOperationsPipelineTest {
 
   @Test
   fun `a cwd outside the Root is refused, and what the command then reads is not confined`() = runBlocking<Unit> {
-    // SPEC §2.4: the Root stops confining what a command *does*, not where the Runtime starts
+    // The Root stops confining what a command *does*, not where the Runtime starts
     // it. Both halves of that sentence are load-bearing, so both are tested here.
     val (registry, _, _, operations) = commandWiring()
     val root = root()
@@ -588,7 +588,7 @@ class WorkspaceOperationsPipelineTest {
 
   @Test
   fun `lowering a level while a command runs stops nothing, and the next call is refused`() = runBlocking<Unit> {
-    // SPEC §13.2 scenario 2. Revocation is not a stop button: a level change governs the calls
+    // Revocation is not a stop button: a level change governs the calls
     // that arrive after it and does not reach into work already running.
     val (registry, _, _, operations) = commandWiring()
     val root = root()
@@ -639,7 +639,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `a command past the budget is Promoted, and the Handle arrives before the outcome exists`() =
     runBlocking<Unit> {
-      // SPEC §13.2 scenario 7, and ADR 0003's whole reason: killing a command mid-flight
+      // ADR 0003's whole reason: killing a command mid-flight
       // manufactures Uncertain, and letting it finish produces something known.
       val (registry, activity, pipeline, operations) = commandWiring(budget = 300.milliseconds)
       val root = root()
@@ -677,12 +677,12 @@ class WorkspaceOperationsPipelineTest {
       assertContains(result.value.output, "last")
 
       // The account: it ran unattended and somebody has now heard what it did, which is what
-      // settles an Unclaimed entry (§10.1).
+      // settles an Unclaimed entry.
       val entry = activity.entries().first { it.tool == "run_command" }
       assertIs<ActivityOutcome.Ok>(entry.outcome)
       assertFalse(entry.needsAttention, "a collected result is settled")
 
-      // And the collecting route closes when the dial does (§4, §6.2).
+      // And the collecting route closes when the dial does.
       registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Read))
       val refused = assertIs<Outcome.Failed>(
         operations.perform(Operation.GetResult("api", promoted.handle.value)),
@@ -694,7 +694,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `a running command is watched from the stream - promoted, its buffer the one get_result reads, and listed until reaped`() =
     runBlocking<Unit> {
-      // SPEC §10.2: the band is drawn from what a frontend is told, so each of these has to be
+      // The band is drawn from what a frontend is told, so each of these has to be
       // on the stream rather than inferred by the frontend.
       val feed = RuntimeFeed()
       val (registry, activity, pipeline, operations) = commandWiring(budget = 200.milliseconds, feed = feed)
@@ -800,7 +800,7 @@ class WorkspaceOperationsPipelineTest {
 
   @Test
   fun `a promoted command holds one of the four slots until it is stopped`() = runBlocking<Unit> {
-    // SPEC §6.3: there is no maximum lifetime for a promoted command, so the cap is the runaway
+    // There is no maximum lifetime for a promoted command, so the cap is the runaway
     // guard and a promoted command counts against it.
     val (registry, _, pipeline, operations) = commandWiring(budget = 200.milliseconds)
     commandable(registry, root())
@@ -823,7 +823,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `a discarded answer leaves the command running, its result kept, and the entry Undelivered`() =
     runBlocking<Unit> {
-      // SPEC §6.2: work is never abandoned. Abandoning it mid-flight is exactly what
+      // Work is never abandoned. Abandoning it mid-flight is exactly what
       // manufactures Uncertain, and `failed`'s "nothing changed" is bought by not doing that.
       val (registry, activity, pipeline, operations) = commandWiring()
       val root = root()
@@ -852,7 +852,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `Runtime Stop leaves a promoted command Uncertain rather than Lost, and refuses new calls`() =
     runBlocking<Unit> {
-      // SPEC §13.2 scenario 11. Lost is reserved for a Runtime taken from the machine; this one
+      // Lost is reserved for a Runtime taken from the machine; this one
       // chose to end the work and knows that it did.
       val (registry, activity, pipeline, operations) = commandWiring(budget = 200.milliseconds)
       commandable(registry, root())
@@ -884,7 +884,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `one promoted command failing does not cancel another, and neither is cancelled by its caller`() =
     runBlocking<Unit> {
-      // §6.6: the scope promoted work runs in carries a SupervisorJob and outlives the request
+      // The scope promoted work runs in carries a SupervisorJob and outlives the request
       // coroutine that started it. Both halves matter — a build must not be taken down by an
       // unrelated command, nor by the call that asked for it having gone.
       val (registry, activity, pipeline, operations) = commandWiring(budget = 200.milliseconds)
@@ -911,7 +911,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `collecting twice collects the same thing, and the account still says one Delivery`() =
     runBlocking<Unit> {
-      // §4: `get_result` is idempotent, which is why it carries no Delivery key. An entry that
+      // `get_result` is idempotent, which is why it carries no Delivery key. An entry that
       // read "4 deliveries" for a command nobody delivered twice would have the account
       // inventing the transport's behaviour rather than revealing it.
       val (registry, activity, pipeline, operations) = commandWiring(budget = 200.milliseconds)
@@ -931,7 +931,7 @@ class WorkspaceOperationsPipelineTest {
 
   @Test
   fun `a Handle whose Runtime is gone resolves to the Lost Operation it points at`() = runBlocking<Unit> {
-    // §6.2: the Handle names an entry in Activity rather than a record of its own, so this
+    // The Handle names an entry in Activity rather than a record of its own, so this
     // needs nothing arranging — an entry a previous Runtime opened and never closed reads Lost.
     val account = temporary.resolve("activity")
     val taken = Activity(account)
@@ -952,7 +952,7 @@ class WorkspaceOperationsPipelineTest {
   @Test
   fun `a search that outruns its budget is ok with its time marker, and carries no Handle`() =
     runBlocking<Unit> {
-      // SPEC §6.2: only `run_command` promotes. Search is time-bounded instead, and a search
+      // Only `run_command` promotes. Search is time-bounded instead, and a search
       // that found less is a result rather than an Uncertain.
       val registry = WorkspaceRegistry(temporary.resolve("registry.properties"))
       val activity = Activity(temporary.resolve("activity"))

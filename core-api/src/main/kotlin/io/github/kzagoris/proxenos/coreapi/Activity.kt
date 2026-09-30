@@ -9,8 +9,8 @@ import java.time.Instant
 import kotlin.time.Duration
 
 /**
- * Which surface an Operation arrived from. **Bound per surface, never passed per call**
- * (SPEC §9): `operationsFor(origin)` is stamped once at startup wiring, so a caller cannot
+ * Which surface an Operation arrived from. **Bound per surface, never passed per call**:
+ * `operationsFor(origin)` is stamped once at startup wiring, so a caller cannot
  * claim an Origin that is not its own and a bug in the `mcp` adapter cannot write "Frontend"
  * against a ChatGPT command — the one record relied on after an unattended `run_command`.
  *
@@ -19,7 +19,7 @@ import kotlin.time.Duration
 @Serializable
 enum class Origin { ChatGpt, Frontend }
 
-/** One Runtime start. Entries name the start they belong to; a restart is not a boundary (§8.3). */
+/** One Runtime start. Entries name the start they belong to; a restart is not a boundary. */
 @Serializable
 data class RuntimeStartId(val value: String)
 
@@ -27,13 +27,13 @@ data class RuntimeStartId(val value: String)
 @Serializable
 data class RuntimeStart(val id: RuntimeStartId, val at: Instant)
 
-/** Names an entry in Activity. A Handle (§6.2) names one of these rather than a record of its own. */
+/** Names an entry in Activity. A Handle names one of these rather than a record of its own. */
 @Serializable
 data class ActivityEntryId(val value: String)
 
 /**
  * The reference by which a Promoted Operation's result is claimed once the call that started it
- * has ended (SPEC §6.2).
+ * has ended.
  *
  * It **is** an [ActivityEntryId] rather than carrying one, because a Handle names an entry in
  * Activity and nothing else: Activity is already append-only, already persists, already keeps
@@ -53,7 +53,7 @@ data class Handle(val entry: ActivityEntryId) {
 }
 
 /**
- * One Operation's line in the account (SPEC §10.1), folded out of the appended records that
+ * One Operation's line in the account, folded out of the appended records that
  * mention it. An Operation is recorded **once**; a repeat Delivery and an acknowledgement each
  * append a fact against it rather than a second entry, so what the user sees is one thing they
  * asked for once, and what is on disk is never rewritten.
@@ -72,7 +72,7 @@ data class ActivityEntry(
   /** Null while the work is still in flight, and for an Operation the Runtime was taken from. */
   val elapsed: Duration?,
   val outcome: ActivityOutcome,
-  /** Arrivals of this Operation beyond the first (§6.4). Zero for an Operation that arrived once. */
+  /** Arrivals of this Operation beyond the first. Zero for an Operation that arrived once. */
   val deliveries: Int,
   /** When the user saw an unresolved outcome. Appended, never a flag set on this entry. */
   val acknowledgedAt: Instant?,
@@ -127,7 +127,7 @@ sealed interface ActivityOutcome {
     override val said: String get() = "failed"
   }
 
-  /** Effects on disk unknown: cancelled, timed out, or its Root went Broken partway (§5). */
+  /** Effects on disk unknown: cancelled, timed out, or its Root went Broken partway. */
   @Serializable
   data class Uncertain(override val detail: String) : ActivityOutcome {
     override val said: String get() = "uncertain"

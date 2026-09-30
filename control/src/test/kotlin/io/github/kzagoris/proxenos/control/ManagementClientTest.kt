@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * SPEC §13.1's named harness for the control protocol: the management client driven against an
+ * The named harness for the control protocol: the management client driven against an
  * in-process core over a real Unix socket, so that the client and the core are proven
  * interchangeable — the design's one real seam, and the only place two adapters exist.
  *

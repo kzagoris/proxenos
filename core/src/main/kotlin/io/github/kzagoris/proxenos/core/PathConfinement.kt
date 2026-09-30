@@ -8,24 +8,24 @@ import java.nio.file.Path
 
 /**
  * Resolve against the Root and confine to it: symlinks are followed and *then* checked, `..`
- * traversal and absolute paths rejected (SPEC §2.4). A rejection names the symlink that caused
+ * traversal and absolute paths rejected. A rejection names the symlink that caused
  * it, so a legitimate one reads as fixable — the remedy is to register its target as its own
  * Workspace.
  *
  * `run_command`'s command is bounded by none of this, but its optional `cwd` is confined here
- * like any other path argument (§4): the Root stops confining what a command does, not where
+ * like any other path argument: the Root stops confining what a command does, not where
  * the Runtime starts it.
  *
  * What this cannot promise is that the path it returns still names what it checked. Between the
  * check and the open, another process may replace a directory with a symlink. Closing that would
- * take `openat` semantics the JDK does not expose; SPEC §2.4 prescribes resolve-then-check, and
+ * take `openat` semantics the JDK does not expose; the design prescribes resolve-then-check, and
  * a command at Command level is already wider than the Root.
  */
 internal fun confine(workspace: Workspace, argument: String): Outcome<Path> = try {
   confining(workspace, argument)
 } catch (failure: IOException) {
   // Confinement is itself I/O — a path can vanish between the two syscalls that resolve it —
-  // and an Operation-level problem is a result, never an exception out of the core (§5).
+  // and an Operation-level problem is a result, never an exception out of the core.
   Outcome.Failed(
     Failure.IoError(workspace.name, failure.message ?: failure.toString()),
     "'$argument' could not be resolved: ${failure.message ?: failure.toString()}",
@@ -51,7 +51,7 @@ private fun confining(workspace: Workspace, argument: String): Outcome<Path> {
     "'$argument' is an absolute path. Paths are resolved against the Root of Workspace " +
       "'${workspace.name}', so name this one relative to it.",
   )
-  // §2.4 rejects `..` traversal as such, not only the traversal that happens to end up outside.
+  // Confinement rejects `..` traversal as such, not only the traversal that happens to end up outside.
   // A path inside the Root never needs one, and the rule is worth more than the convenience.
   if (requested.any { it.toString() == ".." }) return outside(
     workspace, argument, null,

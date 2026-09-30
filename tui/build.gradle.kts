@@ -8,7 +8,7 @@ plugins {
 dependencies {
   // A frontend sees the interfaces and the client that implements them over the control
   // socket. Not the core: a frontend that could construct one would hold a core that dies
-  // with it, which is the wrong lifetime (SPEC §1).
+  // with it, which is the wrong lifetime.
   implementation(project(":core-api"))
   implementation(project(":control"))
   implementation(libs.mosaic.runtime)

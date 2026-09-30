@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * `list_directory` and `search` (SPEC §4). The decision under test is how search enumerates:
+ * `list_directory` and `search`. The decision under test is how search enumerates:
  * inside a repository it asks Git for tracked-plus-untracked-not-ignored, which is the
  * project's own ignore rules rather than a second, subtly different `.gitignore` parser.
  */
@@ -125,7 +125,7 @@ class FileSearchTest {
   @Test
   fun `a Root inside a larger repository is enumerated scoped to the Root`() = runBlocking<Unit> {
     assumeTrue(gitInstalled(), "git is not installed")
-    // The Root is a subdirectory of the repository, which §4 says the Git tools are scoped to.
+    // The Root is a subdirectory of the repository, which the Git tools are scoped to.
     // `git ls-files` run in the Root is that scoping without a pathspec to get wrong, and the
     // names it prints are already relative to the Root.
     val outer = Files.createDirectory(temporary.resolve("outer"))
@@ -270,7 +270,7 @@ class FileSearchTest {
     val found = searched(operations, Operation.Search("api", "needle"))
     assertEquals(setOf("text.txt"), found.paths())
 
-    // The name matched, not the bytes: §4 skips a binary file's contents, not its filename.
+    // The name matched, not the bytes: a binary file's contents are skipped, not its filename.
     Files.write(root.resolve("needle.png"), byteArrayOf(0x89.toByte(), 0x50, 0, 0x4E))
     assertContains(searched(operations, Operation.Search("api", "needle")).hits, SearchHit.Name("needle.png"))
 

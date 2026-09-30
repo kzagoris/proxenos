@@ -17,7 +17,7 @@ import kotlin.time.Duration
 private const val GIT_DIRECTORY = ".git"
 
 /**
- * Filename and content in one pass (SPEC §4), entirely in this JVM. Not delegated to ripgrep:
+ * Filename and content in one pass, entirely in this JVM. Not delegated to ripgrep:
  * one code path, and no assumption about what the host has installed.
  *
  * The decision worth keeping is **how it enumerates**. Inside a repository it asks Git —
@@ -29,7 +29,7 @@ private const val GIT_DIRECTORY = ".git"
  *
  * Every way it can return less — the result cap, the time budget, the byte bound — is an `ok`
  * with less in it. A search is read-only and capped by design, so there is nothing about a
- * short answer that is [Outcome.Uncertain], and nothing here is ever Promoted (§6.2).
+ * short answer that is [Outcome.Uncertain], and nothing here is ever Promoted.
  */
 internal fun search(
   op: Operation.Search,
@@ -135,7 +135,7 @@ private enum class GitOutcome {
 
 /**
  * Ask Git for the files it does not ignore. Started in the subtree, because `git ls-files`
- * limits itself to the directory it is run from and prints paths relative to it. That is the §4
+ * limits itself to the directory it is run from and prints paths relative to it. That is the
  * scoping of a Root nested inside a larger repository, arrived at without a pathspec anybody
  * can get wrong.
  */
@@ -143,7 +143,7 @@ private fun gitEnumerate(subtree: Path, deadline: Deadline, scan: Scan): GitOutc
   val builder = ProcessBuilder(
     "git", "--no-optional-locks", "ls-files", "-z", "--cached", "--others", "--exclude-standard",
   ).directory(subtree.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD)
-  // §4: a repository needing credentials fails instead of hanging on a prompt nobody can see.
+  // A repository needing credentials fails instead of hanging on a prompt nobody can see.
   builder.environment()["GIT_TERMINAL_PROMPT"] = "0"
   val process = try {
     builder.start()
@@ -333,7 +333,7 @@ private class Scan(
     } catch (_: IOException) {
       return true // A dangling link, or a file deleted while the search was running.
     }
-    // §4: symlinks leaving the Root are skipped rather than followed. The path reported is the
+    // Symlinks leaving the Root are skipped rather than followed. The path reported is the
     // one that was enumerated, not the target's: that is the path the caller can read back.
     if (!real.startsWith(rootReal)) return true
     if (!Files.isRegularFile(real)) return true
@@ -348,8 +348,8 @@ private class Scan(
     if (scanContents(file, relative, found)) {
       hits += found
     } else {
-      // The contents go; the name stays, because it matched on its own terms — §4 skips a
-      // binary file's *contents*, and `vendor/needle.png` is still where the model asked to be
+      // The contents go; the name stays, because it matched on its own terms — a
+      // binary file's *contents* are skipped, and `vendor/needle.png` is still where the model asked to be
       // pointed. The cap the dropped lines spent is given back with them, so that a binary
       // file is never what ends a search early.
       cappedByResults = cappedBefore
@@ -404,7 +404,7 @@ private class Scan(
       overflowed = false
     }
 
-    // Byte-oriented like a read (§4): 0x0A never appears inside a multi-byte UTF-8 sequence,
+    // Byte-oriented like a read: 0x0A never appears inside a multi-byte UTF-8 sequence,
     // so lines are cut without first decoding a file that may not decode.
     Files.newInputStream(file).use { input ->
       val chunk = ByteArray(1 shl 16)

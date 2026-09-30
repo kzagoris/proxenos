@@ -136,7 +136,7 @@ class ConfigurationTest {
     assertEquals(2, config.commandConcurrency)
   }
 
-  /** The poll cycle the tunnel child is launched with is the one Connected is judged against (§8.4). */
+  /** The poll cycle the tunnel child is launched with is the one Connected is judged against. */
   @Test
   fun `config toml sets the tunnel's poll wait, up to the ten minutes tunnel-client accepts`() {
     credentials()

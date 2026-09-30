@@ -8,7 +8,7 @@ import kotlinx.serialization.UseSerializers
 import java.time.Instant
 
 /**
- * The Runtime's link to the tunnel (SPEC §8.4), derived from one measured number — when the
+ * The Runtime's link to the tunnel, derived from one measured number — when the
  * tunnel child last polled successfully — plus the Runtime's own start. [Disconnected] alone is
  * not measured: it is the user's intent.
  *
@@ -39,7 +39,7 @@ sealed interface RuntimeState {
   @Serializable
   data class Failed(val complaint: TunnelComplaint?) : RuntimeState
 
-  /** The user took the transport down (SPEC §8.1). Never the Runtime's judgement. */
+  /** The user took the transport down. Never the Runtime's judgement. */
   @Serializable
   data object Disconnected : RuntimeState
 }
@@ -49,7 +49,7 @@ sealed interface RuntimeState {
 data class RuntimeStatus(val state: RuntimeState, val enteredAt: Instant)
 
 /**
- * Words about a link that has never worked (SPEC §11.3): present while the Runtime has been
+ * Words about a link that has never worked: present while the Runtime has been
  * [RuntimeState.Connecting] for one long-poll wait with no success since this Start or the user's
  * last Connect, and absent otherwise. It is what the first-run credential panel quotes.
  *

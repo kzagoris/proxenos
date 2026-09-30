@@ -6,9 +6,9 @@ import java.util.UUID
 /**
  * A TryOperation's Operation, from the text typed for each argument. This frontend is an
  * adapter like the `mcp` one: it builds an Operation or refuses to, and what the Operation then
- * does — including every Access Level refusal — is the one pipeline's to say (SPEC §9).
+ * does — including every Access Level refusal — is the one pipeline's to say.
  *
- * A mutating one is given a fresh `request_id` of its own, like any other caller (§6.4): a try
+ * A mutating one is given a fresh `request_id` of its own, like any other caller: a try
  * is an intentional new execution every time.
  *
  * @throws IllegalArgumentException naming the argument that is not what the catalog says it is.
