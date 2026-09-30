@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.runInterruptible
+import kotlinx.serialization.SerializationException
 
 /**
  * The control socket could not be dialed, so nothing reached the Runtime: the act was not done.
@@ -106,21 +107,24 @@ class ManagementClient(private val socket: Path) : WorkspaceManagement {
   }
 
   private fun dial(): SocketChannel {
-    val channel = SocketChannel.open(StandardProtocolFamily.UNIX)
+    var channel: SocketChannel? = null
     try {
+      channel = SocketChannel.open(StandardProtocolFamily.UNIX)
       channel.connect(UnixDomainSocketAddress.of(socket))
+      return channel
     } catch (failed: IOException) {
-      channel.close()
+      channel?.close()
       if (failed is ClosedByInterruptException) throw failed
       throw NotSent("The Runtime is not answering on $socket", failed)
     }
-    return channel
   }
 
   /**
    * A failed write counts as lost rather than unsent: part of the request may have gone, and the
-   * Runtime reads a last unterminated line as a request all the same. The interrupt of a
-   * cancelled caller is not a transport failure, and is left for [blocking] to turn back into one.
+   * Runtime reads a last unterminated line as a request all the same. So does a reply that will
+   * not decode: a Runtime that died mid-reply leaves the part it wrote as that last line. The
+   * interrupt of a cancelled caller is not a transport failure, and is left for [blocking] to
+   * turn back into one.
    */
   private inline fun <T> replyLost(exchange: () -> T): T = try {
     exchange()
@@ -128,6 +132,8 @@ class ManagementClient(private val socket: Path) : WorkspaceManagement {
     throw interrupted
   } catch (failed: IOException) {
     throw ReplyLost("No reply from the Runtime on $socket", failed)
+  } catch (garbled: SerializationException) {
+    throw ReplyLost("No whole reply from the Runtime on $socket", garbled)
   }
 
   /** What the core itself would have thrown for the same act, as near as the wire allows. */

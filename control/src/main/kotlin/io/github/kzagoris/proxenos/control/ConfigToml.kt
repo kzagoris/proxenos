@@ -1,5 +1,6 @@
 package io.github.kzagoris.proxenos.control
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -73,13 +74,15 @@ class ConfigToml private constructor(val file: Path, values: Map<String, TomlVal
 
     fun file(environment: Map<String, String>): Path = directory(environment).resolve("config.toml")
 
-    /** The file, or no settings when there is none: every setting has a default. */
-    fun read(environment: Map<String, String>): ConfigToml {
+    /** The file, or no settings when there is none: every setting has a default. [only] is [parseConfigToml]'s. */
+    fun read(environment: Map<String, String>, only: String? = null): ConfigToml {
       val file = file(environment)
       val values = try {
-        parseConfigToml(Files.readString(file), file, directory(environment).resolve("credentials"))
+        parseConfigToml(Files.readString(file), file, directory(environment).resolve("credentials"), only)
       } catch (_: NoSuchFileException) {
         emptyMap()
+      } catch (unreadable: IOException) {
+        throw ConfigRefused("$file cannot be read: ${unreadable.message ?: unreadable::class.simpleName}.")
       }
       return ConfigToml(file, values, home(environment))
     }
@@ -104,8 +107,11 @@ internal sealed interface TomlValue {
  * the Runtime quietly did not read is worse than one it refused. A refusal never quotes the
  * value, because the one thing that must never be pasted from here is a key someone put in the
  * wrong file — which is refused by name before its value is even parsed.
+ *
+ * With [only], every line but that key's is skipped unread: a frontend wants one setting, and a
+ * mistake elsewhere in the file must not keep it from reaching a Runtime already running.
  */
-internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path): Map<String, TomlValue> {
+internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path, only: String? = null): Map<String, TomlValue> {
   val values = linkedMapOf<String, TomlValue>()
   text.lines().forEachIndexed { index, raw ->
     val number = index + 1
@@ -113,6 +119,7 @@ internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path): M
 
     val line = raw.trim()
     if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
+    if (only != null && line.substringBefore('=').trim() != only) return@forEachIndexed
     if (line.startsWith("[")) refuse("tables are not used; every setting is a top-level key = value.")
     val key = line.substringBefore('=', missingDelimiterValue = "").trim()
     if (key.isEmpty() || !KEY.matches(key)) refuse("expected key = value.")

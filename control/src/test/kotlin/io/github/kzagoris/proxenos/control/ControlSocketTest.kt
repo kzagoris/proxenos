@@ -53,9 +53,15 @@ class ControlSocketTest {
   }
 
   @Test
-  fun `a config toml the Runtime would refuse is refused with the Runtime's words, unless the flag settles it`() {
+  fun `a control_socket the Runtime would refuse is refused with the Runtime's words, unless the flag settles it`() {
     configToml("control_socket = relative.sock")
     assertContains(assertFailsWith<ConfigRefused> { ControlSocket.resolve(environment()) }.message!!, "$configToml line 1")
     assertEquals(home.resolve("flag.sock"), ControlSocket.resolve(environment(), flag = home.resolve("flag.sock")))
+  }
+
+  @Test
+  fun `a mistake elsewhere in config toml does not keep a frontend from the socket it names`() {
+    configToml("command_budget_seconds = true\ncontrol_socket = \"${home.resolve("from-toml.sock")}\"\n[table]")
+    assertEquals(home.resolve("from-toml.sock"), ControlSocket.resolve(environment()))
   }
 }

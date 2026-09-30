@@ -294,25 +294,31 @@ class ManagementClientTest {
   }
 
   @Test
-  fun `an act whose request was read and then answered with a close is ReplyLost, and it was sent once`() = runBlocking {
-    val socket = temporary.resolve("mute.sock")
-    val requests = mutableListOf<String>()
-    val mute = ServerSocketChannel.open(StandardProtocolFamily.UNIX).apply { bind(UnixDomainSocketAddress.of(socket)) }
-    val serving = Thread {
-      mute.use { listening ->
-        // Every connection it is dialed on: a client that retried would dial a second one.
+  fun `an act whose request was read and then answered with a close, or half a reply, is ReplyLost, and it was sent once`() = runBlocking {
+    // Nothing, and a Runtime that died partway through writing its answer.
+    for (answer in listOf("", """{"@type":"Done","res""")) {
+      val socket = temporary.resolve("mute.sock").also(Files::deleteIfExists)
+      val requests = mutableListOf<String>()
+      val mute = ServerSocketChannel.open(StandardProtocolFamily.UNIX).apply { bind(UnixDomainSocketAddress.of(socket)) }
+      val serving = Thread {
+        // Every connection it is dialed on: a client that dialed again would be seen here.
         while (true) {
-          val connection = runCatching { listening.accept() }.getOrNull() ?: break
-          connection.use { requests += Channels.newInputStream(it).bufferedReader().readLine() }
+          val connection = runCatching { mute.accept() }.getOrNull() ?: break
+          connection.use {
+            requests += Channels.newInputStream(it).bufferedReader().readLine()
+            Channels.newOutputStream(it).write(answer.toByteArray())
+          }
         }
+      }.apply { start() }
+      try {
+        assertFailsWith<ReplyLost>(answer) { ManagementClient(socket).perform(ManagementAct.Register(project("api").toString())) }
+      } finally {
+        mute.close()
+        serving.join()
       }
-    }.apply { start() }
-
-    assertFailsWith<ReplyLost> { ManagementClient(socket).perform(ManagementAct.Register(project("api").toString())) }
-    mute.close()
-    serving.join()
-    assertEquals(1, requests.size, "the act was sent $requests")
-    assertContains(requests.single(), "Register")
+      assertEquals(1, requests.size, "the act was sent $requests")
+      assertContains(requests.single(), "Register")
+    }
   }
 
   /**

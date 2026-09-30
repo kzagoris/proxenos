@@ -15,16 +15,17 @@ object ControlSocket {
 
   /**
    * For a frontend. `config.toml` is read only when neither [flag] nor the environment settles
-   * it, so a file the Runtime would refuse does not stop someone naming the socket outright.
+   * it, and then only its [KEY] line, so a file the Runtime would refuse elsewhere does not stop
+   * a frontend reaching a Runtime already running.
    */
   fun resolve(environment: Map<String, String>, flag: Path? = null): Path =
     flag?.toAbsolutePath()?.normalize()
-      ?: resolve(if (!environment[VARIABLE].isNullOrEmpty()) ConfigToml.unread(environment) else ConfigToml.read(environment), environment)
+      ?: resolve(if (!environment[VARIABLE].isNullOrEmpty()) ConfigToml.unread(environment) else ConfigToml.read(environment, only = KEY), environment)
 
   /** For the Runtime, which reads [toml] for everything else too. */
   fun resolve(toml: ConfigToml, environment: Map<String, String>): Path =
     toml.path(KEY, environment, VARIABLE)
-      ?: environment.absolutePath("XDG_RUNTIME_DIR")?.resolve(APP)?.resolve("control.sock")
+      ?: environment.absolutePath("XDG_RUNTIME_DIR")?.resolve(APP)?.resolve("control.sock")?.normalize()
       ?: throw ConfigRefused(
         "XDG_RUNTIME_DIR is not set, and the control socket is in it by default. Start from a login " +
           "session, or set $KEY in ${ConfigToml.file(environment)}.",
