@@ -111,10 +111,12 @@ object Wording {
   }
 
   /** What a TryOperation came back with: the pipeline's own words, which is what ChatGPT would have been told. */
-  fun tried(tool: String, workspace: String, outcome: Outcome<*>): String = when (outcome) {
+  fun tried(tool: String, workspace: String, outcome: Outcome<*>, promotedLocation: String? = null): String = when (outcome) {
     is Outcome.Ok -> {
       val promoted =
-        (outcome.value as? CommandReply.Promoted)?.let { " It outran its call and was Promoted as Handle ${it.handle.value}: it is in the band." }
+        (outcome.value as? CommandReply.Promoted)?.let {
+          " It outran its call and was Promoted as Handle ${it.handle.value}${promotedLocation?.let { location -> ": $location" }.orEmpty()}."
+        }
       "Tried $tool against '$workspace': ok. What it returned is in Activity.${promoted.orEmpty()}"
     }
 

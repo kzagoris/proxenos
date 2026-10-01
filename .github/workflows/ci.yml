@@ -25,11 +25,15 @@ jobs:
       # without credentials is the proof it was the one started.
       - name: A linked bin/tui starts its own tree's Runtime
         run: |
-          home=$(mktemp -d)
-          ln -s "$PWD/build/install/proxenos/bin/tui" "$home/tui"
-          out=$(env -i HOME="$home" XDG_RUNTIME_DIR="$home" PATH=/usr/bin:/bin JAVA_HOME="$JAVA_HOME" "$home/tui" start 2>&1) || true
-          echo "$out"
-          grep -q "No credentials file" <<<"$out"
+          for name in plain 'tree with spaces "quotes" and \backslash'; do
+            launcher_home=$(mktemp -d)
+            cp -a "$PWD/build/install/proxenos" "$launcher_home/$name"
+            ln -s "$launcher_home/$name/bin/tui" "$launcher_home/tui"
+            out=$(env -i HOME="$launcher_home" XDG_RUNTIME_DIR="$launcher_home" PATH=/usr/bin:/bin JAVA_HOME="$JAVA_HOME" "$launcher_home/tui" start 2>&1) || true
+            echo "$out"
+            grep -q "No credentials file" <<<"$out"
+            rm -rf "$launcher_home"
+          done
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

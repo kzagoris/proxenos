@@ -74,6 +74,36 @@ class HomeScreenTest {
   private fun Home.selectedLine(): Int = screen().indexOfFirst { it.startsWith(" >") || it.startsWith("!>") }
 
   @Test
+  fun `a local Stop stays stopped through late shutdown snapshots until Start is asked for`() {
+    val live = attached()
+    val shutdown = Attachment.Attached(live.snapshot!!.after(
+      RuntimeEvent.Change.RuntimeChanged(RuntimeStatus(RuntimeState.Disconnected, now)),
+    ))
+    val stopping = live.say("The Runtime stopped.").stoppedHere().observed(shutdown)
+    assertFalse("notes" in stopping.prose(), "late events must not restore the stopped Runtime's Workspaces")
+    val stopped = stopping.observed(Attachment.Absent(Reason.NotAnswering))
+
+    assertTrue("stopped · registrations survive" in stopped.keys("i", "Enter").prose())
+    assertTrue("The Runtime stopped." in stopped.prose())
+
+    val started = stopped.press(Key("S")).home.observed(Attachment.Attaching).observed(Attachment.Attached(live.snapshot!!))
+    assertTrue("Runtime · Attached" in started.prose())
+    assertFalse("stopped · registrations survive" in started.keys("i", "Enter").prose())
+  }
+
+  @Test
+  fun `a new attachment after absence carries no notice or scroll from the previous Runtime`() {
+    val live = attached().say("'notes' is now at Command.").copy(scroll = 7)
+    val absent = live.observed(Attachment.Absent(Reason.NotAnswering))
+    val next = absent.observed(Attachment.Starting).observed(Attachment.Attaching)
+      .observed(Attachment.Attached(live.snapshot!!.copy(start = RuntimeStart(RuntimeStartId("next"), now))))
+
+    assertFalse("'notes' is now at Command." in next.prose())
+    assertEquals(0, next.scroll)
+    assertTrue("Runtime · Attached" in next.prose())
+  }
+
+  @Test
   fun `the cursor walks the feed in the order it is drawn - up goes to the row above`() {
     val feed = listOf(entry("read_file", ok(), arguments = "path=first"), entry("read_file", ok(), arguments = "path=second"), entry("read_file", ok(), arguments = "path=third"))
     val home = attached(activity = feed)

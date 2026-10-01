@@ -13,10 +13,10 @@ import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.*
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
-import io.github.kzagoris.proxenos.frontend.Wording
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -42,7 +43,8 @@ class AttachedTest {
   private lateinit var pipeline: WorkspaceOperationsPipeline
   private lateinit var server: ControlServer
   private lateinit var socket: Path
-  private val scope = CoroutineScope(Dispatchers.IO)
+  // As in Mosaic, screen updates have one owner even while socket calls suspend.
+  private val scope = CoroutineScope(Dispatchers.IO.limitedParallelism(1))
 
   @BeforeTest
   fun `a Runtime on the control socket`() {
@@ -77,37 +79,32 @@ class AttachedTest {
   }
 
   /** One TUI: its screen state, moved on by the attachment and by the keys it is given. */
-  private inner class Tui {
+  private inner class Tui(managementOverride: WorkspaceManagement? = null) {
     private val attachment = RuntimeAttachment(socket, executable = null)
-    val management = attachment.management
+    val management = managementOverride ?: attachment.management
     val home = MutableStateFlow(Home())
+    private var attempt = 0
 
     init {
       scope.launch { attachment.attach(startIfAbsent = false).collect { home.value = home.value.observed(it) } }
     }
 
-    suspend fun press(vararg keys: String) {
+    suspend fun press(vararg keys: String) = withContext(scope.coroutineContext) {
       for (key in keys) {
         val step = home.value.press(Key(key))
         home.value = step.home
-        when (val command = step.command) {
-          is Command.Perform -> {
-            management.perform(command.act)
-            home.value = home.value.say(command.done)
-          }
-          is Command.Try -> {
-            val outcome = management.perform(ManagementAct.TryOperation(command.op))
-            home.value = home.value.say(Wording.tried(command.tool, command.workspace, outcome), outcome.tone)
-          }
-          null -> Unit
-          else -> fail("unexpected $command")
+        step.command?.let { command ->
+          carryOut(command, management, { home.value }, { home.value = it }, { attempt++ }, { attempt })
         }
       }
     }
 
     /** What the Mosaic surface does once a second while the band has anything in it. */
-    suspend fun readOutputs() {
-      for (running in home.value.band) home.value = home.value.read(running.entry, management.perform(ManagementAct.ReadOutput(running.entry)))
+    suspend fun readOutputs() = withContext(scope.coroutineContext) {
+      for (running in home.value.band) {
+        val output = management.perform(ManagementAct.ReadOutput(running.entry))
+        home.value = home.value.read(running.entry, output)
+      }
     }
 
     suspend fun until(what: String, predicate: (Home) -> Boolean): Home =
@@ -156,9 +153,43 @@ class AttachedTest {
     first.until("attached") { it.snapshot != null }
     watching.until("attached") { it.snapshot != null }
     first.press("i", "Enter", "X", "y")
+    val stopped = first.until("the local Stop confirmation survives the stream ending") { it.stopped && it.attachment is Attachment.Absent }
+    assertTrue(render(stopped, Frame(140, 40)).any { "The Runtime stopped." in it.plain })
     val detached = watching.until("the stream's end reaches the other TUI") { it.attachment is Attachment.Absent }
     assertNull(detached.snapshot)
     assertTrue(render(detached, Frame(140, 40)).any { "[S] Start" in it.plain })
+  }
+
+  @Test
+  fun `a delayed Stop reply cannot detach a newer Start`() = runBlocking<Unit> {
+    val client = RuntimeAttachment(socket, executable = null).management
+    val returned = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    // The real Runtime stops and the stream ends, while its reply waits at the frontend seam.
+    val delayed = object : WorkspaceManagement by client {
+      override suspend fun <R> perform(act: ManagementAct<R>): R {
+        val result = client.perform(act)
+        if (act == ManagementAct.Stop) {
+          returned.complete(Unit)
+          release.await()
+        }
+        return result
+      }
+    }
+    val tui = Tui(delayed)
+    tui.until("attached") { it.snapshot != null }
+    val stopping = async { tui.press("i", "Enter", "X", "y") }
+    try {
+      withTimeout(5.seconds) { returned.await() }
+      tui.until("the stream ends before the Stop reply is handled") { it.attachment is Attachment.Absent }
+      tui.press("S")
+      release.complete(Unit)
+      stopping.await()
+      assertEquals(Attachment.Starting, tui.home.value.attachment)
+      assertFalse(tui.home.value.stopped)
+    } finally {
+      release.complete(Unit)
+    }
   }
 
   @Test

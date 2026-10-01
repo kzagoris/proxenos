@@ -257,7 +257,12 @@ class GitToolsTest {
   fun `a Git invocation that outruns its budget fails plainly rather than hanging`() = runBlocking<Unit> {
     val root = directory("project")
     repository(root)
-    val (_, operations) = workspace(root, git = GitTools(budget = Duration.ZERO))
+    // A real Git on a tiny repository can exit before even a zero-budget watchdog runs.
+    // Keep the child alive so this tests the timeout, rather than the scheduler's winner.
+    val slow = temporary.resolve("slow-git")
+    Files.writeString(slow, "#!/bin/sh\nexec sleep 60\n")
+    slow.toFile().setExecutable(true)
+    val (_, operations) = workspace(root, git = GitTools(program = slow.toString(), budget = Duration.ZERO))
 
     val failed = assertIs<Outcome.Failed>(operations.perform(Operation.GitStatus("api")))
     assertEquals(Failure.GitUnavailable("api", root.toRealPath().toString()), failed.reason)

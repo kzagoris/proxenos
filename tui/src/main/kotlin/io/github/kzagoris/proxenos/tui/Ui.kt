@@ -20,6 +20,7 @@ import com.jakewharton.mosaic.ui.Text
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Wording
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -47,7 +48,9 @@ fun runHome(attachment: RuntimeAttachment) = runMosaicMain {
   // by quitting: closing a frontend leaves exposure exactly as it was.
   if (!quit) {
     LaunchedEffect(Unit) {
-      for (command in commands) launch { carryOut(command, management, { home }, { home = it }) { attempt++ } }
+      for (command in commands) launch {
+        carryOut(command, management, { home }, { home = it }, { attempt++ }, { attempt })
+      }
     }
 
     // What each running command has printed, read again while the band has anything in it: the
@@ -105,12 +108,13 @@ fun runHome(attachment: RuntimeAttachment) = runMosaicMain {
 }
 
 /** One [Command] carried out, with what it leaves on the screen. */
-private suspend fun carryOut(
+internal suspend fun carryOut(
   command: Command,
   management: WorkspaceManagement,
   home: () -> Home,
   update: (Home) -> Unit,
   start: () -> Unit,
+  attempt: () -> Int,
 ) {
   when (command) {
     Command.Quit -> Unit
@@ -118,7 +122,7 @@ private suspend fun carryOut(
     is Command.Try -> update(
       try {
         val outcome = management.perform(ManagementAct.TryOperation(command.op))
-        home().say(Wording.tried(command.tool, command.workspace, outcome), outcome.tone)
+        home().say(Wording.tried(command.tool, command.workspace, outcome, promotedLocation = "it is in the band"), outcome.tone)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (refused: Exception) {
@@ -126,17 +130,27 @@ private suspend fun carryOut(
       },
     )
     is Command.Perform -> {
+      val askedAt = attempt()
+      val stopsRuntime = command.act == ManagementAct.Stop
+      fun supersededStop(): Boolean = stopsRuntime &&
+        (attempt() != askedAt || home().attachment == Attachment.Starting)
       update(
         try {
           management.perform(command.act)
-          home().say(command.done)
+          // An old Stop can finish after the stream ended and [S] opened a new attachment.
+          // Its reply belongs to the old one and cannot detach the new Runtime.
+          if (supersededStop()) home()
+          else {
+            val done = home().say(command.done)
+            if (stopsRuntime) done.stoppedHere() else done
+          }
         } catch (cancelled: CancellationException) {
           throw cancelled
         } catch (refused: Exception) {
-          home().say(refused.message ?: refused::class.simpleName.orEmpty(), Tone.Bad)
+          if (supersededStop()) home()
+          else home().say(refused.message ?: refused::class.simpleName.orEmpty(), Tone.Bad)
         },
       )
-      if (command.act == ManagementAct.Stop) update(home().stoppedHere())
     }
   }
 }

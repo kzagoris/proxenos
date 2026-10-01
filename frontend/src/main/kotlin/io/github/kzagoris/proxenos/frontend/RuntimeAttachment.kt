@@ -8,6 +8,7 @@ import java.io.File
 import java.io.IOException
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
+import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
@@ -141,13 +142,15 @@ class RuntimeAttachment(
 
   /** What the Runtime wrote to [log] since [from], without its `runtime:` prefix. */
   private fun said(from: Long): String? {
-    val bytes = try {
-      Files.readAllBytes(log)
+    val words = try {
+      Files.newByteChannel(log).use { channel ->
+        channel.position(from.coerceAtMost(channel.size()))
+        Channels.newInputStream(channel).bufferedReader().use { it.readText() }
+      }
     } catch (_: IOException) {
       return null
     }
-    val start = from.toInt().coerceAtMost(bytes.size)
-    return String(bytes, start, bytes.size - start)
+    return words
       .lines().map { it.removePrefix("runtime: ").trim() }.filter { it.isNotEmpty() }
       .joinToString(" ").ifEmpty { null }
   }

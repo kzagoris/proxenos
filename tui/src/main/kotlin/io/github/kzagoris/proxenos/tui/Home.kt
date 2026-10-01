@@ -122,7 +122,9 @@ data class Home(
    */
   fun observed(next: Attachment): Home = when (next) {
     Attachment.Starting, Attachment.Attaching -> copy(attachment = next, stopped = false)
-    is Attachment.Attached -> {
+    // Stop's reply and final stream events travel on separate sockets. Once this dashboard
+    // stopped the Runtime, those late snapshots cannot attach it again; only Start can.
+    is Attachment.Attached -> if (stopped) this else {
       val running = next.snapshot.running.map { it.entry }.toSet()
       val restarted = snapshot != null && snapshot?.start?.id != next.snapshot.start?.id
       copy(
@@ -136,7 +138,7 @@ data class Home(
     // What was on the screen is not kept: it would be a claim about a Runtime that is gone. A
     // start that failed is said where [S] was pressed too, not only in Review: a start that
     // fails silently reads as a key that did nothing.
-    is Attachment.Absent -> copy(attachment = next, overlay = null, selected = null, outputs = emptyMap()).let { home ->
+    is Attachment.Absent -> copy(attachment = next, overlay = null, selected = null, outputs = emptyMap(), notice = if (stopped) notice else null, scroll = 0).let { home ->
       when (val reason = next.reason) {
         is Reason.StartFailed -> home.say("The Runtime did not start. ${reason.words}", Tone.Bad)
         Reason.NotAnswering -> home
@@ -145,7 +147,7 @@ data class Home(
   }
 
   /** This dashboard asked the Runtime to Stop: it is detached now, and says Stopped. */
-  fun stoppedHere(): Home = observed(Attachment.Absent(Reason.NotAnswering)).copy(stopped = true)
+  fun stoppedHere(): Home = copy(stopped = true).observed(Attachment.Absent(Reason.NotAnswering))
 
   /** What [entry] has said so far, as just read; null once it names nothing running. */
   fun read(entry: ActivityEntryId, output: RunningCommand?): Home =

@@ -13,9 +13,11 @@ import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
+import java.nio.ByteBuffer
 import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -160,6 +162,13 @@ class RuntimeAttachmentTest {
 
   @Test
   fun `a Runtime that refuses to start is Absent in its own words`() = runBlocking<Unit> {
+    // Only this launch's words matter, even after years of appended output. A sparse file
+    // exercises a large offset without filling the test machine's disk.
+    Files.createDirectories(socket.parent)
+    Files.newByteChannel(socket.resolveSibling("runtime.log"), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use {
+      it.position(Int.MAX_VALUE.toLong())
+      it.write(ByteBuffer.wrap(byteArrayOf(10)))
+    }
     val refusing = stub("echo 'runtime: will not start. No credentials file at /x/credentials.' >&2\nexit 78")
     val seen = RuntimeAttachment(socket, refusing).open().settled()
     assertEquals(Attachment.Starting, seen.first())

@@ -31,9 +31,15 @@ application {
 
 tasks.startScripts {
   // The Runtime this launcher starts is the bin/runtime of its own tree. APP_HOME is resolved
-  // through any symlink to the launcher, so a linked bin/tui still finds it. Set here rather
-  // than in applicationDefaultJvmArgs, where `run` would pass the placeholder unsubstituted.
-  defaultJvmOpts = application.applicationDefaultJvmArgs + "-Dproxenos.runtime=__APP_HOME__/bin/runtime"
+  // through any symlink to the launcher, so a linked bin/tui still finds it. Pass the property
+  // as one JVM argument: DEFAULT_JVM_OPTS is re-parsed by xargs, which consumes quotes and
+  // backslashes in an installation's name.
+  doLast {
+    val invocation = "exec \"\$JAVACMD\" \"\$@\""
+    val script = unixScript.readText()
+    check(invocation in script) { "The Unix launcher no longer invokes the JVM as expected" }
+    unixScript.writeText(script.replace(invocation, "exec \"\$JAVACMD\" \"-Dproxenos.runtime=\$APP_HOME/bin/runtime\" \"\$@\""))
+  }
 }
 
 moduleBoundaries {
