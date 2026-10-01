@@ -6,13 +6,11 @@ import io.github.kzagoris.proxenos.control.NotSent
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.Attachment
-import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
 import java.io.IOException
 import java.nio.file.Path
 import kotlin.system.exitProcess
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -63,24 +61,17 @@ private fun interactive(attachment: RuntimeAttachment) {
   }
 }
 
-/** Attaches, starting the Runtime when nothing answers, and leaves again once it has answered. */
-private fun start(attachment: RuntimeAttachment, socket: Path): Int {
-  var started = false
-  val settled = runBlocking {
-    attachment.attach(startIfAbsent = true)
-      .onEach { if (it == Attachment.Starting) started = true }
-      .firstOrNull { it is Attachment.Attached || it is Attachment.Absent }
+/**
+ * Starts the Runtime when nothing answers, and leaves once something does. It never attaches:
+ * starting is not looking, and a start should not wait on what the Runtime has to say.
+ */
+private fun start(attachment: RuntimeAttachment, socket: Path): Int = runBlocking {
+  if (attachment.answering()) return@runBlocking 0.also { println("The Runtime is already running on $socket.") }
+  val refused = attachment.start() ?: return@runBlocking 0.also {
+    println("The Runtime is running on $socket. There is no autostart: after a reboot, start it again.")
   }
-  val reason = (settled as? Attachment.Absent)?.reason ?: return 0.also {
-    println(if (started) "The Runtime is running on $socket. There is no autostart: after a reboot, start it again." else "The Runtime is already running on $socket.")
-  }
-  System.err.println(
-    when (reason) {
-      is Reason.StartFailed -> "tui: the Runtime ${reason.words}"
-      Reason.NotAnswering -> "tui: the Runtime is not answering on $socket."
-    },
-  )
-  return 1
+  System.err.println("tui: the Runtime ${refused.words}")
+  1
 }
 
 private fun stop(management: WorkspaceManagement): Int {

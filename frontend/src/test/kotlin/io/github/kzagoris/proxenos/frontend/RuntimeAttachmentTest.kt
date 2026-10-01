@@ -11,6 +11,9 @@ import io.github.kzagoris.proxenos.core.TunnelCredentials
 import io.github.kzagoris.proxenos.core.WorkspaceOperationsPipeline
 import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -184,6 +187,34 @@ class RuntimeAttachmentTest {
     val seen = RuntimeAttachment(socket, missing).open().settled()
     val words = assertIs<Reason.StartFailed>(assertIs<Attachment.Absent>(seen.last()).reason).words
     assertTrue("$missing" in words, words)
+  }
+
+  @Test
+  fun `a bare name is looked up on PATH, as any exec does`() = runBlocking<Unit> {
+    // env is on every PATH, and what it prints proves it ran with the socket it was told.
+    val seen = RuntimeAttachment(socket, Path.of("env")).open().settled()
+    val words = assertIs<Reason.StartFailed>(assertIs<Attachment.Absent>(seen.last()).reason).words
+    assertTrue("PROXENOS_CONTROL_SOCKET=$socket" in words, words)
+  }
+
+  @Test
+  fun `a socket whose directory cannot be made is Absent naming it, not a crash`() = runBlocking<Unit> {
+    val file = Files.createFile(temporary.resolve("a-file"))
+    val seen = RuntimeAttachment(file.resolve("run/control.sock"), stub("exit 0")).open().settled()
+    val words = assertIs<Reason.StartFailed>(assertIs<Attachment.Absent>(seen.last()).reason).words
+    assertTrue("$file" in words, words)
+  }
+
+  @Test
+  fun `a start waits only for an answer, never for the Runtime to speak`() = runBlocking<Unit> {
+    // Accepts, as a suspended Runtime's socket still does, and never says a word.
+    Files.createDirectories(socket.parent)
+    ServerSocketChannel.open(StandardProtocolFamily.UNIX).use { silent ->
+      silent.bind(UnixDomainSocketAddress.of(socket))
+      val started = temporary.resolve("started")
+      assertNull(withTimeout(5.seconds) { RuntimeAttachment(socket, stub("touch '$started'")).start() })
+      assertFalse(Files.exists(started), "a Runtime already answering is not started again")
+    }
   }
 
   @Test

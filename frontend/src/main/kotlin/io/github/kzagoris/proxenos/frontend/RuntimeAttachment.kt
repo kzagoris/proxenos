@@ -28,7 +28,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * A frontend's link to the Runtime on [socket]: the acts, through [management], and the stream,
- * through [attach] — which starts the Runtime first when it is asked to and nothing answers.
+ * through [attach] — which starts the Runtime first, through [start], when it is asked to and
+ * nothing answers.
  *
  * A Runtime started here outlives the frontend that started it — closing one leaves exposure
  * exactly as it was — so it is started in a session of its own, with no terminal: a Ctrl-C or a
@@ -86,7 +87,7 @@ class RuntimeAttachment(
   }
 
   /** Whether a Runtime is answering on [socket] now. */
-  private suspend fun answering(): Boolean = withContext(Dispatchers.IO) {
+  suspend fun answering(): Boolean = withContext(Dispatchers.IO) {
     try {
       SocketChannel.open(StandardProtocolFamily.UNIX).use { it.connect(UnixDomainSocketAddress.of(socket)) }
       true
@@ -96,19 +97,28 @@ class RuntimeAttachment(
   }
 
   /**
-   * Starts the Runtime and returns null once it answers, else why not. A Runtime that refuses to
-   * start says why on standard error and exits, and its words are what come back.
+   * Starts the Runtime unless one answers already, and returns null once it answers, else why
+   * not. Answering is all it waits for: it never dials for the stream, so a start does not hang on
+   * a Runtime that accepts and does not speak, nor read a snapshot it would only throw away. A
+   * Runtime that refuses to start says why on standard error and exits, and its words are what
+   * come back.
    */
-  private suspend fun start(): Reason.StartFailed? = withContext(Dispatchers.IO) { spawn()?.let(Reason::StartFailed) }
+  suspend fun start(): Reason.StartFailed? = withContext(Dispatchers.IO) {
+    if (answering()) null else spawn()?.let(Reason::StartFailed)
+  }
 
   private suspend fun spawn(): String? {
     val program = executable ?: return "cannot find the Runtime to start: neither $VARIABLE nor the $PROPERTY " +
       "property the launcher scripts set names it. $SET_VARIABLE"
-    // setsid would start and then fail to run it, and say so only in the log.
-    if (!Files.isExecutable(program)) return "cannot start $program: there is no executable file there. $SET_VARIABLE"
-    ownerOnly(log.parent)
-    val from = if (Files.exists(log)) Files.size(log) else 0L
+    // setsid would start and then fail to run it, and say so only in the log. A bare name is
+    // left to setsid, which looks it up on PATH as any exec does.
+    if ('/' in program.toString() && !Files.isExecutable(program)) {
+      return "cannot start $program: there is no executable file there. $SET_VARIABLE"
+    }
+    val from: Long
     val process = try {
+      ownerOnly(log.parent)
+      from = if (Files.exists(log)) Files.size(log) else 0L
       ProcessBuilder("setsid", program.toString())
         // Told outright, so a socket this frontend was given with --control-socket is the one
         // the Runtime binds, rather than the one it would resolve for itself.
