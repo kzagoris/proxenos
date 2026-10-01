@@ -2,7 +2,7 @@ import org.gradle.jvm.application.tasks.CreateStartScripts
 
 plugins {
   id("proxenos.kotlin-library")
-  id("proxenos.compose")
+  id("proxenos.compose-resources")
   distribution
 }
 
@@ -14,9 +14,18 @@ dependencies {
   // Desktop rendering and the confirmation/progress/snackbar widgets; no jpackage image.
   implementation(libs.compose.desktop)
   implementation(libs.compose.material3)
+  implementation(libs.compose.components.resources)
+  // The portal's live light/dark (GUI-SPEC §8).
+  implementation(libs.dbus.java.core)
+  implementation(libs.dbus.java.unixsocket)
+  runtimeOnly(libs.slf4j.nop)
   // Owner intents run against a real core/socket. Test-only; main's boundaries stay unchanged.
   testImplementation(project(":core"))
   testImplementation(libs.compose.ui.test)
+}
+
+compose.resources {
+  packageOfResClass = "io.github.kzagoris.proxenos.gui.res"
 }
 
 moduleBoundaries {

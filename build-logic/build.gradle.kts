@@ -8,6 +8,7 @@ dependencies {
   implementation(libs.kotlin.gradlePlugin)
   implementation(libs.compose.compiler.gradlePlugin)
   implementation(libs.kotlin.serialization.gradlePlugin)
+  implementation(libs.compose.gradlePlugin)
 
   testImplementation(kotlin("test"))
   testImplementation(gradleTestKit())

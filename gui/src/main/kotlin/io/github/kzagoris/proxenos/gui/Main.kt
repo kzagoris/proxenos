@@ -1,12 +1,10 @@
 package io.github.kzagoris.proxenos.gui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -44,28 +42,31 @@ fun main(args: Array<String>) {
     val toolkit = Toolkit.getDefaultToolkit()
     toolkit.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }.set(null, "proxenos")
     val smoke = System.getenv("PROXENOS_GUI_SMOKE") == "1"
+    // A family that is not installed falls back silently, so the log names the one asked for.
+    val fontName = Fonts.desktopName()
+    log.say("UI font asked for: ${fontName ?: "none named; the default"}")
+    val fonts = Fonts.named(fontName)
     GuiOwner(RuntimeAttachment(socket, RuntimeAttachment.executable())).use { owner ->
       application(exitProcessOnExit = false) {
         val state by owner.state.collectAsState()
         var drawn by remember { mutableStateOf(false) }
         val close = { owner.close(); exitApplication() }
+        // The window opens light at once; the portal answers off the startup path (GUI-SPEC §8).
+        val scheme = remember { DesktopScheme(log::say) }
+        LaunchedEffect(scheme) { scheme.watch() }
+        val dark by scheme.dark.collectAsState()
         Window(onCloseRequest = close, title = "Proxenos",
-          state = rememberWindowState(width = 640.dp, height = 480.dp),
-          onPreviewKeyEvent = { event ->
-            if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.W) {
-              close()
-              true
-            } else false
-          },
+          state = rememberWindowState(width = 1100.dp, height = 760.dp),
+          onPreviewKeyEvent = { event -> shortcut(event, state, owner::accept, close) },
         ) {
-          MaterialTheme {
-            Surface(Modifier.fillMaxSize().drawWithContent {
+          ProxenosTheme(dark, fonts) {
+            Box(Modifier.fillMaxSize().drawWithContent {
               drawContent()
               if (!drawn) {
                 drawn = true
                 log.say("first frame")
               }
-            }) { RuntimeWindow(state, owner::accept) }
+            }) { Shell(state, owner::accept) }
           }
         }
         LaunchedEffect(state.runtimeWords) { log.say(state.runtimeWords) }

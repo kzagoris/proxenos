@@ -6,6 +6,7 @@ import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -18,10 +19,18 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 sealed interface GuiIntent {
+  data class Show(val destination: Destination) : GuiIntent
+  data class ShowStage(val stage: Stage) : GuiIntent
+  /** Esc's last layer: out of the compact detail. Dialogs handle their own Esc. */
+  data object Back : GuiIntent
   data object StartRuntime : GuiIntent
   data object AskStop : GuiIntent
   data object CancelStop : GuiIntent
   data object ConfirmStop : GuiIntent
+  data object AddWorkspace : GuiIntent
+  data object CancelAdd : GuiIntent
+  /** [root] as typed; it is made absolute here, never in the Runtime's working directory. */
+  data class Register(val root: String, val name: String?) : GuiIntent
   data object DismissNotice : GuiIntent
 }
 
@@ -47,15 +56,16 @@ class GuiOwner(
 
   fun accept(intent: GuiIntent) {
     scope.launch {
+      val state = current.value
       when (intent) {
-        GuiIntent.StartRuntime -> if (current.value.canStart) {
-          current.value = current.value.starting()
+        GuiIntent.StartRuntime -> if (state.canStart) {
+          current.value = state.starting()
           attach()
         }
-        GuiIntent.AskStop -> current.value = current.value.confirmStop()
-        GuiIntent.CancelStop -> current.value = current.value.copy(stopConfirmation = false)
-        GuiIntent.ConfirmStop -> if (current.value.stopConfirmation && current.value.canStop) stop()
-        GuiIntent.DismissNotice -> current.value = current.value.copy(notice = null)
+        GuiIntent.ConfirmStop -> if (state.stopConfirmation && state.canStop) perform(ManagementAct.Stop)
+        is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
+          perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
+        else -> current.value = state.after(intent)
       }
     }
   }
@@ -68,10 +78,11 @@ class GuiOwner(
     }
   }
 
-  private suspend fun stop() {
-    current.value = current.value.stopping()
+  /** The stream decides what the screen shows; the act's result only says how it went. Never retried. */
+  private suspend fun perform(act: ManagementAct<*>) {
+    current.value = current.value.performing(act)
     val words = try {
-      management.perform(ManagementAct.Stop)
+      management.perform(act)
       null
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -80,11 +91,11 @@ class GuiOwner(
     } catch (_: IOException) {
       "No reply; nothing was resent; what the Runtime shows now is what happened."
     } catch (refused: IllegalArgumentException) {
-      refused.message ?: "The Runtime refused Stop."
+      refused.message ?: "The Runtime refused it."
     } catch (refused: IllegalStateException) {
-      refused.message ?: "The Runtime refused Stop."
+      refused.message ?: "The Runtime refused it."
     }
-    current.value = current.value.finishedStop(words)
+    current.value = current.value.performed(act, words)
   }
 
   // Window closure never waits for an act or changes anything in the Runtime.
