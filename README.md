@@ -56,6 +56,13 @@ provenance attestation; [the installation guide](docs/INSTALL.md) shows how to c
 To build from source instead, `./gradlew installDist` lays out the same tree in
 `build/install/proxenos/`.
 
+The source installation and linux-x64 archive also include `bin/gui`, the desktop frontend
+under development. It currently attaches to, starts and stops the Runtime; use `bin/tui`
+for Workspace management and Activity. The GUI needs X11 or XWayland, libGL, libX11 and
+fontconfig. Closing its window leaves the Runtime running. After attachment ends, press
+**Start Runtime** to attach again. Startup diagnostics are appended to
+`$XDG_RUNTIME_DIR/proxenos/gui.log`.
+
 ## 2. Configure the OpenAI tunnel
 
 Run the interactive setup wizard:

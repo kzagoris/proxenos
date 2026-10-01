@@ -8,9 +8,10 @@ inside it, which these instructions put at `~/.local/opt/proxenos/`:
 ```
 bin/runtime                the Runtime: serves ChatGPT, owns the tunnel child
 bin/tui                    the terminal frontend; starts the Runtime when it is not running
+bin/gui                    linux-x64 only: desktop Runtime controls, currently under development
 bin/wizard                 the Platform-dashboard half of first run; writes the credentials file
 bin/install-tunnel-client  downloads tunnel-client and verifies it against SHA256SUMS.txt
-lib/                       the jars both launchers share
+lib/                       the jars the launchers share
 docs/INSTALL.md            this file
 docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
 jre/                       linux-x64 archive only: the Java runtime the launchers use
@@ -36,13 +37,17 @@ the official binary and checks it before anything runs it.
 - **`git`**, only if you want the three Git tools. Without it they answer as if there were no
   repository, and everything else works.
 - **A terminal** for `bin/tui` and `bin/wizard`, and a browser for the OpenAI dashboards.
+- **For `bin/gui`: x86_64, X11 or XWayland, libGL, libX11 and fontconfig.** The GUI currently
+  offers Runtime attachment, Start and Stop; Workspace management and Activity use `bin/tui`.
+  Screen readers are unsupported. Its startup diagnostics are in
+  `$XDG_RUNTIME_DIR/proxenos/gui.log`.
 
 ## 2. Get the distribution
 
 Each [release](https://github.com/kzagoris/proxenos/releases/latest) publishes two archives:
 
-- `proxenos-<version>-linux-x64.tar.gz`: the tree plus its own Java runtime, for x86_64.
-- `proxenos-<version>.tar.gz`: the tree alone, for any architecture, on your Java 26.
+- `proxenos-<version>-linux-x64.tar.gz`: Runtime, TUI, GUI and their Java runtime, for x86_64.
+- `proxenos-<version>.tar.gz`: Runtime and TUI, for any architecture, on your Java 26.
 
 Download one together with `SHA256SUMS`, and check it before unpacking:
 
@@ -210,7 +215,7 @@ you registered in step 6.
 
 Nothing starts by itself, deliberately: a Runtime started at login would leave a Workspace at
 Command reachable from ChatGPT with nobody present. Until you start it once —
-`bin/tui`, or `bin/runtime` — ChatGPT's calls fail, and the failure shows up there as tool errors
+`bin/tui`, `bin/gui`, or `bin/runtime` — ChatGPT's calls fail, and the failure shows up there as tool errors
 rather than anywhere on this machine.
 
 If you have read that and disagree, `docs/systemd/proxenos.service` is a ready
@@ -219,7 +224,7 @@ and never offers to.
 
 ## Upgrading and removing
 
-Upgrade by replacing the tree in `~/.local/opt/proxenos/` with a new one; your
+Stop the Runtime before upgrading, then replace the tree in `~/.local/opt/proxenos/` with a new one; your
 Workspaces, Activity and credentials live outside it and stay. If the new version's tool catalog
 differs, the setup confirmation notice comes back, because the connector in ChatGPT is still serving
 the old one.

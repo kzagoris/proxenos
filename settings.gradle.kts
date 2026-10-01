@@ -1,4 +1,4 @@
-// The seven artifacts. Their dependency directions are not a convention anyone has to
+// The eight artifacts. Their dependency directions are not a convention anyone has to
 // remember: `proxenos.module-boundaries`, applied by the convention plugins in
 // build-logic, fails the build when a module reaches something it has not declared.
 
@@ -45,4 +45,5 @@ include(
   ":frontend",
   ":runtime",
   ":tui",
+  ":gui",
 )

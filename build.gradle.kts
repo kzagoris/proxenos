@@ -74,8 +74,14 @@ tasks.withType<Tar>().configureEach {
 }
 tasks.withType<Zip>().configureEach { enabled = false }
 
-// The bundled distribution (docs/adr/0010-a-release-bundles-its-java-runtime.md): the same tree
-// plus a trimmed Java runtime in jre/, for linux-x64, so a user needs no JDK 26 of their own.
+// The development installation includes the GUI; the portable archive remains architecture
+// independent. Only the bundled linux-x64 tree carries Skiko's x64 native libraries.
+tasks.named<Sync>("installDist") {
+  from(files("gui/build/install/gui").builtBy(":gui:installDist"))
+}
+
+// The bundled distribution (ADRs 0010 and 0011): the Runtime/TUI tree plus the x64 GUI
+// and a trimmed Java runtime in jre/, so a user needs no JDK 26 of their own.
 // The module list is fixed rather than computed: jdeps over non-modular Kotlin jars is not to be
 // trusted, and a missing module fails the smoke test the release runs against this tree.
 val jreModules = listOf(
@@ -106,6 +112,8 @@ distributions {
     distributionClassifier = "linux-x64"
     contents {
       with(distributions["main"].contents)
+      from(files("gui/build/install/gui").builtBy(":gui:installDist"))
+      filesMatching("bin/gui") { permissions { unix("rwxr-xr-x") } }
       into("jre") {
         val executables = listOf("bin/*", "lib/jspawnhelper")
         from(jlink) { exclude(executables) }
@@ -119,7 +127,7 @@ distributions {
       // The start scripts fall back to JAVA_HOME, else `java` on PATH. Here they use the tree's
       // own runtime unconditionally: a stray JAVA_HOME pointing at an older Java would otherwise
       // fail with UnsupportedClassVersionError in an archive that promised to need no Java.
-      filesMatching(listOf("bin/runtime", "bin/tui")) {
+      filesMatching(listOf("bin/runtime", "bin/tui", "bin/gui")) {
         filter { line ->
           if (line == "if [ -n \"\$JAVA_HOME\" ] ; then") "JAVA_HOME=\$APP_HOME/jre\n$line" else line
         }
