@@ -69,6 +69,7 @@ fun main(args: Array<String>) {
           }
         }
         LaunchedEffect(state.runtimeWords) { log.say(state.runtimeWords) }
+        LaunchedEffect(drawn) { if (drawn) owner.open() }
         LaunchedEffect(drawn, state.attachment is Attachment.Attached) {
           if (smoke && drawn && state.attachment is Attachment.Attached) {
             withFrameNanos { }

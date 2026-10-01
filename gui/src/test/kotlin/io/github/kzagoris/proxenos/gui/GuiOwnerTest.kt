@@ -57,11 +57,20 @@ class GuiOwnerTest {
 
   private fun owner(management: WorkspaceManagement? = null): GuiOwner {
     val attachment = RuntimeAttachment(socket, null)
-    return GuiOwner(attachment, management ?: attachment.management).also { owners += it }
+    return GuiOwner(attachment, management ?: attachment.management).also { owners += it; it.open() }
   }
 
   private suspend fun GuiOwner.until(predicate: (GuiState) -> Boolean): GuiState =
     withTimeout(5.seconds) { state.first(predicate) }
+
+  @Test
+  fun `constructing an owner waits for the window to open before attaching`() = runBlocking<Unit> {
+    val gui = GuiOwner(RuntimeAttachment(socket, null)).also { owners += it }
+    delay(100)
+    assertNull(gui.state.value.snapshot, "a renderer that has not opened must not start or attach to the Runtime")
+    gui.open()
+    assertNotNull(gui.until { it.snapshot != null }.snapshot)
+  }
 
   @Test
   fun `an external Stop clears the window and only explicit Start attaches again`() = runBlocking<Unit> {
@@ -172,7 +181,7 @@ class GuiOwnerTest {
     gui.until { it.stopConfirmation }
     repeat(20) { gui.accept(GuiIntent.ConfirmStop) }
     withTimeout(5.seconds) { entered.await() }
-    assertEquals("Stop Runtime", gui.state.value.inFlight)
+    assertEquals(ManagementAct.Stop, gui.state.value.inFlight)
     val root = Files.createDirectory(temporary.resolve("notes"))
     core.perform(ManagementAct.Register(root.toString()))
     gui.until { it.snapshot?.workspaces?.size == 1 }

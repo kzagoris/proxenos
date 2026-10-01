@@ -25,17 +25,22 @@ fun RuntimeWindow(state: GuiState, send: (GuiIntent) -> Unit) {
     Text("Runtime · ${state.runtimeWords}", style = MaterialTheme.typography.titleMedium)
     if (state.snapshot != null) {
       Text(Wording.attached("this window"))
-      Button(onClick = { send(GuiIntent.AskStop) }, enabled = state.inFlight == null) { Text("Stop Runtime…") }
+      Button(onClick = { send(GuiIntent.AskStop) }, enabled = state.canStop) { Text("Stop Runtime…") }
     } else {
-      Text("Tunnel · Can't tell")
-      Text("Connector · Can't tell")
+      Text("Tunnel · ${Wording.CANT_TELL}")
+      Text("Connector · ${Wording.CANT_TELL}")
+      when (state.attachment) {
+        Attachment.Starting -> Text(Wording.starting("this window"))
+        Attachment.Attaching -> Text(Wording.attaching("this window"))
+        else -> Unit
+      }
       Text(Wording.NO_AUTOSTART)
       Button(onClick = { send(GuiIntent.StartRuntime) },
-        enabled = state.attachment is Attachment.Absent && state.inFlight == null,
+        enabled = state.canStart,
       ) { Text("Start Runtime") }
     }
     state.inFlight?.let {
-      Text(it)
+      Text("Stop Runtime")
       LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     Spacer(Modifier.weight(1f))

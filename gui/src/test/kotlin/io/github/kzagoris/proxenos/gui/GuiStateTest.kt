@@ -1,6 +1,7 @@
 package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
+import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.coreapi.RuntimeStatus
 import io.github.kzagoris.proxenos.coreapi.RuntimeStart
@@ -25,7 +26,7 @@ class GuiStateTest {
 
   @Test
   fun `only a successful local Stop names an absent Runtime Stopped and Start clears it`() {
-    val stopped = GuiState(attachment = Attachment.Absent(Reason.NotAnswering), inFlight = "Stop Runtime")
+    val stopped = GuiState(attachment = Attachment.Absent(Reason.NotAnswering), inFlight = ManagementAct.Stop)
       .finishedStop(null)
     assertEquals("Stopped", stopped.runtimeWords)
     assertNull(stopped.inFlight)
@@ -36,7 +37,7 @@ class GuiStateTest {
 
   @Test
   fun `a refused Stop keeps the Runtime's words and never claims it stopped`() {
-    val refused = GuiState(inFlight = "Stop Runtime").finishedStop("Stop refused")
+    val refused = GuiState(inFlight = ManagementAct.Stop).finishedStop("Stop refused")
     assertEquals("Stop refused", refused.notice)
     assertFalse(refused.stopped)
     assertNull(refused.inFlight)

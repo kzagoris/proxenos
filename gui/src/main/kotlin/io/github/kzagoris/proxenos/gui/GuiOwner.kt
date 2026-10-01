@@ -1,7 +1,6 @@
 package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.control.NotSent
-import io.github.kzagoris.proxenos.control.ReplyLost
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.Attachment
@@ -34,21 +33,28 @@ class GuiOwner(
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
   private val current = MutableStateFlow(GuiState())
   val state = current.asStateFlow()
-  private var attempt = 0
+  private var opened = false
 
-  init { scope.launch { attach() } }
+  /** Start intake after the window has drawn; a renderer failure must not start exposure. */
+  fun open() {
+    scope.launch {
+      if (!opened) {
+        opened = true
+        attach()
+      }
+    }
+  }
 
   fun accept(intent: GuiIntent) {
     scope.launch {
       when (intent) {
-        GuiIntent.StartRuntime -> if (current.value.attachment is Attachment.Absent && current.value.inFlight == null) {
-          attempt++
+        GuiIntent.StartRuntime -> if (current.value.canStart) {
           current.value = current.value.starting()
           attach()
         }
         GuiIntent.AskStop -> current.value = current.value.confirmStop()
         GuiIntent.CancelStop -> current.value = current.value.copy(stopConfirmation = false)
-        GuiIntent.ConfirmStop -> if (current.value.stopConfirmation && current.value.snapshot != null && current.value.inFlight == null) stop()
+        GuiIntent.ConfirmStop -> if (current.value.stopConfirmation && current.value.canStop) stop()
         GuiIntent.DismissNotice -> current.value = current.value.copy(notice = null)
       }
     }
@@ -58,13 +64,11 @@ class GuiOwner(
     attachment.open().catch { failed ->
       emit(Attachment.Absent(Reason.StartFailed(failed.message ?: "Could not attach to the Runtime.")))
     }.collect { next ->
-      if (next is Attachment.Attached && current.value.snapshot?.start?.id != next.snapshot.start?.id) attempt++
       current.value = current.value.observed(next)
     }
   }
 
   private suspend fun stop() {
-    val startedAt = attempt
     current.value = current.value.stopping()
     val words = try {
       management.perform(ManagementAct.Stop)
@@ -73,8 +77,6 @@ class GuiOwner(
       throw cancelled
     } catch (_: NotSent) {
       "The Runtime isn't answering; nothing was done."
-    } catch (_: ReplyLost) {
-      "No reply; nothing was resent; what the Runtime shows now is what happened."
     } catch (_: IOException) {
       "No reply; nothing was resent; what the Runtime shows now is what happened."
     } catch (refused: IllegalArgumentException) {
@@ -82,7 +84,7 @@ class GuiOwner(
     } catch (refused: IllegalStateException) {
       refused.message ?: "The Runtime refused Stop."
     }
-    if (attempt == startedAt) current.value = current.value.finishedStop(words)
+    current.value = current.value.finishedStop(words)
   }
 
   // Window closure never waits for an act or changes anything in the Runtime.

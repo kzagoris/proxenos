@@ -7,11 +7,14 @@ plugins {
 }
 
 dependencies {
+  // Frontends use the domain interfaces and the control socket, never construct the core.
   implementation(project(":core-api"))
   implementation(project(":control"))
   implementation(project(":frontend"))
+  // Desktop rendering and the confirmation/progress/snackbar widgets; no jpackage image.
   implementation(libs.compose.desktop)
   implementation(libs.compose.material3)
+  // Owner intents run against a real core/socket. Test-only; main's boundaries stay unchanged.
   testImplementation(project(":core"))
   testImplementation(libs.compose.ui.test)
 }
