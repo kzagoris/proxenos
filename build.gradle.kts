@@ -80,6 +80,14 @@ tasks.named<Sync>("installDist") {
   from(files("gui/build/install/gui").builtBy(":gui:installDist"))
 }
 
+// The GUI as a user starts it: bin/gui from the installed tree, so it finds bin/runtime beside it
+// and keeps the launcher's JVM, unlike hotRun's JetBrains Runtime.
+tasks.register<Exec>("runGui") {
+  val installDist = tasks.named<Sync>("installDist")
+  dependsOn(installDist)
+  executable(installDist.get().destinationDir.resolve("bin/gui"))
+}
+
 // The bundled distribution (ADRs 0010 and 0011): the Runtime/TUI tree plus the x64 GUI
 // and a trimmed Java runtime in jre/, so a user needs no JDK 26 of their own.
 // The module list is fixed rather than computed: jdeps over non-modular Kotlin jars is not to be

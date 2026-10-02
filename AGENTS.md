@@ -22,6 +22,7 @@ The toolchain is JDK 26 and Gradle 9.7.1, pinned in `mise.toml` and the Gradle w
 ```bash
 ./gradlew build                 # compile, unit tests, module-boundary check
 ./gradlew installDist           # the runnable tree in build/install/proxenos/
+./gradlew runGui                # install, then open bin/gui on your session's display
 python3 tui/drive.py            # pty harness for the dashboard; needs installDist first
 ```
 
