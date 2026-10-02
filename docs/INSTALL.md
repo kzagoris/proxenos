@@ -8,13 +8,16 @@ inside it, which these instructions put at `~/.local/opt/proxenos/`:
 ```
 bin/runtime                the Runtime: serves ChatGPT, owns the tunnel child
 bin/tui                    the terminal frontend; starts the Runtime when it is not running
-bin/gui                    linux-x64 only: desktop Runtime controls, currently under development
+bin/gui                    linux-x64 only: desktop frontend
+bin/install-desktop-entry  linux-x64 only: opt-in application menu entry and icon
 bin/wizard                 the Platform-dashboard half of first run; writes the credentials file
 bin/install-tunnel-client  downloads tunnel-client and verifies it against SHA256SUMS.txt
 lib/                       the jars the launchers share
 docs/INSTALL.md            this file
+docs/THIRD-PARTY.md        generated notices from the resolved runtime classpaths
 docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
 jre/                       linux-x64 archive only: the Java runtime the launchers use
+share/icons/               linux-x64 archive only: the optional menu icon
 ```
 
 `tunnel-client` is **not** in it, and it is not committed to this repository either. Step 4 fetches
@@ -37,8 +40,9 @@ the official binary and checks it before anything runs it.
 - **`git`**, only if you want the three Git tools. Without it they answer as if there were no
   repository, and everything else works.
 - **A terminal** for `bin/tui` and `bin/wizard`, and a browser for the OpenAI dashboards.
-- **For `bin/gui`: x86_64, X11 or XWayland, libGL, libX11 and fontconfig.** The GUI currently
-  offers Runtime attachment, Start and Stop; Workspace management and Activity use `bin/tui`.
+- **For `bin/gui`: x86_64, X11 or XWayland, libGL, libX11 and fontconfig.** Native Wayland without
+  XWayland is unsupported. The folder chooser uses an XDG desktop portal when available; the
+  Root field remains editable without one. The GUI has been tested on Omarchy/Hyprland only.
   Screen readers are unsupported. Its startup diagnostics are in
   `$XDG_RUNTIME_DIR/proxenos/gui.log`.
 
@@ -81,8 +85,8 @@ cd proxenos
 ./gradlew bundledDistTar    # → build/distributions/proxenos-0.0.0-dev-linux-x64.tar.gz
 ```
 
-`./gradlew installDist` lays out the same tree unpacked, in `build/install/proxenos/`,
-if you would rather copy a directory than a tarball.
+`./gradlew installDist` lays out a development tree with the GUI in
+`build/install/proxenos/`; it uses your installed Java 26. The linux-x64 archive adds `jre/`.
 
 ## 3. Unpack it
 
@@ -102,6 +106,17 @@ link back to its own tree:
 mkdir -p ~/.local/bin
 ln -s ~/.local/opt/proxenos/bin/tui ~/.local/bin/tui
 ```
+
+For an application menu entry, run this from the linux-x64 tree:
+
+```sh
+~/.local/opt/proxenos/bin/install-desktop-entry
+```
+
+It writes `~/.local/share/applications/proxenos.desktop` and a matching icon under
+`~/.local/share/icons/hicolor/`, or under `$XDG_DATA_HOME` when set. The entry uses the tree's
+absolute `bin/gui` path. Run the installer again after moving the tree to update that path.
+This is opt-in and does not create an autostart entry.
 
 ## 4. Install tunnel-client, verified
 
@@ -199,7 +214,11 @@ The TUI starts the Runtime if it is not running and opens the workspace list. Us
 add a Workspace and `[m]` to manage the selected one. `[a]` opens Activity for this Runtime
 run only; previous runs stay stored in the Runtime but are not shown in the dashboard.
 
-`[i]` opens **Review**: one row per link — **Runtime**, **Tunnel**, **Connector** — each with
+The GUI starts or attaches to the same Runtime and exposes Workspace management, Tools,
+Activity, and the connection stages. Closing its window leaves the Runtime and every Access
+Level as they were. Open it from the application menu or run `bin/gui` from the tree.
+
+In the TUI, `[i]` opens **Review**: one row per link — **Runtime**, **Tunnel**, **Connector** — each with
 its own state, and `[Enter]` opens the selected row's detail. On a fresh install the status
 line shows **Connector · Unconfirmed**; the Connector detail carries the instructions:
 **Plugins → Add → Create MCP App**, set **Connection** to **Tunnel** with your tunnel ID, and
@@ -233,11 +252,13 @@ and never offers to.
 
 ## Upgrading and removing
 
-Stop the Runtime before upgrading, then replace the tree in `~/.local/opt/proxenos/` with a new one; your
+Stop the Runtime before upgrading; there is no version handshake between a frontend and a
+Runtime from different trees. Then replace the tree in `~/.local/opt/proxenos/` with a new one; your
 Workspaces, Activity and credentials live outside it and stay. If the new version's tool catalog
 differs, the setup confirmation notice comes back, because the connector in ChatGPT is still serving
 the old one.
 
-To remove everything: stop the Runtime, delete `~/.local/opt/proxenos/`,
+To remove everything: stop the Runtime, run `bin/install-desktop-entry --remove` from the
+linux-x64 tree if you installed the menu entry, then delete `~/.local/opt/proxenos/`,
 `~/.local/state/proxenos/` and `~/.config/proxenos/`, revoke the runtime key in the
 Platform dashboard, and delete the connector in ChatGPT.

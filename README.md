@@ -40,8 +40,9 @@ Creating tunnels requires **Tunnels Read + Manage**; using them requires **Tunne
 
 Download a release from [GitHub Releases](https://github.com/kzagoris/proxenos/releases/latest):
 
-- **`proxenos-<version>-linux-x64.tar.gz`** carries its own Java runtime. Nothing else to install.
-- **`proxenos-<version>.tar.gz`** runs on any Linux architecture and needs a Java 26 runtime.
+- **`proxenos-<version>-linux-x64.tar.gz`** carries the Runtime, TUI, GUI and Java runtime.
+- **`proxenos-<version>.tar.gz`** carries the Runtime and TUI on any Linux architecture and
+  needs a Java 26 runtime.
 
 ```bash
 mkdir -p ~/.local/opt
@@ -50,19 +51,20 @@ cd ~/.local/opt/proxenos-<version>-linux-x64
 ./bin/install-tunnel-client
 ```
 
-The tree holds both launchers, the setup wizard, the verified tunnel installer, and the
-installation guide. Keep it together: the dashboard finds its Runtime beside it automatically.
+The tree holds the launchers, the setup wizard, the verified tunnel installer, generated
+third-party notices, and the installation guide. Keep it together: each frontend finds the
+Runtime beside it automatically.
 Run the commands below from this directory. Each release publishes `SHA256SUMS` and a build
 provenance attestation; [the installation guide](docs/INSTALL.md) shows how to check both.
 
-To build from source instead, `./gradlew installDist` lays out the same tree in
-`build/install/proxenos/`.
+To build from source instead, `./gradlew installDist` lays out a development tree with the GUI
+in `build/install/proxenos/`. It uses your installed Java 26; the linux-x64 archive adds `jre/`.
 
-The source installation and linux-x64 archive also include `bin/gui`, the desktop frontend
-under development. It currently attaches to, starts and stops the Runtime; use `bin/tui`
-for Workspace management and Activity. The GUI needs X11 or XWayland, libGL, libX11 and
-fontconfig. Closing its window leaves the Runtime running. After attachment ends, press
-**Start Runtime** to attach again. Startup diagnostics are appended to
+The GUI manages Workspaces, Tools, Activity and connection stages over the same control socket
+as the TUI. The linux-x64 tree includes an optional `bin/install-desktop-entry` script for an
+application menu entry; re-run it after moving the tree, or pass `--remove` to remove the
+entry and icon. The GUI needs X11 or XWayland, libGL, libX11 and fontconfig. Closing its
+window leaves the Runtime running. Startup diagnostics are appended to
 `$XDG_RUNTIME_DIR/proxenos/gui.log`.
 
 ## 2. Configure the OpenAI tunnel
@@ -266,7 +268,9 @@ The dashboard currently instructs you to recreate connections when the tool cata
 
 ## Development
 
-The project uses Kotlin/JVM, Ktor, the MCP Kotlin SDK, and a Mosaic terminal UI. Its modules separate the core behavior, MCP endpoint, local control interface, Runtime, what every frontend shares, and the dashboard.
+The project uses Kotlin/JVM, Ktor, the MCP Kotlin SDK, Mosaic for the TUI and Compose Desktop
+for the GUI. Its eight modules separate the core behavior, MCP endpoint, local control
+interface, Runtime, shared frontend behavior, and the two frontends.
 
 From the repository root:
 

@@ -45,6 +45,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew -Pversion="$VERSION" build installDist distTar bundledDistTar
       - run: python3 tui/drive.py
+      - name: Install virtual display for the packaged GUI
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth
 
       # Drive each archive as a user would unpack it. The bundled one runs with a JAVA_HOME that
       # does not exist, which proves it uses its own runtime and that no JDK module is missing.
@@ -55,6 +57,8 @@ jobs:
           tar -xzf "build/distributions/proxenos-$VERSION-linux-x64.tar.gz" -C "$smoke"
           PROXENOS_TREE="$smoke/proxenos-$VERSION" python3 tui/drive.py
           PROXENOS_TREE="$smoke/proxenos-$VERSION-linux-x64" JAVA_HOME=/nonexistent python3 tui/drive.py
+          PROXENOS_TREE="$smoke/proxenos-$VERSION-linux-x64" JAVA_HOME=/nonexistent \
+            SKIKO_RENDER_API=SOFTWARE_FAST xvfb-run -a python3 gui/drive.py
 
       - name: Checksums
         working-directory: build/distributions

@@ -1,4 +1,5 @@
 plugins {
+  id("proxenos.notices")
   base
   // For jlink: the bundled distribution's runtime is cut from the same JDK 26 toolchain the code
   // is compiled with, so it is provisioned the same way and never the launching JVM.
@@ -51,6 +52,9 @@ distributions {
         }
       }
       into("docs") {
+        from(tasks.named("generateThirdPartyNotices"))
+      }
+      into("docs") {
         // Under docs/ as in the repository, so its relative links hold in both places.
         from("docs/INSTALL.md")
         // Documentation, not an installer: nothing in the product copies or enables this unit.
@@ -78,6 +82,14 @@ tasks.withType<Zip>().configureEach { enabled = false }
 // independent. Only the bundled linux-x64 tree carries Skiko's x64 native libraries.
 tasks.named<Sync>("installDist") {
   from(files("gui/build/install/gui").builtBy(":gui:installDist"))
+  into("bin") {
+    from("scripts/install-desktop-entry")
+    filePermissions { unix("rwxr-xr-x") }
+  }
+  into("share/icons") {
+    from("scripts/proxenos.svg")
+    filePermissions { unix("rw-r--r--") }
+  }
 }
 
 // The GUI as a user starts it: bin/gui from the installed tree, so it finds bin/runtime beside it
@@ -122,6 +134,14 @@ distributions {
     contents {
       with(distributions["main"].contents)
       from(files("gui/build/install/gui").builtBy(":gui:installDist"))
+      into("bin") {
+        from("scripts/install-desktop-entry")
+        filePermissions { unix("rwxr-xr-x") }
+      }
+      into("share/icons") {
+        from("scripts/proxenos.svg")
+        filePermissions { unix("rw-r--r--") }
+      }
       filesMatching("bin/gui") { permissions { unix("rwxr-xr-x") } }
       into("jre") {
         val executables = listOf("bin/*", "lib/jspawnhelper")

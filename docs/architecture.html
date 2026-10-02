@@ -300,10 +300,10 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
   <div class="wrap">
     <span class="eyebrow">Proxenos · architecture guide</span>
     <h1>Proxenos Architecture</h1>
-    <p class="lede">A background program on your Linux machine that lets a ChatGPT conversation read and change the folders you choose, through OpenAI's Secure MCP Tunnel. A small terminal app decides what each folder allows.</p>
+    <p class="lede">A background program on your Linux machine that lets a ChatGPT conversation read and change the folders you choose, through OpenAI's Secure MCP Tunnel. A terminal or desktop frontend decides what each folder allows.</p>
     <div class="facts">
       <span class="fact">Kotlin 2.4 · JDK 26</span>
-      <span class="fact">6 Gradle modules</span>
+      <span class="fact">8 Gradle modules</span>
       <span class="fact">11 tools</span>
       <span class="fact">4 access levels</span>
       <span class="fact">Linux only</span>
@@ -448,7 +448,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
         <div class="stack" id="detail-body"></div>
       </aside>
     </div>
-    <p class="flow-note" id="flow-note">Tip: the two dashed boxes are separate programs. Closing the terminal app never changes what ChatGPT can reach, because the runtime keeps running.</p>
+    <p class="flow-note" id="flow-note">Tip: the diagram shows the TUI's control route; the GUI uses that same socket. Closing either frontend leaves the Runtime running.</p>
   </div>
 </section>
 
@@ -457,14 +457,20 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">2 · The code</span>
-      <h2>Seven modules, strict walls between them</h2>
+      <h2>Eight modules, strict walls between them</h2>
       <p>Each Gradle module has one job. The build itself refuses a module that reaches one it has not declared (<code>build-logic/…/ModuleBoundaryRules.kt</code>), so the walls below are enforced by the compiler, not by good intentions.</p>
     </div>
     <div class="modules" id="module-cards"></div>
+    <p class="muted">The portable archive packs <code>bin/runtime</code> and <code>bin/tui</code>
+      over one <code>lib/</code> and needs Java 26. The linux-x64 archive adds
+      <code>bin/gui</code> and one shared <code>jre/</code>; its launchers use that runtime
+      even when <code>JAVA_HOME</code> points elsewhere. The desktop menu entry is opt-in.
+      See <a href="adr/0011-the-gui-is-a-launcher-in-the-one-tree.md">ADR 0011</a>
+      and <a href="INSTALL.md">the install guide</a>.</p>
 
     <div class="panel pad stack">
       <h3>Who may depend on whom</h3>
-      <p class="muted">Read a row as “this module may use…”. The key wall: <code>tui</code> and <code>control</code> cannot see <code>core</code>, so a frontend can only ever talk to the running runtime, never build its own copy.</p>
+      <p class="muted">Read a row as “this module may use…”. The key wall: <code>tui</code>, <code>gui</code> and <code>control</code> cannot see <code>core</code>, so a frontend can only talk to the running Runtime through the control socket.</p>
       <div class="matrix-wrap">
         <table class="matrix" id="matrix"></table>
       </div>
@@ -765,7 +771,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
       points: ["One JSON document per line; each request is a serialized ManagementAct.", "Checks the caller's user id with SO_PEERCRED, and sits in an owner-only folder.", "Any number of frontends can attach at once and see the same live state.", "ChatGPT cannot reach this socket, so it cannot change a level."],
       files: ["control/…/ControlServer.kt", "control/…/Protocol.kt"] },
     controlclient: { kind: "module control · client side", title: "ManagementClient", what: "Implements the same WorkspaceManagement interface as the core, but over the socket: serialize, send, deserialize.",
-      points: ["The TUI now, and a GUI later, program against the interface and cannot tell it is remote.", "Tests prove the client and the in-process core are interchangeable."],
+      points: ["The TUI and GUI program against the same interface over the control socket.", "Tests prove the client and the in-process core are interchangeable."],
       files: ["control/…/ManagementClient.kt"] },
     tui: { kind: "module · frontend", title: "tui", what: "The terminal app, built with Mosaic (Compose for terminals). It starts the runtime if it is not running, then attaches to it.",
       points: ["Home screen: status bar, banners, Workspace chips with levels, a band of running commands, then the Activity feed.", "Keys: n new, e rename, 0–3 set level, w Workspace detail, i runtime detail, s then y to stop, a acknowledge, d disconnect, q quit.", "Workspace detail shows all 11 tools against that level, with a try-it action.", "Closing it changes nothing about what is exposed."],
@@ -776,7 +782,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
   };
 
   var FLOWS = {
-    none: { nodes: [], edges: [], note: "Tip: the two dashed boxes are separate programs. Closing the terminal app never changes what ChatGPT can reach, because the runtime keeps running." },
+    none: { nodes: [], edges: [], note: "Tip: the diagram shows the TUI's control route; the GUI uses that same socket. Closing either frontend leaves the Runtime running." },
     chat: { nodes: ["chatgpt", "tunnelsvc", "tunnelclient", "mcp", "core", "disk"], edges: ["e1", "e2", "e2b", "e3", "e4", "e9"],
       note: "ChatGPT → OpenAI's tunnel service → tunnel-client (which polled out for it) → mcp.sock → mcp decodes the call → core runs the pipeline and touches disk. The answer goes back the same way." },
     front: { nodes: ["tui", "controlclient", "controlserver", "coreapi", "core", "disk"], edges: ["e8", "e7", "e6", "e9"],
@@ -816,7 +822,8 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
     { n: "control", role: "The settings door", d: "Wire protocol, socket server, and the ManagementClient library.", reach: ["core-api"] },
     { n: "runtime", role: "The background program", d: "main(), configuration, single-instance lock, wiring, tunnel child.", reach: ["core-api", "core", "mcp", "control"] },
     { n: "frontend", role: "What every frontend shares", d: "Attaching, starting the runtime, and the domain's wording. Draws nothing.", reach: ["core-api", "control"] },
-    { n: "tui", role: "The terminal app", d: "Mosaic screen that attaches to the runtime over the control socket.", reach: ["core-api", "control", "frontend"] }
+    { n: "tui", role: "The terminal app", d: "Mosaic screen that attaches to the Runtime over the control socket.", reach: ["core-api", "control", "frontend"] },
+    { n: "gui", role: "The desktop app", d: "Compose Desktop window that manages Workspaces and Activity through the same control socket.", reach: ["core-api", "control", "frontend"] }
   ];
   $("#module-cards").innerHTML = MODS.map(function (m) {
     return '<div class="panel pad mod"><span class="name">' + m.n + '</span><span class="role">' + m.role + '</span><p class="muted">' + m.d + '</p><span class="reach">May use: ' + (m.reach.length ? m.reach.map(function (r) { return "<b>" + r + "</b>"; }).join(", ") : "<b>nothing</b>") + "</span></div>";
