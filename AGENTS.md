@@ -36,6 +36,8 @@ wording — lives in `frontend`, which draws nothing.
 
 ## Conventions
 
+- Simplicity over complexity. Choose the design with the fewest moving parts (abstractions,
+  options, states, layers) that meets the need, and add more only when a concrete case demands it.
 - Tests exercise behaviour through public interfaces. No tautological or change-detector tests.
 - Credentials never live inside a checkout; `.gitignore` refuses `credentials` and `.env`.
 - Keep comments at the density of the surrounding code: they explain *why*, citing an ADR where one applies.
