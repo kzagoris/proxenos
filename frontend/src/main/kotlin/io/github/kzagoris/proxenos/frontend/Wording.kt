@@ -212,6 +212,15 @@ object Wording {
       "connector pointed at it: deleting the connector in ChatGPT leaves this reading unchanged, and its catalog " +
       "is a snapshot that never refreshes."
 
+  /** Disconnect changes only the link, never registrations or running work. */
+  const val DISCONNECT: String =
+    "Disconnect takes the link down: the Runtime keeps running, every Access Level is unchanged, " +
+      "and no running Operation is stopped."
+
+  const val SETUP_WIZARD: String =
+    "Run the setup wizard (bin/wizard in the distribution, scripts/wizard in a checkout) " +
+      "to check the setup and write the tunnel ID and runtime key."
+
   /** [self]'s side of the link to the Runtime — never the Runtime's own life. */
   fun attached(self: String): String =
     "Attached: $self holds the Runtime's stream. The Runtime runs whether or not a frontend is attached."

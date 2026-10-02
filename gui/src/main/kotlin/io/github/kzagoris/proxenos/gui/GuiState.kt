@@ -2,8 +2,10 @@ package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
+import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
+import io.github.kzagoris.proxenos.frontend.Wording
 
 /** The sidebar's three places, in Ctrl+1/2/3 order (GUI-SPEC §4.1). */
 enum class Destination { Workspaces, Activity, Connection }
@@ -29,6 +31,9 @@ data class GuiState(
   val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null
   val canStop: Boolean get() = snapshot != null && inFlight == null
   val canAdd: Boolean get() = snapshot != null && inFlight == null
+  val canConnect: Boolean get() = snapshot?.runtime?.state == RuntimeState.Disconnected && inFlight == null && !dialogOpen
+  val canDisconnect: Boolean get() = snapshot != null && snapshot?.runtime?.state != RuntimeState.Disconnected && inFlight == null && !dialogOpen
+  val canAcknowledgeConnector: Boolean get() = snapshot?.connectorUnconfirmed == true && inFlight == null && !dialogOpen
   val dialogOpen: Boolean get() = stopConfirmation || adding
 
   val runtimeWords: String get() = when (val current = attachment) {
@@ -69,7 +74,8 @@ data class GuiState(
     GuiIntent.AddWorkspace -> if (canAdd && !dialogOpen) copy(adding = true, destination = Destination.Workspaces, refusal = null) else this
     GuiIntent.CancelAdd -> copy(adding = false, refusal = null)
     GuiIntent.DismissNotice -> copy(notice = null)
-    GuiIntent.StartRuntime, GuiIntent.ConfirmStop, is GuiIntent.Register -> this
+    GuiIntent.StartRuntime, GuiIntent.ConfirmStop, GuiIntent.ConnectTunnel, GuiIntent.DisconnectTunnel,
+    GuiIntent.AcknowledgeConnector, is GuiIntent.Register -> this
   }
 
   fun starting(): GuiState = GuiState(attachment = Attachment.Starting, destination = destination, stage = stage)
@@ -88,7 +94,8 @@ data class GuiState(
       inFlight = null,
       adding = adding && !(act is ManagementAct.Register && words == null),
       refusal = words.takeIf { inDialog },
-      notice = words.takeUnless { inDialog },
+      notice = if (act == ManagementAct.AcknowledgeConnector && words == null) Wording.CONNECTOR_ACKNOWLEDGED
+        else words.takeUnless { inDialog },
       stopped = stopped || (act == ManagementAct.Stop && words == null),
     )
   }

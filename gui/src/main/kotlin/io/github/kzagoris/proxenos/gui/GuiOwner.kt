@@ -27,6 +27,9 @@ sealed interface GuiIntent {
   data object AskStop : GuiIntent
   data object CancelStop : GuiIntent
   data object ConfirmStop : GuiIntent
+  data object ConnectTunnel : GuiIntent
+  data object DisconnectTunnel : GuiIntent
+  data object AcknowledgeConnector : GuiIntent
   data object AddWorkspace : GuiIntent
   data object CancelAdd : GuiIntent
   /** [root] as typed; it is made absolute here, never in the Runtime's working directory. */
@@ -63,6 +66,9 @@ class GuiOwner(
           attach()
         }
         GuiIntent.ConfirmStop -> if (state.stopConfirmation && state.canStop) perform(ManagementAct.Stop)
+        GuiIntent.ConnectTunnel -> if (state.canConnect) perform(ManagementAct.Connect)
+        GuiIntent.DisconnectTunnel -> if (state.canDisconnect) perform(ManagementAct.Disconnect)
+        GuiIntent.AcknowledgeConnector -> if (state.canAcknowledgeConnector) perform(ManagementAct.AcknowledgeConnector)
         is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
           perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
         else -> current.value = state.after(intent)

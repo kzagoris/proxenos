@@ -93,6 +93,78 @@ class GuiOwnerTest {
   }
 
   @Test
+  fun `Disconnect and Connect change only the tunnel while a command keeps running`() = runBlocking<Unit> {
+    val gui = owner()
+    gui.until { it.snapshot != null }
+    val root = Files.createDirectory(temporary.resolve("scripts"))
+    val workspace = core.perform(ManagementAct.Register(root.toString()))
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-disconnect")))
+    val before = gui.until { it.snapshot?.running?.isNotEmpty() == true }.snapshot!!
+
+    gui.accept(GuiIntent.DisconnectTunnel)
+    val disconnected = gui.until { it.snapshot?.runtime?.state == RuntimeState.Disconnected && it.inFlight == null }.snapshot!!
+    assertEquals(before.workspaces, disconnected.workspaces)
+    assertEquals(before.running.single().entry, disconnected.running.single().entry)
+    assertEquals(before.start, disconnected.start)
+
+    gui.accept(GuiIntent.ConnectTunnel)
+    val connecting = gui.until { it.snapshot?.runtime?.state == RuntimeState.Connecting && it.inFlight == null }.snapshot!!
+    assertEquals(before.workspaces, connecting.workspaces)
+    assertEquals(before.running.single().entry, connecting.running.single().entry)
+    assertEquals(before.start, connecting.start)
+  }
+
+  @Test
+  fun `connector acknowledgement records the user's word and survives another window`() = runBlocking<Unit> {
+    val gui = owner()
+    val before = gui.until { it.snapshot != null }.snapshot!!
+    assertTrue(before.connectorUnconfirmed)
+    gui.accept(GuiIntent.AcknowledgeConnector)
+    val confirmed = gui.until { it.snapshot?.connectorUnconfirmed == false && it.notice != null }
+    assertContains(confirmed.notice!!, "your word")
+    assertContains(confirmed.notice, "not a measurement")
+    assertEquals(before.runtime, confirmed.snapshot!!.runtime)
+    assertEquals(before.activity, confirmed.snapshot!!.activity)
+    gui.close()
+    assertFalse(owner().until { it.snapshot != null }.snapshot!!.connectorUnconfirmed)
+  }
+
+  @Test
+  fun `a connection act is sent once and its reply cannot replace the stream`() = runBlocking<Unit> {
+    val entered = CompletableDeferred<Unit>()
+    val reply = CompletableDeferred<Unit>()
+    val received = AtomicInteger()
+    val delayed = object : WorkspaceManagement by core {
+      @Suppress("UNCHECKED_CAST")
+      override suspend fun <R> perform(act: ManagementAct<R>): R {
+        require(act == ManagementAct.AcknowledgeConnector)
+        received.incrementAndGet()
+        entered.complete(Unit)
+        reply.await()
+        return Unit as R
+      }
+    }
+    val gui = owner(delayed)
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.AcknowledgeConnector)
+    withTimeout(5.seconds) { entered.await() }
+    repeat(20) {
+      gui.accept(GuiIntent.AcknowledgeConnector)
+      gui.accept(GuiIntent.DisconnectTunnel)
+    }
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    gui.until { it.destination == Destination.Activity }
+    assertEquals(1, received.get())
+    reply.complete(Unit)
+    val replied = gui.until { it.inFlight == null && it.notice != null }
+    assertTrue(replied.snapshot!!.connectorUnconfirmed)
+    core.perform(ManagementAct.AcknowledgeConnector)
+    gui.until { it.snapshot?.connectorUnconfirmed == false }
+    assertEquals(1, received.get())
+  }
+
+  @Test
   fun `local Stop is confirmed and leaves a running command Uncertain`() = runBlocking<Unit> {
     val gui = owner()
     gui.until { it.snapshot != null }

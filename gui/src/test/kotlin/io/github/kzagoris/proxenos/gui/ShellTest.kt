@@ -204,6 +204,115 @@ class ShellTest {
   }
 
   @Test
+  fun `the Tunnel offers its own action and caveat in every reading`() = runComposeUiTest {
+    val gui = shell(attached(RuntimeState.Connected).after(GuiIntent.ShowStage(Stage.Tunnel)))
+    onNodeWithText("Disconnect").assertIsEnabled().performClick()
+    assertEquals(GuiIntent.DisconnectTunnel, gui.sent.last())
+    onNodeWithText("the Runtime keeps running", substring = true).assertExists()
+    onNodeWithText("It does not mean ChatGPT still has a", substring = true).assertExists()
+
+    for (tunnel in listOf(RuntimeState.Connecting, RuntimeState.Failed(null), RuntimeState.Disconnected)) {
+      runOnIdle { gui.state = attached(tunnel).after(GuiIntent.ShowStage(Stage.Tunnel)) }
+      onNodeWithText("It does not mean ChatGPT still has a", substring = true).assertExists()
+      onNodeWithText(if (tunnel == RuntimeState.Disconnected) "Connect" else "Disconnect").assertIsEnabled()
+    }
+    onNodeWithText("Connect").performClick()
+    assertEquals(GuiIntent.ConnectTunnel, gui.sent.last())
+
+    runOnIdle { gui.state = gui.state.observed(Attachment.Absent(Reason.NotAnswering)) }
+    onNodeWithText("Can't tell:", substring = true).assertExists()
+    onNodeWithText("It does not mean ChatGPT still has a", substring = true).assertExists()
+    onNodeWithText("Connect").assertDoesNotExist()
+    onNodeWithText("Disconnect").assertDoesNotExist()
+  }
+
+  @Test
+  fun `Unconfirmed shows the literal steps and records only the user's word`() = runComposeUiTest {
+    val gui = shell(attached(RuntimeState.Connected, unconfirmed = true).after(GuiIntent.ShowStage(Stage.Connector)))
+    onNodeWithText("Delete the app in ChatGPT", substring = true).assertExists()
+    onNodeWithText("Plugins → Add → Create MCP App", substring = true).assertExists()
+    onNodeWithText("Connection: Tunnel, with this tunnel's ID", substring = true).assertExists()
+    onNodeWithText("Authentication: No authentication", substring = true).assertExists()
+    onNodeWithText("records your word", substring = true).assertExists()
+    onNodeWithText("I created the connector again").assertIsEnabled().performClick()
+    assertEquals(GuiIntent.AcknowledgeConnector, gui.sent.last())
+    // A reply alone does not confirm the connector; the stream does.
+    onNodeWithText("I created the connector again").assertExists()
+    runOnIdle {
+      gui.state = gui.state.observed(Attachment.Attached(gui.state.snapshot!!.after(RuntimeEvent.Change.ConnectorChanged(false))))
+    }
+    onNodeWithText("Confirmed by your word", substring = true).assertExists()
+    onNodeWithText("I created the connector again").assertDoesNotExist()
+    onAllNodesWithText("!").assertCountEquals(0)
+  }
+
+  @Test
+  fun `first-run complaints stay verbatim and Connecting offers checks and the wizard`() = runComposeUiTest {
+    val complaint = TunnelComplaint(401, "tunnel_use_forbidden", "Use the runtime key for this tunnel — unchanged.", "poll rejected")
+    val initial = snapshot().copy(connectingWords = ConnectingWords(complaint, "authentication"))
+    val gui = shell(GuiState().observed(Attachment.Attached(initial)).after(GuiIntent.ShowStage(Stage.Tunnel)))
+    onNodeWithText("status_code 401", substring = true).assertExists()
+    onNodeWithText("mitigation \"Use the runtime key for this tunnel — unchanged.\"", substring = true).assertExists()
+    onNodeWithText("failure_category \"authentication\"", substring = true).assertExists()
+    onNodeWithText("the tunnel ID matches the tunnel you created", substring = true).assertExists()
+    onNodeWithText("the runtime key has not been revoked", substring = true).assertExists()
+    onNodeWithText("the key belongs to that tunnel", substring = true).assertExists()
+    onNodeWithText("Run the setup wizard", substring = true).assertExists()
+    onAllNodesWithText("Failed", substring = false).assertCountEquals(0)
+
+    runOnIdle {
+      gui.state = gui.state.observed(Attachment.Attached(initial.copy(runtime = RuntimeStatus(RuntimeState.Failed(complaint), at))))
+    }
+    onNodeWithText("mitigation \"Use the runtime key for this tunnel — unchanged.\"", substring = true).assertExists()
+    onNodeWithText("the runtime key has not been revoked", substring = true).assertDoesNotExist()
+    onNode(hasText("Connection") and hasText("!") and hasClickAction()).assertExists()
+    onAllNodes(hasText("Tunnel") and hasText("Failed") and hasClickAction()).onFirst().assertExists()
+  }
+
+  @Test
+  fun `startup refusals are shown unchanged with Start and no old readings`() = runComposeUiTest {
+    val gui = shell(attached(RuntimeState.Connected).after(GuiIntent.ShowStage(Stage.Runtime)))
+    for (words in listOf(
+      "No credentials file at /tmp/credentials. Run the setup wizard (bin/wizard in the distribution, scripts/wizard in a checkout).",
+      "/tmp/credentials is mode 0644, which lets other users read the runtime key. The Runtime refuses to start: chmod 600 /tmp/credentials",
+    )) {
+      runOnIdle { gui.state = gui.state.observed(Attachment.Absent(Reason.StartFailed(words))) }
+      onNodeWithText(words).assertExists()
+      onNodeWithText("Start Runtime").assertIsEnabled().performClick()
+      assertEquals(GuiIntent.StartRuntime, gui.sent.last())
+      onAllNodes(hasText("Tunnel") and hasText("Can't tell") and hasClickAction()).onFirst().assertExists()
+      onAllNodes(hasText("Connector") and hasText("Can't tell") and hasClickAction()).onFirst().assertExists()
+      onNodeWithText("Attached", substring = false).assertDoesNotExist()
+      onNodeWithText("Connected", substring = false).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun `the Runtime detail explains Attached and no-autostart even while running`() = runComposeUiTest {
+    shell(attached().after(GuiIntent.ShowStage(Stage.Runtime)))
+    onNodeWithText("this window holds the Runtime's stream", substring = true).assertExists()
+    onNodeWithText("There is no autostart", substring = true).assertExists()
+    onNodeWithText("Stop Runtime…").assertIsEnabled()
+  }
+
+  @Test
+  fun `connection actions stay disabled during an act and name what is happening`() = runComposeUiTest {
+    val gui = shell(attached(RuntimeState.Connected).after(GuiIntent.ShowStage(Stage.Tunnel)).performing(ManagementAct.Disconnect))
+    onNodeWithText("Disconnect").assertIsNotEnabled()
+    onNodeWithText("Disconnecting the tunnel").assertExists()
+    runOnIdle { gui.state = attached(RuntimeState.Disconnected).after(GuiIntent.ShowStage(Stage.Tunnel)).performing(ManagementAct.Connect) }
+    onNodeWithText("Connect").assertIsNotEnabled()
+    onNodeWithText("Connecting the tunnel").assertExists()
+    runOnIdle {
+      gui.state = attached(unconfirmed = true).after(GuiIntent.ShowStage(Stage.Connector)).performing(ManagementAct.AcknowledgeConnector)
+    }
+    onNodeWithText("I created the connector again").assertIsNotEnabled()
+    onNodeWithText("Recording your word about the connector").assertExists()
+    onNode(hasText("Activity") and hasClickAction()).performClick()
+    assertEquals(Destination.Activity, gui.state.destination)
+  }
+
+  @Test
   fun `a light-dark flip keeps the focus ring on what has focus`() = runComposeUiTest {
     var dark by mutableStateOf(false)
     val gui = Harness(attached())
