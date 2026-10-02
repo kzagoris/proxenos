@@ -19,6 +19,10 @@ import io.github.kzagoris.proxenos.coreapi.WorkspaceState
  * ("this dashboard", "this window").
  */
 object Wording {
+  const val NONE_EXPLANATION: String =
+    "None withholds this Workspace from ChatGPT: it is absent from discovery, and calls naming it are answered as though it does not exist. " +
+      "It stops nothing already running and leaves the tunnel and the Runtime running."
+
   fun raiseToCommand(workspace: Workspace): List<String> =
     listOf("Raise '${workspace.name}' to Command?") + commandAuthority(workspace)
 

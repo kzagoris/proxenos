@@ -64,6 +64,94 @@ class GuiOwnerTest {
     withTimeout(5.seconds) { state.first(predicate) }
 
   @Test
+  fun `level changes wait for the stream and cannot send a second act while a reply is pending`() = runBlocking<Unit> {
+    val root = Files.createDirectory(temporary.resolve("notes"))
+    val workspace = core.perform(ManagementAct.Register(root.toString()))
+    val entered = CompletableDeferred<Unit>()
+    val reply = CompletableDeferred<Unit>()
+    val received = AtomicInteger()
+    val delayed = object : WorkspaceManagement by core {
+      @Suppress("UNCHECKED_CAST")
+      override suspend fun <R> perform(act: ManagementAct<R>): R {
+        assertEquals<ManagementAct<*>>(ManagementAct.SetLevel(workspace.id, AccessLevel.Write), act)
+        received.incrementAndGet()
+        entered.complete(Unit)
+        reply.await()
+        return workspace.copy(accessLevel = AccessLevel.Write) as R
+      }
+    }
+    val gui = owner(delayed)
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    gui.accept(GuiIntent.SetLevel(AccessLevel.Write))
+    withTimeout(5.seconds) { entered.await() }
+    repeat(20) { gui.accept(GuiIntent.SetLevel(AccessLevel.Write)) }
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    gui.until { it.destination == Destination.Activity }
+    reply.complete(Unit)
+    val replied = gui.until { it.inFlight == null }
+    assertEquals(AccessLevel.Read, replied.snapshot!!.workspaces.single().workspace.accessLevel)
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    gui.until { it.snapshot?.workspaces?.single()?.workspace?.accessLevel == AccessLevel.Write }
+    assertEquals(1, received.get())
+  }
+
+  @Test
+  fun `Access changes follow the stream and None leaves a Promoted command running`() = runBlocking<Unit> {
+    val root = Files.createDirectory(temporary.resolve("scripts"))
+    val workspace = core.perform(ManagementAct.Register(root.toString()))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    gui.accept(GuiIntent.SetLevel(AccessLevel.Command))
+    val asking = gui.until { it.commandConfirmation == workspace.id }
+    assertEquals(AccessLevel.Read, asking.selectedWorkspace!!.workspace.accessLevel)
+    gui.accept(GuiIntent.CancelCommand)
+    gui.until { it.commandConfirmation == null }
+    assertEquals(AccessLevel.Read, gui.state.value.selectedWorkspace!!.workspace.accessLevel)
+    gui.accept(GuiIntent.SetLevel(AccessLevel.Command))
+    gui.until { it.commandConfirmation != null }
+    gui.accept(GuiIntent.ConfirmCommand)
+    gui.until { it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.Command && it.inFlight == null }
+
+    val promoted = core.perform(ManagementAct.TryOperation(
+      Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-access")))
+    assertIs<CommandReply.Promoted>(assertIs<Outcome.Ok<CommandReply>>(promoted).value)
+    val before = gui.until { it.snapshot?.running?.singleOrNull()?.promoted == true }.snapshot!!
+    for (level in listOf(AccessLevel.Read, AccessLevel.Write, AccessLevel.None)) {
+      gui.accept(GuiIntent.SetLevel(level))
+      val changed = gui.until { it.selectedWorkspace?.workspace?.accessLevel == level && it.inFlight == null }.snapshot!!
+      assertEquals(before.running.single().entry, changed.running.single().entry)
+      assertEquals(before.runtime, changed.runtime)
+      assertEquals(before.start, changed.start)
+    }
+    val discovery = core.perform(ManagementAct.TryOperation(Operation.ListWorkspaces))
+    assertTrue(assertIs<Outcome.Ok<List<WorkspaceListing>>>(discovery).value.isEmpty())
+  }
+
+  @Test
+  fun `selection keeps the Workspace identity through rename and level changes and remains gone after Forget`() = runBlocking<Unit> {
+    val first = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("notes")).toString()))
+    core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("scripts")).toString()))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 2 }
+    gui.accept(GuiIntent.SelectWorkspace(first.id))
+    gui.until { it.workspace == first.id }
+    core.perform(ManagementAct.Rename(first.id, "renamed"))
+    gui.until { it.selectedWorkspace?.workspace?.name == "renamed" }
+    core.perform(ManagementAct.SetLevel(first.id, AccessLevel.Write))
+    val changed = gui.until { it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.Write }
+    assertEquals(first.id, changed.workspace)
+    core.perform(ManagementAct.Forget(first.id))
+    val gone = gui.until { it.snapshot?.workspaces?.size == 1 }
+    assertEquals(first.id, gone.workspace)
+    assertNull(gone.selectedWorkspace)
+    assertEquals("scripts", gone.snapshot!!.workspaces.single().workspace.name)
+  }
+
+  @Test
   fun `constructing an owner waits for the window to open before attaching`() = runBlocking<Unit> {
     val gui = GuiOwner(RuntimeAttachment(socket, null)).also { owners += it }
     delay(100)

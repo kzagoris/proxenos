@@ -2,6 +2,9 @@ package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.control.NotSent
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
+import io.github.kzagoris.proxenos.coreapi.AccessLevel
+import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
+import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
@@ -21,6 +24,11 @@ import kotlinx.coroutines.launch
 sealed interface GuiIntent {
   data class Show(val destination: Destination) : GuiIntent
   data class ShowStage(val stage: Stage) : GuiIntent
+  data class SelectWorkspace(val id: WorkspaceId) : GuiIntent
+  data class ShowActivity(val entry: ActivityEntryId) : GuiIntent
+  data class SetLevel(val level: AccessLevel) : GuiIntent
+  data object CancelCommand : GuiIntent
+  data object ConfirmCommand : GuiIntent
   /** Esc's last layer: out of the compact detail. Dialogs handle their own Esc. */
   data object Back : GuiIntent
   data object StartRuntime : GuiIntent
@@ -69,6 +77,14 @@ class GuiOwner(
         GuiIntent.ConnectTunnel -> if (state.canConnect) perform(ManagementAct.Connect)
         GuiIntent.DisconnectTunnel -> if (state.canDisconnect) perform(ManagementAct.Disconnect)
         GuiIntent.AcknowledgeConnector -> if (state.canAcknowledgeConnector) perform(ManagementAct.AcknowledgeConnector)
+        is GuiIntent.SetLevel -> if (state.canSetLevel) {
+          val workspace = state.selectedWorkspace!!.workspace
+          if (intent.level == AccessLevel.Command) current.value = state.after(intent)
+          else if (intent.level != workspace.accessLevel) perform(ManagementAct.SetLevel(workspace.id, intent.level))
+        }
+        GuiIntent.ConfirmCommand -> if (state.commandConfirmation != null && state.inFlight == null) {
+          perform(ManagementAct.SetLevel(state.commandConfirmation, AccessLevel.Command))
+        }
         is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
           perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
         else -> current.value = state.after(intent)

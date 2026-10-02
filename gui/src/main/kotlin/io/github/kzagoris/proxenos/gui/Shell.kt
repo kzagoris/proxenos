@@ -19,9 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.kzagoris.proxenos.coreapi.AccessLevel
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import io.github.kzagoris.proxenos.frontend.Attachment
@@ -55,7 +53,8 @@ fun shortcut(event: KeyEvent, state: GuiState, send: (GuiIntent) -> Unit, close:
     send(intent)
     return true
   }
-  if (event.key == Key.Escape && state.destination == Destination.Connection && state.stage != null) {
+  if (event.key == Key.Escape && ((state.destination == Destination.Connection && state.stage != null) ||
+      (state.destination == Destination.Workspaces && state.workspace != null))) {
     send(GuiIntent.Back)
     return true
   }
@@ -90,6 +89,7 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit) {
   }
   if (state.stopConfirmation) StopDialog(send)
   if (state.adding) AddDialog(state, send)
+  if (state.commandConfirmation != null) CommandDialog(state, send)
 }
 
 @Composable
@@ -103,6 +103,7 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
           ManagementAct.Disconnect -> "Disconnecting the tunnel"
           ManagementAct.AcknowledgeConnector -> "Recording your word about the connector"
           is ManagementAct.Register -> "Adding the Workspace"
+          is ManagementAct.SetLevel -> "Setting Access Level to ${act.level}"
           else -> "Working"
         },
           style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -120,7 +121,7 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
       // Absent: nothing from before stays on screen (GUI-SPEC §4.1). Connection stays usable.
       if (state.snapshot == null && state.destination != Destination.Connection) AbsentPane(state, send)
       else when (state.destination) {
-        Destination.Workspaces -> WorkspacesPane(state)
+        Destination.Workspaces -> WorkspacesPane(state, send, compact)
         Destination.Activity -> ActivityPane(state)
         Destination.Connection -> ConnectionPane(state, send, compact)
       }
@@ -193,14 +194,15 @@ private fun BottomBar(state: GuiState, send: (GuiIntent) -> Unit) {
 @Composable
 private fun Header(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean) {
   val colours = MaterialTheme.colorScheme
-  val detail = compact && state.destination == Destination.Connection && state.stage != null
+  val detail = compact && ((state.destination == Destination.Connection && state.stage != null) ||
+    (state.destination == Destination.Workspaces && state.workspace != null))
   BoxWithConstraints(Modifier.fillMaxWidth().hairlineBottom(colours.outlineVariant)) {
     val separateStrip = compact || maxWidth < 640.dp
     Column(Modifier.fillMaxWidth()) {
       Row(Modifier.fillMaxWidth().height(Look.header).padding(horizontal = Look.pad), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Look.gap)) {
         if (detail) Btn("Back", { send(GuiIntent.Back) }, icon = Res.drawable.arrow_back)
-        Text(if (detail) state.stage.name else state.destination.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Text(if (detail && state.destination == Destination.Connection) state.stage!!.name else state.destination.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
         if (compact) Btn("Add Workspace", { send(GuiIntent.AddWorkspace) }, enabled = state.canAdd, icon = Res.drawable.add)
         else if (!separateStrip) StageStrip(state, send)
       }
@@ -248,41 +250,6 @@ private fun AbsentPane(state: GuiState, send: (GuiIntent) -> Unit) {
     )
     RuntimeWords(state)
     Btn("Start Runtime", { send(GuiIntent.StartRuntime) }, enabled = state.canStart, primary = true, icon = Res.drawable.power_settings_new)
-  }
-}
-
-private fun AccessLevel.reading(): Reading = when (this) {
-  AccessLevel.None -> Reading("None", Tone.None, Res.drawable.visibility_off)
-  AccessLevel.Read -> Reading("Read", Tone.Info, Res.drawable.visibility)
-  AccessLevel.Write -> Reading("Write", Tone.Warn, Res.drawable.edit)
-  AccessLevel.Command -> Reading("Command", Tone.Bad, Res.drawable.terminal)
-}
-
-@Composable
-private fun WorkspacesPane(state: GuiState) {
-  val workspaces = state.snapshot?.workspaces.orEmpty()
-  val muted = MaterialTheme.colorScheme.onSurfaceVariant
-  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Look.pad)) {
-    if (workspaces.isEmpty()) {
-      Text("No Workspaces yet.", style = MaterialTheme.typography.titleMedium)
-      Text("Add Workspace (Ctrl+N) registers a folder at Read.", color = muted)
-    }
-    workspaces.forEach { WorkspaceRow(it) }
-  }
-}
-
-@Composable
-private fun WorkspaceRow(state: WorkspaceState) {
-  val colours = MaterialTheme.colorScheme
-  Row(Modifier.fillMaxWidth().hairlineBottom(colours.outlineVariant).padding(vertical = Look.gap),
-    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Look.gap)) {
-    Column(Modifier.weight(1f)) {
-      Text(state.workspace.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-      Text(state.workspace.root, style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMono.current),
-        color = colours.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-      if (state.broken) StatusWord(Reading("Broken", Tone.Bad, Res.drawable.error))
-    }
-    StatusWord(state.workspace.accessLevel.reading())
   }
 }
 
