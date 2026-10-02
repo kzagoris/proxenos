@@ -86,7 +86,8 @@ tasks.named<Sync>("installDist") {
 // trusted, and a missing module fails the smoke test the release runs against this tree.
 val jreModules = listOf(
   "java.base", "java.desktop", "java.instrument", "java.logging", "java.management",
-  "jdk.net", "jdk.unsupported",
+  // jdk.security.auth: dbus-java's SASL handshake reads the Unix uid through UnixSystem.
+  "jdk.net", "jdk.security.auth", "jdk.unsupported",
 )
 val jlinkOutput = layout.buildDirectory.dir("jlink/jre")
 val jlink by tasks.registering(Exec::class) {
@@ -116,7 +117,11 @@ distributions {
       filesMatching("bin/gui") { permissions { unix("rwxr-xr-x") } }
       into("jre") {
         val executables = listOf("bin/*", "lib/jspawnhelper")
-        from(jlink) { exclude(executables) }
+        // jlink writes legal/ read-only, which would block the next install over this tree.
+        from(jlink) {
+          exclude(executables)
+          filePermissions { unix("rw-r--r--") }
+        }
         // As with the launchers, the archive keeps no mode from disk; jspawnhelper is how the
         // JDK starts every child process, so without it no Command or Git tool could run.
         from(jlink) {

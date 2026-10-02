@@ -2,12 +2,16 @@
 """Check unpacked bin/gui against the TUI's fixture Runtime.
 
 PROXENOS_TREE=/path/to/unpacked/proxenos xvfb-run -a python3 gui/drive.py
+PROXENOS_TREE=/path/to/unpacked/proxenos python3 gui/drive.py --xwayland
 
-G21/G22 need Xvfb, xauth and xprop. --closes 20 also needs python-xlib to send actual
+G21/G22 need Xvfb, xauth and xprop, or with --xwayland only Xwayland and a running Wayland
+session: the JDK's AWT has no Wayland toolkit, so a private rootful Xwayland stands in for Xvfb.
+--closes still needs Xvfb. --closes 20 also needs python-xlib to send actual
 window-close and confirmation input. It holds Stop's reply at a fixture socket, so closing
 does not deliberately Stop the fixture Runtime, and a real TUI stays attached throughout.
 """
 import argparse
+import contextlib
 import importlib.util
 import os
 from pathlib import Path
@@ -77,6 +81,25 @@ class DelayedStop:
                             peer.sendall(data)
                         except OSError:
                             return
+
+
+@contextlib.contextmanager
+def xwayland():
+    # Left to choose, Xwayland takes :0 over the session's own XWayland and unlinks its socket on
+    # exit, so pick a number no server has claimed in any of its socket or lock names.
+    claimed = lambda n: any(Path(p).exists() for p in (f"/tmp/.X{n}-lock", f"/tmp/.X11-unix/X{n}", f"/tmp/.X11-unix/X{n}_"))
+    number = next(n for n in range(90, 200) if not claimed(n))
+    ready, written = os.pipe()
+    server = subprocess.Popen(["Xwayland", f":{number}", "-geometry", "1024x768", "-nolisten", "tcp",
+        "-displayfd", str(written)], pass_fds=(written,), stderr=subprocess.DEVNULL)
+    os.close(written)
+    try:
+        with os.fdopen(ready) as announced:
+            assert announced.readline().strip() == str(number), "Xwayland did not start"
+        yield f":{number}"
+    finally:
+        server.terminate()
+        server.wait()
 
 
 def closes(gui, env, runtime_socket, count, output):
@@ -158,7 +181,22 @@ def closes(gui, env, runtime_socket, count, output):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--closes", type=int, default=0)
+    parser.add_argument("--xwayland", action="store_true", help="draw on a private rootful Xwayland")
     args = parser.parse_args()
+    if args.xwayland and args.closes:
+        # Xwayland hands XTEST to the compositor through libei, and a compositor without the
+        # RemoteDesktop portal (Hyprland) drops it; AWT ignores XSendEvent input as well.
+        parser.error("--closes needs XTEST input, which Xwayland drops without a RemoteDesktop portal; use xvfb-run")
+    if args.xwayland:
+        with xwayland() as display:
+            os.environ["DISPLAY"] = display
+            os.environ.pop("XAUTHORITY", None)
+            run(args)
+    else:
+        run(args)
+
+
+def run(args):
     tree = Path(os.environ["PROXENOS_TREE"]).resolve()
     gui = tree / "bin/gui"
     tui.RUNTIME, tui.TUI = str(tree / "bin/runtime"), str(tree / "bin/tui")
