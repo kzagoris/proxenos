@@ -147,4 +147,71 @@ class WorkspacesTest {
     onNodeWithText("Raise 'notes' to Command?").assertDoesNotExist()
     onNodeWithText("~/.ssh", substring = true).assertExists()
   }
+  @Test
+  fun `Rename opens the name field and Escape cancels without changing the Workspace`() = runComposeUiTest {
+    val gui = shell()
+    onNode(hasText("notes") and hasClickAction()).performClick()
+    onNodeWithText("Rename…").performClick()
+    onNode(hasSetTextAction() and hasText("notes")).assertExists()
+    onAllNodes(isRoot()).onLast().performKeyInput { pressKey(Key.Escape) }
+    onNodeWithText("Rename Workspace").assertDoesNotExist()
+    assertEquals("notes", gui.state.selectedWorkspace!!.workspace.name)
+  }
+
+  @Test
+  fun `Move confirms on Cancel and explains Read before submitting a new Root`() = runComposeUiTest {
+    val gui = shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(accessLevel = AccessLevel.Write), false))))
+    onNode(hasText("notes") and hasClickAction()).performClick()
+    onNodeWithText("Move to another folder…").performClick()
+    onNodeWithText("Cancel").assertIsFocused()
+    onNodeWithText("lands at Read", substring = true).assertExists()
+    onNode(hasSetTextAction() and hasText(notes.root)).performTextReplacement("/home/u/moved")
+    waitUntil(timeoutMillis = 5000) { onAllNodes(hasText("Move at Read") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+    onNodeWithText("Move at Read").performClick()
+    assertEquals(GuiIntent.Move("/home/u/moved"), gui.sent.last())
+    assertEquals(notes.root, gui.state.selectedWorkspace!!.workspace.root)
+  }
+
+  @Test
+  fun `Broken offers re-confirm and another folder and explains the identity change`() = runComposeUiTest {
+    val gui = shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(accessLevel = AccessLevel.Write), true))))
+    onNode(hasText("notes") and hasClickAction()).performClick()
+    onNodeWithText("Choose another folder…").assertExists()
+    onNodeWithText("Re-confirm this folder…").performClick()
+    onNodeWithText("Cancel").assertIsFocused()
+    onNodeWithText("It was at Write.", substring = true).assertExists()
+    onNodeWithText("directory there is no longer the one", substring = true).assertExists()
+    onNodeWithText("Re-confirm at Read").performClick()
+    assertEquals(GuiIntent.ConfirmReconfirm, gui.sent.last())
+  }
+
+  @Test
+  fun `Forget names running work and preserves Activity and Enter cannot submit`() = runComposeUiTest {
+    val running = RunningOperation(ActivityEntryId("command-entry"), Origin.ChatGpt, notes.name, "run_command", "command=sleep 30 cwd=.", at, promoted = true)
+    val gui = shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(accessLevel = AccessLevel.Command), false)), running = listOf(running)))
+    onNode(hasText("notes") and hasClickAction()).performClick()
+    onNodeWithText("Forget…").performClick()
+    onNodeWithText("Cancel").assertIsFocused()
+    onNodeWithText("Activity stays", substring = true).assertExists()
+    onNodeWithText("sleep 30", substring = true).assertExists()
+    onNodeWithText("still running", substring = true).assertExists()
+    onNodeWithText("not stopped", substring = true).assertExists()
+    onNodeWithText("Forget Workspace").requestFocus()
+    onAllNodes(isRoot()).onLast().performKeyInput { pressKey(Key.Enter); pressKey(Key.NumPadEnter) }
+    assertFalse(GuiIntent.ConfirmForget in gui.sent)
+    onNodeWithText("Forget Workspace").performClick()
+    assertEquals(GuiIntent.ConfirmForget, gui.sent.last())
+  }
+
+  @Test
+  fun `Forget still names running work started before the Workspace was renamed`() = runComposeUiTest {
+    val running = RunningOperation(ActivityEntryId("command-entry"), Origin.ChatGpt, "notes", "run_command", "command=sleep 30 cwd=.", at)
+    shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(name = "renamed", accessLevel = AccessLevel.Command), false)), running = listOf(running)))
+    onNode(hasText("renamed") and hasClickAction()).performClick()
+    onNodeWithText("Forget…").performClick()
+    onNodeWithText("sleep 30", substring = true).assertExists()
+    onNodeWithText("Workspace at start: notes", substring = true).assertExists()
+    onNodeWithText("not stopped by Forget", substring = true).assertExists()
+  }
+
 }

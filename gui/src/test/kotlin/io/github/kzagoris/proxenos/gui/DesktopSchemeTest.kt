@@ -73,7 +73,7 @@ class DesktopSchemeTest {
       LaunchedEffect(scheme) { scheme.watch() }
       val dark by scheme.dark.collectAsState()
       ProxenosTheme(dark) {
-        Box(Modifier.size(800.dp, 500.dp)) { Shell(GuiState(attachment = Attachment.Absent(Reason.NotAnswering))) {} }
+        Box(Modifier.size(800.dp, 500.dp)) { Shell(GuiState(attachment = Attachment.Absent(Reason.NotAnswering)), {}) }
       }
     }
   }

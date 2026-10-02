@@ -40,6 +40,15 @@ sealed interface GuiIntent {
   data object AcknowledgeConnector : GuiIntent
   data object AddWorkspace : GuiIntent
   data object CancelAdd : GuiIntent
+  data object AskRename : GuiIntent
+  data object AskForget : GuiIntent
+  data object ConfirmForget : GuiIntent
+  data object AskReconfirm : GuiIntent
+  data object ConfirmReconfirm : GuiIntent
+  data object AskMove : GuiIntent
+  data class Move(val root: String) : GuiIntent
+  data object CancelRegistration : GuiIntent
+  data class Rename(val name: String) : GuiIntent
   /** [root] as typed; it is made absolute here, never in the Runtime's working directory. */
   data class Register(val root: String, val name: String?) : GuiIntent
   data object DismissNotice : GuiIntent
@@ -85,6 +94,14 @@ class GuiOwner(
         GuiIntent.ConfirmCommand -> if (state.commandConfirmation != null && state.inFlight == null) {
           perform(ManagementAct.SetLevel(state.commandConfirmation, AccessLevel.Command))
         }
+        GuiIntent.ConfirmForget -> if (state.registration == Registration.Forget && state.inFlight == null)
+          state.selectedWorkspace?.let { perform(ManagementAct.Forget(it.workspace.id)) }
+        GuiIntent.ConfirmReconfirm -> if (state.registration == Registration.Reconfirm && state.inFlight == null)
+          state.selectedWorkspace?.let { perform(ManagementAct.Reconfirm(it.workspace.id)) }
+        is GuiIntent.Move -> if (state.registration == Registration.Move && state.inFlight == null && intent.root.isNotBlank())
+          state.selectedWorkspace?.let { perform(ManagementAct.Reconfirm(it.workspace.id, absoluteRoot(intent.root).toString())) }
+        is GuiIntent.Rename -> if (state.registration == Registration.Rename && state.inFlight == null && intent.name.isNotBlank())
+          state.selectedWorkspace?.let { perform(ManagementAct.Rename(it.workspace.id, intent.name.trim())) }
         is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
           perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
         else -> current.value = state.after(intent)

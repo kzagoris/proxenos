@@ -24,6 +24,7 @@ ktor = "3.5.1"
 mosaic = "0.18.0"
 compose = "1.12.1"
 material3 = "1.9.0"
+filekit = "0.16.0"
 # GUI-SPEC §8: the portal's SettingChanged for live light/dark. FileKit carries these at runtime
 # only, so the GUI declares them itself.
 dbus-java = "5.2.0"
@@ -71,6 +72,7 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 dbus-java-core = { module = "com.github.hypfvieh:dbus-java-core", version.ref = "dbus-java" }
 dbus-java-unixsocket = { module = "com.github.hypfvieh:dbus-java-transport-native-unixsocket", version.ref = "dbus-java" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref = "filekit" }
 compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose" }
 # The core reads the tunnel child's JSON log lines for the words Failed quotes.
 # The library alone: nothing is serialized into a class, so no compiler plugin.

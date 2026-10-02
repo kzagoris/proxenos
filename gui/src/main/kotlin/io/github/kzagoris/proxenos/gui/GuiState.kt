@@ -17,6 +17,8 @@ enum class Destination { Workspaces, Activity, Connection }
 /** The chain a ChatGPT call travels, each stage measured on its own (ADR 0009). */
 enum class Stage { Runtime, Tunnel, Connector }
 
+enum class Registration { Rename, Move, Reconfirm, Forget }
+
 data class GuiState(
   val attachment: Attachment = Attachment.Attaching,
   val stopConfirmation: Boolean = false,
@@ -30,6 +32,7 @@ data class GuiState(
   /** The stage Connection details; null is the list alone in the compact layout. */
   val stage: Stage? = null,
   val adding: Boolean = false,
+  val registration: Registration? = null,
   /** Kept when forgotten, so the detail says gone instead of selecting a neighbour. */
   val workspace: WorkspaceId? = null,
   /** The running command the Workspaces banner opens; Activity detail is built in its own ticket. */
@@ -45,7 +48,8 @@ data class GuiState(
   val canAcknowledgeConnector: Boolean get() = snapshot?.connectorUnconfirmed == true && inFlight == null && !dialogOpen
   val selectedWorkspace: WorkspaceState? get() = snapshot?.workspaces?.find { it.workspace.id == workspace }
   val canSetLevel: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
-  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null
+  val canEditRegistration: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
+  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null || registration != null
 
   val runtimeWords: String get() = when (val current = attachment) {
     Attachment.Starting -> "Starting"
@@ -67,6 +71,7 @@ data class GuiState(
     else {
       val attached = next is Attachment.Attached
       copy(attachment = next, stopConfirmation = stopConfirmation && attached, adding = adding && attached,
+        registration = registration.takeIf { next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace } },
         workspace = workspace.takeIf { attached },
         activity = activity.takeIf { attached },
         commandConfirmation = commandConfirmation.takeIf { id ->
@@ -91,13 +96,18 @@ data class GuiState(
     GuiIntent.AskStop -> if (canStop && !dialogOpen) copy(stopConfirmation = true, refusal = null) else this
     GuiIntent.CancelStop -> copy(stopConfirmation = false, refusal = null)
     GuiIntent.AddWorkspace -> if (canAdd && !dialogOpen) copy(adding = true, destination = Destination.Workspaces, refusal = null) else this
+    GuiIntent.AskForget -> if (canEditRegistration) copy(registration = Registration.Forget, refusal = null) else this
+    GuiIntent.AskReconfirm -> if (canEditRegistration && selectedWorkspace?.broken == true) copy(registration = Registration.Reconfirm, refusal = null) else this
+    GuiIntent.AskMove -> if (canEditRegistration) copy(registration = Registration.Move, refusal = null) else this
+    GuiIntent.AskRename -> if (canEditRegistration) copy(registration = Registration.Rename, refusal = null) else this
+    GuiIntent.CancelRegistration -> copy(registration = null, refusal = null)
     GuiIntent.CancelAdd -> copy(adding = false, refusal = null)
     is GuiIntent.SetLevel -> if (canSetLevel && intent.level == AccessLevel.Command && selectedWorkspace?.workspace?.accessLevel != AccessLevel.Command)
       copy(commandConfirmation = workspace, refusal = null) else this
     GuiIntent.CancelCommand -> copy(commandConfirmation = null, refusal = null)
     GuiIntent.DismissNotice -> copy(notice = null)
     GuiIntent.StartRuntime, GuiIntent.ConfirmStop, GuiIntent.ConnectTunnel, GuiIntent.DisconnectTunnel,
-    GuiIntent.AcknowledgeConnector, GuiIntent.ConfirmCommand, is GuiIntent.Register -> this
+    GuiIntent.AcknowledgeConnector, GuiIntent.ConfirmCommand, is GuiIntent.Register, is GuiIntent.Rename, is GuiIntent.Move, GuiIntent.ConfirmReconfirm, GuiIntent.ConfirmForget -> this
   }
 
   fun starting(): GuiState = GuiState(attachment = Attachment.Starting, destination = destination, stage = stage)
@@ -111,10 +121,14 @@ data class GuiState(
    * the snackbar otherwise. A Stop that succeeded is what makes the Absent that follows "Stopped".
    */
   fun performed(act: ManagementAct<*>, words: String?): GuiState {
-    val inDialog = (act is ManagementAct.Register && adding) ||
+    val inDialog = (act is ManagementAct.Forget && registration == Registration.Forget) ||
+      (act is ManagementAct.Reconfirm && (registration == Registration.Move || registration == Registration.Reconfirm)) ||
+      (act is ManagementAct.Rename && registration == Registration.Rename) ||
+      (act is ManagementAct.Register && adding) ||
       (act is ManagementAct.SetLevel && commandConfirmation == act.id)
     return copy(
       inFlight = null,
+      registration = registration.takeUnless { (act is ManagementAct.Rename || act is ManagementAct.Reconfirm || act is ManagementAct.Forget) && words == null },
       adding = adding && !(act is ManagementAct.Register && words == null),
       commandConfirmation = commandConfirmation.takeUnless { act is ManagementAct.SetLevel && words == null && it == act.id },
       refusal = words.takeIf { inDialog },

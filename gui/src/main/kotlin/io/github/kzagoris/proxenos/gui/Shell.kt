@@ -21,16 +21,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
-import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
 import io.github.kzagoris.proxenos.frontend.Wording
-import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import io.github.kzagoris.proxenos.frontend.feed
-import io.github.kzagoris.proxenos.frontend.overlaps
 import io.github.kzagoris.proxenos.gui.res.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.DrawableResource
 
 /**
@@ -62,7 +57,7 @@ fun shortcut(event: KeyEvent, state: GuiState, send: (GuiIntent) -> Unit, close:
 }
 
 @Composable
-fun Shell(state: GuiState, send: (GuiIntent) -> Unit) {
+fun Shell(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = null) {
   val snackbar = remember { SnackbarHostState() }
   LaunchedEffect(state.notice) {
     state.notice?.let {
@@ -88,8 +83,12 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit) {
     }
   }
   if (state.stopConfirmation) StopDialog(send)
-  if (state.adding) AddDialog(state, send)
+  if (state.adding) AddDialog(state, send, chooser)
   if (state.commandConfirmation != null) CommandDialog(state, send)
+  if (state.registration == Registration.Rename) RenameDialog(state, send)
+  if (state.registration == Registration.Move) MoveDialog(state, send, chooser)
+  if (state.registration == Registration.Reconfirm) ReconfirmDialog(state, send)
+  if (state.registration == Registration.Forget) ForgetDialog(state, send)
 }
 
 @Composable
@@ -103,6 +102,9 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
           ManagementAct.Disconnect -> "Disconnecting the tunnel"
           ManagementAct.AcknowledgeConnector -> "Recording your word about the connector"
           is ManagementAct.Register -> "Adding the Workspace"
+          is ManagementAct.Rename -> "Renaming the Workspace"
+          is ManagementAct.Reconfirm -> "Re-confirming the Workspace at Read"
+          is ManagementAct.Forget -> "Forgetting the Workspace"
           is ManagementAct.SetLevel -> "Setting Access Level to ${act.level}"
           else -> "Working"
         },
@@ -265,7 +267,7 @@ private fun ActivityPane(state: GuiState) {
 }
 
 /** A dialog's own Esc: the test scene has no Esc-to-dismiss, and cancel is idempotent (GUI-SPEC §5). */
-private fun Modifier.escape(cancel: () -> Unit) = onPreviewKeyEvent { event ->
+internal fun Modifier.escape(cancel: () -> Unit) = onPreviewKeyEvent { event ->
   if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) true.also { cancel() } else false
 }
 
@@ -282,55 +284,4 @@ private fun StopDialog(send: (GuiIntent) -> Unit) {
     modifier = Modifier.escape { send(GuiIntent.CancelStop) },
   )
   LaunchedEffect(Unit) { cancel.requestFocus() }
-}
-
-/** The overlap [words] for [root] as typed, against the [workspaces] it was checked with. */
-private data class OverlapCheck(val root: String, val workspaces: List<WorkspaceState>, val words: List<String>)
-
-/** Register: a Root typed in full, a name defaulting to the folder's, and every overlap named. */
-@Composable
-private fun AddDialog(state: GuiState, send: (GuiIntent) -> Unit) {
-  var root by remember { mutableStateOf("") }
-  var name by remember { mutableStateOf("") }
-  val field = remember { FocusRequester() }
-  val workspaces = state.snapshot?.workspaces.orEmpty()
-  // The overlap words and the Root and Workspaces they were checked against. Overlap resolves real
-  // paths, which is file I/O, so it runs off the event thread — and nothing is sent until the check
-  // has caught up with what is typed, or a Register could go out under a stale "Add at Read".
-  var checked by remember { mutableStateOf(OverlapCheck("", workspaces, emptyList())) }
-  LaunchedEffect(root, workspaces) {
-    val words = if (root.isBlank()) emptyList() else withContext(Dispatchers.IO) {
-      val absolute = absoluteRoot(root)
-      overlaps(absolute, workspaces).takeIf { it.isNotEmpty() }?.let { Wording.overlap(absolute.toString(), it) }.orEmpty()
-    }
-    checked = OverlapCheck(root, workspaces, words)
-  }
-  val overlapping = checked.words
-  val ready = root.isNotBlank() && state.inFlight == null && checked.root == root && checked.workspaces == workspaces
-  val folder = root.trim().trimEnd('/').substringAfterLast('/')
-  val label = if (overlapping.isEmpty()) "Add at Read" else "Add anyway, at Read"
-  val submit = { if (ready) send(GuiIntent.Register(root, name.ifBlank { null })) }
-  val enter = Modifier.onPreviewKeyEvent { event ->
-    if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) true.also { submit() } else false
-  }
-  AlertDialog(
-    onDismissRequest = { send(GuiIntent.CancelAdd) },
-    title = { Text("Add Workspace") },
-    text = {
-      Column(verticalArrangement = Arrangement.spacedBy(Look.gap)) {
-        OutlinedTextField(root, { root = it }, Modifier.fillMaxWidth().focusRequester(field).then(enter),
-          label = { Text("Root") }, singleLine = true,
-          textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMono.current))
-        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().then(enter),
-          label = { Text("Name") }, placeholder = { Text(folder) }, singleLine = true)
-        overlapping.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalStatus.current.warn) }
-        state.refusal?.let { Text(it, color = LocalStatus.current.bad) }
-        if (state.inFlight != null) LinearProgressIndicator(Modifier.fillMaxWidth())
-      }
-    },
-    dismissButton = { Btn("Cancel", { send(GuiIntent.CancelAdd) }) },
-    confirmButton = { Btn(label, submit, enabled = ready, primary = true) },
-    modifier = Modifier.escape { send(GuiIntent.CancelAdd) },
-  )
-  LaunchedEffect(Unit) { field.requestFocus() }
 }

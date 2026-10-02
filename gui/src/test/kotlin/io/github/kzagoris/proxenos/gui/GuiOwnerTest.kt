@@ -63,6 +63,85 @@ class GuiOwnerTest {
   private suspend fun GuiOwner.until(predicate: (GuiState) -> Boolean): GuiState =
     withTimeout(5.seconds) { state.first(predicate) }
 
+
+  @Test
+  fun `Rename through the owner preserves the selected identity`() = runBlocking<Unit> {
+    val workspace = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("notes")).toString()))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    gui.accept(GuiIntent.AskRename)
+    gui.until { it.registration == Registration.Rename }
+    gui.accept(GuiIntent.Rename("renamed"))
+    val renamed = gui.until { it.selectedWorkspace?.workspace?.name == "renamed" && it.inFlight == null }
+    assertEquals(workspace.id, renamed.workspace)
+    assertNull(renamed.registration)
+  }
+
+  @Test
+  fun `moving a Write Workspace through the owner preserves its id and lands at Read`() = runBlocking<Unit> {
+    val workspace = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("notes")).toString()))
+    val next = Files.createDirectory(temporary.resolve("moved"))
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    gui.accept(GuiIntent.AskMove)
+    gui.until { it.registration == Registration.Move }
+    gui.accept(GuiIntent.Move(next.toString()))
+    val moved = gui.until { it.selectedWorkspace?.workspace?.root == next.toString() && it.inFlight == null }
+    assertEquals(workspace.id, moved.workspace)
+    assertEquals(AccessLevel.Read, moved.selectedWorkspace!!.workspace.accessLevel)
+    assertNull(moved.registration)
+  }
+
+
+  @Test
+  fun `re-confirming a Broken Workspace through the owner binds the replacement at Read`() = runBlocking<Unit> {
+    val root = Files.createDirectory(temporary.resolve("notes"))
+    val workspace = core.perform(ManagementAct.Register(root.toString()))
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    Files.move(root, temporary.resolve("old"))
+    Files.createDirectory(root)
+    core.perform(ManagementAct.TryOperation(Operation.ListWorkspaces))
+    gui.until { it.selectedWorkspace?.broken == true }
+    gui.accept(GuiIntent.AskReconfirm)
+    gui.until { it.registration == Registration.Reconfirm }
+    gui.accept(GuiIntent.ConfirmReconfirm)
+    val rebound = gui.until { it.selectedWorkspace?.broken == false && it.inFlight == null }
+    assertEquals(workspace.id, rebound.workspace)
+    assertEquals(root.toString(), rebound.selectedWorkspace!!.workspace.root)
+    assertEquals(AccessLevel.Read, rebound.selectedWorkspace!!.workspace.accessLevel)
+    assertNull(rebound.registration)
+  }
+
+
+  @Test
+  fun `Forget through the owner keeps Activity and a Promoted command running with selection gone`() = runBlocking<Unit> {
+    val workspace = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("scripts")).toString()))
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-forget")))
+    val gui = owner()
+    val before = gui.until { it.snapshot?.running?.singleOrNull()?.promoted == true }.snapshot!!
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+    gui.accept(GuiIntent.AskForget)
+    gui.until { it.registration == Registration.Forget }
+    gui.accept(GuiIntent.ConfirmForget)
+    val gone = gui.until { it.snapshot?.workspaces?.isEmpty() == true && it.inFlight == null }
+    assertEquals(workspace.id, gone.workspace)
+    assertNull(gone.selectedWorkspace)
+    assertEquals(before.running, gone.snapshot!!.running)
+    assertEquals(before.activity, gone.snapshot!!.activity)
+    assertNull(gone.registration)
+  }
+
   @Test
   fun `level changes wait for the stream and cannot send a second act while a reply is pending`() = runBlocking<Unit> {
     val root = Files.createDirectory(temporary.resolve("notes"))

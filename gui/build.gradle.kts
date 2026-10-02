@@ -15,6 +15,8 @@ dependencies {
   implementation(libs.compose.desktop)
   implementation(libs.compose.material3)
   implementation(libs.compose.components.resources)
+  // The desktop portal folder chooser (GUI-SPEC §7); the Root field remains editable.
+  implementation(libs.filekit.dialogs)
   // The portal's live light/dark (GUI-SPEC §8).
   implementation(libs.dbus.java.core)
   implementation(libs.dbus.java.unixsocket)

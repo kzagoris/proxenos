@@ -59,6 +59,7 @@ fun main(args: Array<String>) {
           state = rememberWindowState(width = 1100.dp, height = 760.dp),
           onPreviewKeyEvent = { event -> shortcut(event, state, owner::accept, close) },
         ) {
+          val chooser = remember(window) { PortalFolderChooser(window, log::say) }
           ProxenosTheme(dark, fonts) {
             Box(Modifier.fillMaxSize().drawWithContent {
               drawContent()
@@ -66,7 +67,7 @@ fun main(args: Array<String>) {
                 drawn = true
                 log.say("first frame")
               }
-            }) { Shell(state, owner::accept) }
+            }) { Shell(state, owner::accept, chooser) }
           }
         }
         LaunchedEffect(state.runtimeWords) { log.say(state.runtimeWords) }

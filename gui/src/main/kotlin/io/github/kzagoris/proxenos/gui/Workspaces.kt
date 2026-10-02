@@ -129,6 +129,8 @@ private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier
       Banner("Broken", Tone.Bad, Res.drawable.error)
       Text("The Root no longer resolves to the registered directory. ChatGPT cannot use this Workspace until you re-confirm it.",
         style = MaterialTheme.typography.bodySmall)
+      Btn("Re-confirm this folder…", { send(GuiIntent.AskReconfirm) }, enabled = state.canEditRegistration)
+      Btn("Choose another folder…", { send(GuiIntent.AskMove) }, enabled = state.canEditRegistration)
     }
     state.loweredCommands(selected).forEach { running ->
       Column(verticalArrangement = Arrangement.spacedBy(Look.gap)) {
@@ -154,6 +156,10 @@ private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier
     }
     Text(Wording.NONE_EXPLANATION, style = MaterialTheme.typography.bodySmall)
     Wording.commandAuthority(workspace).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Section("Registration")
+    Btn("Rename…", { send(GuiIntent.AskRename) }, enabled = state.canEditRegistration)
+    Btn("Move to another folder…", { send(GuiIntent.AskMove) }, enabled = state.canEditRegistration)
+    Btn("Forget…", { send(GuiIntent.AskForget) }, enabled = state.canEditRegistration)
   }
 }
 
