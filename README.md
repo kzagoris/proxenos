@@ -1,5 +1,7 @@
 # Proxenos
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/kzagoris/proxenos)](https://m8ven.ai/mcp/kzagoris/proxenos?s=readme)
+
 *Proxenos for ChatGPT.* In ancient Greece a *proxenos* was a citizen who hosted and acted for a
 foreign city's envoys; this one hosts ChatGPT on your machine.
 
