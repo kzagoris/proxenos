@@ -6,6 +6,8 @@ import io.github.kzagoris.proxenos.core.*
 import io.github.kzagoris.proxenos.coreapi.*
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.feed
 import java.nio.file.Files
 import java.nio.file.Path
 import java.net.StandardProtocolFamily
@@ -485,5 +487,147 @@ class GuiOwnerTest {
     assertEquals(1, received.get())
     val other = owner()
     assertEquals("notes", other.until { it.snapshot != null }.snapshot!!.workspaces.single().workspace.name)
+  }
+
+  private fun script(name: String, text: String): Path =
+    Files.writeString(temporary.resolve(name), text).also { it.toFile().setExecutable(true) }
+
+  private suspend fun commandWorkspace(): Workspace {
+    val workspace = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("scripts")).toString()))
+    return core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+  }
+
+  /** Counts ReadOutput; [nullReads] answers each as a command that is no longer running would be. */
+  private class Reads(private val core: WorkspaceManagement, private val nullReads: Boolean) : WorkspaceManagement by core {
+    val count = AtomicInteger()
+    @Suppress("UNCHECKED_CAST")
+    override suspend fun <R> perform(act: ManagementAct<R>): R =
+      if (act is ManagementAct.ReadOutput) {
+        count.incrementAndGet()
+        if (nullReads) null as R else core.perform(act)
+      } else core.perform(act)
+  }
+
+  @Test
+  fun `Stop command shows TERM then SIGKILL, stays until reaped, and its entry names the survivor`() = runBlocking<Unit> {
+    // G13. The command traps TERM and starts a setsid helper whose own TERM handler forks a
+    // process after the tree was snapshotted, outside the group: no arm of the kill reaches it.
+    val late = script("late.sh", "printf 'late %s\\n' \"${'$'}${'$'}\"\nexec sleep 30\n")
+    val helper = script("helper.sh", "trap \"'$late' &\" TERM\nsleep 30 &\necho ready\nwhile true; do wait; done\n")
+    val command = script("forks-late.sh", "trap : TERM\nsetsid '$helper' &\nwhile true; do wait; done\n")
+    val workspace = commandWorkspace()
+    val gui = owner()
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "exec '$command'", deliveryKey = "gui-g13")))
+    val entry = gui.until { it.running.singleOrNull()?.promoted == true }.running.single().entry
+    // Polled while Activity shows: the helper has its trap in place once it has said so.
+    gui.until { it.outputs[entry]?.outputSoFar?.contains("ready") == true }
+    gui.accept(GuiIntent.ShowActivity(entry))
+    gui.until { it.activity == entry }
+    gui.accept(GuiIntent.AskStopCommand)
+    gui.until { it.stopCommandConfirmation == entry }
+    gui.accept(GuiIntent.ConfirmStopCommand)
+
+    val terminating = gui.until { it.selectedRunning?.stopping == StopPhase.Terminating }
+    assertNull(terminating.stopCommandConfirmation)
+    assertNull(terminating.after(GuiIntent.AskStopCommand).stopCommandConfirmation, "there is no second, harder stop")
+    gui.until { it.selectedRunning?.stopping == StopPhase.Killing }
+    val reaped = gui.until { it.running.isEmpty() && it.inFlight == null && it.notice != null }
+    var survivor: Long? = null
+    try {
+      assertEquals(Wording.stopped("exec '$command'"), reaped.notice)
+      assertEquals(entry, reaped.noticeEntry)
+      // The running item turned into its entry, under the same selection.
+      assertNull(reaped.selectedRunning)
+      val ended = assertNotNull(reaped.selectedEntry)
+      assertEquals(entry, ended.id)
+      val detail = assertIs<ActivityOutcome.Uncertain>(ended.outcome).detail
+      survivor = Regex("pid (\\d+) \\(never signalled").find(detail)?.groupValues?.get(1)?.toLong()
+      assertNotNull(survivor, detail)
+      assertTrue(ProcessHandle.of(survivor).isPresent, "the survivor named is still running")
+      assertTrue(reaped.polled.isEmpty())
+    } finally {
+      survivor?.let { pid -> ProcessHandle.of(pid).ifPresent { it.destroyForcibly() } }
+    }
+  }
+
+  @Test
+  fun `output is read only while Activity shows, and never again after a null read`() = runBlocking<Unit> {
+    val workspace = commandWorkspace()
+    val reads = Reads(core, nullReads = true)
+    val gui = owner(reads)
+    gui.until { it.snapshot != null }
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-null")))
+    gui.until { it.running.isNotEmpty() }
+    delay(1500)
+    assertEquals(0, reads.count.get(), "nothing is read while Workspaces shows")
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    gui.until { it.polled.isEmpty() && it.destination == Destination.Activity }
+    delay(2500)
+    assertEquals(1, reads.count.get())
+    assertTrue(gui.state.value.running.isNotEmpty(), "the stream still lists it; the null read alone stopped the polling")
+  }
+
+  @Test
+  fun `output polling stops when the command ends, which leaves its entry`() = runBlocking<Unit> {
+    val workspace = commandWorkspace()
+    val reads = Reads(core, nullReads = false)
+    val gui = owner(reads)
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "echo started; sleep 2", deliveryKey = "gui-end")))
+    val entry = gui.until { it.running.isNotEmpty() }.running.single().entry
+    gui.accept(GuiIntent.ShowActivity(entry))
+    assertEquals("started\n", gui.until { it.outputs[entry] != null }.outputs[entry]!!.outputSoFar)
+    val ended = gui.until { it.running.isEmpty() }
+    assertEquals(entry, ended.selectedEntry?.id)
+    assertNotEquals(ActivityOutcome.InFlight, ended.selectedEntry?.outcome)
+    val after = reads.count.get()
+    delay(2500)
+    assertEquals(after, reads.count.get())
+  }
+
+  @Test
+  fun `Acknowledge settles an Uncertain entry through the stream`() = runBlocking<Unit> {
+    val workspace = commandWorkspace()
+    core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-ack")))
+    val entry = core.observe().first().let { (it as RuntimeEvent.Snapshot).running.single().entry }
+    core.perform(ManagementAct.StopOperation(entry))
+    val gui = owner()
+    gui.until { state -> state.snapshot?.feed?.any { it.id == entry && it.needsAttention } == true }
+    gui.accept(GuiIntent.ShowActivity(entry))
+    val selected = gui.until { it.canAcknowledge }
+    assertIs<ActivityOutcome.Uncertain>(selected.selectedEntry!!.outcome)
+    gui.accept(GuiIntent.Acknowledge)
+    val settled = gui.until { it.selectedEntry?.acknowledgedAt != null && it.inFlight == null }
+    assertFalse(settled.selectedEntry!!.needsAttention)
+    assertFalse(settled.canAcknowledge)
+  }
+
+  @Test
+  fun `after a Runtime restart Activity shows this start only, newest first, with a get_result burst folded into one row`() = runBlocking<Unit> {
+    // G15 through the owner and a real restart: the earlier start's entries stay in the account and out of the feed.
+    val gui = owner()
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.Show(Destination.Activity))
+    core.perform(ManagementAct.TryOperation(Operation.ListWorkspaces))
+    gui.until { it.feedRows.size == 1 }
+    RuntimeAttachment(socket, null).management.perform(ManagementAct.Stop)
+    gui.until { it.attachment is Attachment.Absent }
+    runtime()
+    gui.accept(GuiIntent.StartRuntime)
+    val restarted = gui.until { it.snapshot != null }
+    assertEquals(1, restarted.snapshot!!.activity.size)
+    assertTrue(restarted.feedRows.isEmpty())
+    assertEquals(Destination.Activity, restarted.destination)
+
+    val workspace = commandWorkspace()
+    val promoted = core.perform(ManagementAct.TryOperation(Operation.RunCommand(workspace.name, "sleep 30", deliveryKey = "gui-burst")))
+    val handle = assertIs<CommandReply.Promoted>(assertIs<Outcome.Ok<CommandReply>>(promoted).value).handle.value
+    repeat(3) { core.perform(ManagementAct.TryOperation(Operation.GetResult(workspace.name, handle))) }
+    val burst = gui.until { it.feedRows.firstOrNull()?.entries?.size == 3 }
+    assertEquals(listOf("get_result", "run_command"), burst.feedRows.map { it.entries.last().tool })
+    assertTrue(burst.feedRows.flatMap { it.entries }.none { it.outcome == ActivityOutcome.Lost })
   }
 }

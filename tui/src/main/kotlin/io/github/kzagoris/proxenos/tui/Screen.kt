@@ -13,6 +13,9 @@ import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.FeedRow
 import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
 import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.lastLine
+import io.github.kzagoris.proxenos.frontend.runningFor
+import io.github.kzagoris.proxenos.frontend.took
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -302,7 +305,7 @@ private fun bandRow(home: Home, running: RunningOperation, selected: Boolean, fr
   val output = home.outputs[running.entry]
   val last = when {
     output == null -> ""
-    else -> output.outputSoFar.lineSequence().lastOrNull { it.isNotBlank() }?.let { " │ ${it.trim()}" } ?: " │ (nothing printed yet)"
+    else -> output.lastLine?.let { " │ $it" } ?: " │ (nothing printed yet)"
   }
   // The state first, then the command cut to leave the last line room: the line is what is
   // watched, and the whole command is named when the row is expanded or stopped.
@@ -326,7 +329,7 @@ private fun expanded(home: Home, running: RunningOperation, frame: Frame): List<
   val shown = lines.takeLast(room)
   val source = if (running.promoted) "the buffer get_result returns for Handle ${running.entry.value}"
   else "the buffer its reply will carry, and get_result will return if it is Promoted"
-  val dropped = if (output.droppedBytes > 0) ", ${output.droppedBytes} bytes dropped from its middle by the 64 KiB bound" else ""
+  val dropped = if (output.droppedBytes > 0) ", ${Wording.dropped(output.droppedBytes)}" else ""
   val label = when {
     lines.isEmpty() -> "      ┌ $source: nothing printed so far"
     shown.size < lines.size -> "      ┌ $source: ${lines.size} lines$dropped · the last ${shown.size} shown"
@@ -469,7 +472,7 @@ private fun row(feedRow: FeedRow, selected: Boolean, frame: Frame): Line {
   val origin = if (entry.origin == Origin.ChatGpt) "ChatGPT " else "frontend"
   val outcome = buildString {
     append(entry.outcome.said)
-    entry.elapsed?.let { append(" ").append(it.inWholeMilliseconds.let { ms -> if (ms < 1000) "${ms}ms" else "%.1fs".format(ms / 1000.0) }) }
+    entry.elapsed?.let { append(" ").append(took(it)) }
     if (entry.deliveries > 0) append(" · +${entry.deliveries} deliver${if (entry.deliveries == 1) "y" else "ies"}")
     if (entry.outcome.unresolved && entry.acknowledgedAt != null) append(" · acknowledged")
   }
@@ -527,14 +530,7 @@ private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 private val DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM dd HH:mm")
 
 /** How long since [since], as the band and the stop confirmation say it: `42s`, `3m05s`, `2h01m`. */
-private fun elapsed(since: Instant, frame: Frame): String {
-  val seconds = Duration.between(since, frame.now).seconds.coerceAtLeast(0)
-  return when {
-    seconds < 60 -> "${seconds}s"
-    seconds < 3600 -> "%dm%02ds".format(seconds / 60, seconds % 60)
-    else -> "%dh%02dm".format(seconds / 3600, seconds % 3600 / 60)
-  }
-}
+private fun elapsed(since: Instant, frame: Frame): String = runningFor(Duration.between(since, frame.now).seconds)
 
 private fun clock(at: Instant, frame: Frame): String {
   val local = at.atZone(frame.zone)

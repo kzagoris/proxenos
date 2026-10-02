@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -77,7 +79,7 @@ fun Btn(
 
 /** A status-tinted one-line banner, optionally with the act that reviews it. */
 @Composable
-fun Banner(text: String, tone: Tone, icon: DrawableResource, action: String? = null, onAction: () -> Unit = {}) {
+fun Banner(text: String, tone: Tone, icon: DrawableResource, action: String? = null, maxLines: Int = 2, onAction: () -> Unit = {}) {
   val colour = LocalStatus.current.of(tone)
   Row(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(Look.corner)).background(colour.copy(alpha = 0.14f))
@@ -85,7 +87,7 @@ fun Banner(text: String, tone: Tone, icon: DrawableResource, action: String? = n
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Look.gap),
   ) {
     Ic(icon, colour)
-    Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
     if (action != null) Btn(action, onAction)
   }
 }
@@ -119,3 +121,27 @@ fun Modifier.hairlineBottom(colour: Color) = drawBehind {
 fun Modifier.hairlineTop(colour: Color) = drawBehind {
   drawLine(colour, Offset(0f, 0.5f), Offset(size.width, 0.5f), 1.dp.toPx())
 }
+
+/**
+ * ↑/↓/Home/End over [items] from the one [focused] (GUI-SPEC §5); [move] takes focus there. Held
+ * at either end.
+ */
+fun <T> Modifier.listKeys(items: List<T>, focused: () -> T?, move: (T) -> Unit) = onPreviewKeyEvent { event ->
+  val from = items.indexOf(focused())
+  if (from < 0 || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+  val to = when (event.key) {
+    Key.DirectionUp -> from - 1
+    Key.DirectionDown -> from + 1
+    Key.MoveHome -> 0
+    Key.MoveEnd -> items.lastIndex
+    else -> return@onPreviewKeyEvent false
+  }
+  items.getOrNull(to)?.let(move)
+  true
+}
+
+/** A list row that is selected by identity: tinted while selected, and pressed to select it. */
+@Composable
+fun Modifier.selectableRow(selected: Boolean, select: () -> Unit) = clip(RoundedCornerShape(Look.corner))
+  .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+  .selectable(selected, role = Role.Button, onClick = select)

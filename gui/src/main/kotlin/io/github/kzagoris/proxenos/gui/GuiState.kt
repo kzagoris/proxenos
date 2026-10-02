@@ -6,11 +6,18 @@ import io.github.kzagoris.proxenos.coreapi.ActivityEntry
 import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
 import io.github.kzagoris.proxenos.coreapi.Operation
 import io.github.kzagoris.proxenos.coreapi.Origin
+import io.github.kzagoris.proxenos.coreapi.RunningCommand
+import io.github.kzagoris.proxenos.coreapi.RunningOperation
 import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
 import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.frontend.Attachment
+import io.github.kzagoris.proxenos.frontend.FeedRow
+import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
+import io.github.kzagoris.proxenos.frontend.commandOf
+import io.github.kzagoris.proxenos.frontend.feed
+import io.github.kzagoris.proxenos.frontend.folded
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.Wording
 
@@ -63,10 +70,22 @@ data class GuiState(
   val registration: Registration? = null,
   /** Kept when forgotten, so the detail says gone instead of selecting a neighbour. */
   val workspace: WorkspaceId? = null,
-  /** The running command the Workspaces banner opens; Activity detail is built in its own ticket. */
+  /**
+   * The running command or feed row Activity details, by entry id. A running command keeps its id
+   * when it ends, so the selection turns into its entry (GUI-SPEC §3.4).
+   */
   val activity: ActivityEntryId? = null,
   val commandConfirmation: WorkspaceId? = null,
   val trying: Trying? = null,
+  /** The running command whose Stop is being confirmed. */
+  val stopCommandConfirmation: ActivityEntryId? = null,
+  /**
+   * What each running command has said, as last read with ReadOutput: the buffer `get_result`
+   * reads. Null once a read came back null; that command is polled no more (GUI-SPEC §3.5).
+   */
+  val outputs: Map<ActivityEntryId, RunningCommand?> = emptyMap(),
+  /** The entry the snackbar's Show entry opens. */
+  val noticeEntry: ActivityEntryId? = null,
 ) {
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
   val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null
@@ -78,9 +97,47 @@ data class GuiState(
   val selectedWorkspace: WorkspaceState? get() = snapshot?.workspaces?.find { it.workspace.id == workspace }
   /** Setting its level, opening a registration dialog or a Try form. */
   val canActOnWorkspace: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
-  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null || registration != null || trying != null
+  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null || registration != null || trying != null ||
+    stopCommandConfirmation != null
+
+  /** A destination showing its detail, which Esc and the compact Back leave (GUI-SPEC §5). */
+  val detailOpen: Boolean get() = when (destination) {
+    Destination.Workspaces -> workspace != null
+    Destination.Activity -> activity != null
+    Destination.Connection -> stage != null
+  }
 
   val triedEntry: ActivityEntryId? get() = trying?.entryIn(snapshot?.activity.orEmpty())
+
+  /** Running now: every `run_command` still running, oldest first, at most four. */
+  val running: List<RunningOperation> get() = snapshot?.running.orEmpty().filter { it.tool == RUN_COMMAND }
+
+  /**
+   * This start's feed as drawn: newest first, consecutive `get_result` polls folded into one
+   * counted row. Folded once per state, and only if something reads it.
+   */
+  val feedRows: List<FeedRow> by lazy { folded(snapshot?.feed.orEmpty()).asReversed() }
+
+  val selectedRunning: RunningOperation? get() = running.find { it.entry == activity }
+  val selectedRow: FeedRow? get() = activity?.let { id -> feedRows.find { id in it } }
+  val selectedEntry: ActivityEntry? get() = selectedRow?.detailed
+
+  /** The running command whose Stop is being confirmed, while it is still running. */
+  val stopCommandTarget: RunningOperation? get() = running.find { it.entry == stopCommandConfirmation }
+
+  /** Read once a second while Activity shows (GUI-SPEC §3.5); a command whose read came back null is not. */
+  val polled: List<ActivityEntryId> get() =
+    if (destination != Destination.Activity) emptyList()
+    else running.map { it.entry }.filterNot { it in outputs && outputs[it] == null }
+
+  val canStopCommand: Boolean get() = selectedRunning.let { it != null && it.stopping == null } && inFlight == null && !dialogOpen
+  val canAcknowledge: Boolean get() = selectedRunning == null && selectedEntry?.needsAttention == true && inFlight == null && !dialogOpen
+
+  fun commandOf(running: RunningOperation): String = commandOf(running, outputs[running.entry])
+
+  /** What [entry] has said so far, as just read; null stops its polling. Nothing for a command no longer running. */
+  fun read(entry: ActivityEntryId, output: RunningCommand?): GuiState =
+    if (running.none { it.entry == entry }) this else copy(outputs = outputs + (entry to output))
 
   val runtimeWords: String get() = when (val current = attachment) {
     Attachment.Starting -> "Starting"
@@ -102,7 +159,14 @@ data class GuiState(
     else {
       val attached = next is Attachment.Attached
       val stillThere = next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace }
+      val stillRunning = (next as? Attachment.Attached)?.snapshot?.running.orEmpty().mapTo(HashSet()) { it.entry }
+      // A command that ended under its open Stop confirmation is not confirmed as though it ran.
+      val ended = stopCommandConfirmation != null && attached && stopCommandConfirmation !in stillRunning
       copy(attachment = next, stopConfirmation = stopConfirmation && attached, adding = adding && attached,
+        stopCommandConfirmation = stopCommandConfirmation.takeIf { it in stillRunning },
+        outputs = outputs.filterKeys { it in stillRunning },
+        noticeEntry = noticeEntry.takeIf { attached },
+        notice = if (ended) Wording.ALREADY_ENDED else notice,
         registration = registration.takeIf { stillThere },
         trying = trying.takeIf { stillThere },
         workspace = workspace.takeIf { attached },
@@ -124,6 +188,7 @@ data class GuiState(
       dialogOpen -> this
       destination == Destination.Connection && stage != null -> copy(stage = null)
       destination == Destination.Workspaces && workspace != null -> copy(workspace = null)
+      destination == Destination.Activity && activity != null -> copy(activity = null)
       else -> this
     }
     GuiIntent.AskStop -> if (canStop && !dialogOpen) copy(stopConfirmation = true, refusal = null) else this
@@ -141,7 +206,10 @@ data class GuiState(
     is GuiIntent.AskTry -> if (canActOnWorkspace) copy(trying = Trying(intent.tool), refusal = null) else this
     GuiIntent.CancelTry -> copy(trying = null, refusal = null)
     GuiIntent.ShowTried -> triedEntry?.let { copy(trying = null, refusal = null, destination = Destination.Activity, activity = it) } ?: this
-    GuiIntent.DismissNotice -> copy(notice = null)
+    GuiIntent.AskStopCommand -> if (canStopCommand) copy(stopCommandConfirmation = activity, refusal = null) else this
+    GuiIntent.CancelStopCommand -> copy(stopCommandConfirmation = null, refusal = null)
+    GuiIntent.DismissNotice -> copy(notice = null, noticeEntry = null)
+    GuiIntent.ConfirmStopCommand, GuiIntent.Acknowledge,
     GuiIntent.StartRuntime, GuiIntent.ConfirmStop, GuiIntent.ConnectTunnel, GuiIntent.DisconnectTunnel,
     GuiIntent.AcknowledgeConnector, GuiIntent.ConfirmCommand, is GuiIntent.Register, is GuiIntent.Rename, is GuiIntent.Move, GuiIntent.ConfirmReconfirm, GuiIntent.ConfirmForget,
     is GuiIntent.Try -> this
@@ -151,7 +219,8 @@ data class GuiState(
 
   /** One act in flight per window (GUI-SPEC §3.3); everything else stays live. */
   fun performing(act: ManagementAct<*>): GuiState =
-    copy(inFlight = act, notice = null, refusal = null, stopConfirmation = false,
+    copy(inFlight = act, notice = null, noticeEntry = null, refusal = null, stopConfirmation = false,
+      stopCommandConfirmation = stopCommandConfirmation.takeUnless { act is ManagementAct.StopOperation },
       trying = if (act is ManagementAct.TryOperation<*>) trying?.copy(result = null) else trying)
 
   /** A try's answer lands in its form if that is still open, and in the snackbar otherwise. */

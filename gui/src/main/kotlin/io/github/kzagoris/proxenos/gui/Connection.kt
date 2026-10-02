@@ -56,20 +56,9 @@ internal fun ConnectionPane(state: GuiState, send: (GuiIntent) -> Unit, compact:
   var focused by remember { mutableStateOf<Stage?>(null) }
   // GUI-SPEC §5: ↑/↓/Home/End move and selection follows. In the compact list a selection would
   // replace the list with its detail, so there they move focus alone.
-  val keys = Modifier.onPreviewKeyEvent { event ->
-    val from = focused ?: return@onPreviewKeyEvent false
-    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-    val stages = Stage.entries
-    val to = when (event.key) {
-      Key.DirectionUp -> stages.getOrNull(from.ordinal - 1)
-      Key.DirectionDown -> stages.getOrNull(from.ordinal + 1)
-      Key.MoveHome -> stages.first()
-      Key.MoveEnd -> stages.last()
-      else -> return@onPreviewKeyEvent false
-    } ?: return@onPreviewKeyEvent true
+  val keys = Modifier.listKeys(Stage.entries, { focused }) { to ->
     rows.getValue(to).requestFocus()
     if (!compact) send(GuiIntent.ShowStage(to))
-    true
   }
   val list = @Composable { modifier: Modifier ->
     BoxWithConstraints(modifier) {

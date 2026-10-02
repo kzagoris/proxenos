@@ -22,9 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.frontend.Attachment
-import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
 import io.github.kzagoris.proxenos.frontend.Wording
-import io.github.kzagoris.proxenos.frontend.feed
 import io.github.kzagoris.proxenos.gui.res.*
 import org.jetbrains.compose.resources.DrawableResource
 
@@ -48,8 +46,7 @@ fun shortcut(event: KeyEvent, state: GuiState, send: (GuiIntent) -> Unit, close:
     send(intent)
     return true
   }
-  if (event.key == Key.Escape && ((state.destination == Destination.Connection && state.stage != null) ||
-      (state.destination == Destination.Workspaces && state.workspace != null))) {
+  if (event.key == Key.Escape && state.detailOpen) {
     send(GuiIntent.Back)
     return true
   }
@@ -61,8 +58,11 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = 
   val snackbar = remember { SnackbarHostState() }
   LaunchedEffect(state.notice) {
     state.notice?.let {
-      snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+      val entry = state.noticeEntry
+      val result = snackbar.showSnackbar(it, actionLabel = entry?.let { "Show entry" }, withDismissAction = true,
+        duration = SnackbarDuration.Indefinite)
       send(GuiIntent.DismissNotice)
+      if (result == SnackbarResult.ActionPerformed && entry != null) send(GuiIntent.ShowActivity(entry))
     }
   }
   Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -90,6 +90,7 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = 
   if (state.registration == Registration.Reconfirm) ReconfirmDialog(state, send)
   if (state.registration == Registration.Forget) ForgetDialog(state, send)
   if (state.trying != null) TryDialog(state, send)
+  if (state.stopCommandConfirmation != null) StopCommandDialog(state, send)
 }
 
 @Composable
@@ -108,6 +109,8 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
           is ManagementAct.Forget -> "Forgetting the Workspace"
           is ManagementAct.SetLevel -> "Setting Access Level to ${act.level}"
           is ManagementAct.TryOperation<*> -> "Trying ${state.trying?.tool ?: "an Operation"}"
+          is ManagementAct.StopOperation -> "Stopping the command: TERM, the grace, then SIGKILL"
+          is ManagementAct.Acknowledge -> "Acknowledging the entry"
           else -> "Working"
         },
           style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -126,7 +129,7 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
       if (state.snapshot == null && state.destination != Destination.Connection) AbsentPane(state, send)
       else when (state.destination) {
         Destination.Workspaces -> WorkspacesPane(state, send, compact)
-        Destination.Activity -> ActivityPane(state)
+        Destination.Activity -> ActivityPane(state, send, compact)
         Destination.Connection -> ConnectionPane(state, send, compact)
       }
     }
@@ -198,8 +201,7 @@ private fun BottomBar(state: GuiState, send: (GuiIntent) -> Unit) {
 @Composable
 private fun Header(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean) {
   val colours = MaterialTheme.colorScheme
-  val detail = compact && ((state.destination == Destination.Connection && state.stage != null) ||
-    (state.destination == Destination.Workspaces && state.workspace != null))
+  val detail = compact && state.detailOpen
   BoxWithConstraints(Modifier.fillMaxWidth().hairlineBottom(colours.outlineVariant)) {
     val separateStrip = compact || maxWidth < 640.dp
     Column(Modifier.fillMaxWidth()) {
@@ -257,20 +259,21 @@ private fun AbsentPane(state: GuiState, send: (GuiIntent) -> Unit) {
   }
 }
 
-@Composable
-private fun ActivityPane(state: GuiState) {
-  val snapshot = state.snapshot ?: return
-  val running = snapshot.running.count { it.tool == RUN_COMMAND }
-  val feed = snapshot.feed
-  Column(Modifier.fillMaxSize().padding(Look.pad), verticalArrangement = Arrangement.spacedBy(Look.gap)) {
-    Section("Running now · $running of 4")
-    Section("This start · ${feed.size} entries · ${feed.count { it.needsAttention }} need attention")
-  }
-}
-
 /** Enter submits from a field; KeyUp is consumed too, since foundation buttons activate on it. */
 internal fun Modifier.enter(submit: () -> Unit) = onPreviewKeyEvent { event ->
   if (event.key == Key.Enter || event.key == Key.NumPadEnter) true.also { if (event.type == KeyEventType.KeyDown) submit() } else false
+}
+
+/**
+ * A confirmation that Enter never submits (GUI-SPEC §5): its own Esc, and both halves of Enter
+ * consumed, since foundation buttons activate Enter on KeyUp.
+ */
+internal fun Modifier.confirmation(cancel: () -> Unit) = onPreviewKeyEvent { event ->
+  when (event.key) {
+    Key.Escape -> true.also { if (event.type == KeyEventType.KeyDown) cancel() }
+    Key.Enter, Key.NumPadEnter -> true
+    else -> false
+  }
 }
 
 /** A dialog's own Esc: the test scene has no Esc-to-dismiss, and cancel is idempotent (GUI-SPEC §5). */

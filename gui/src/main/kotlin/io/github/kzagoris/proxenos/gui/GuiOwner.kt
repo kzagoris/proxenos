@@ -15,6 +15,8 @@ import io.github.kzagoris.proxenos.frontend.Wording
 import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import io.github.kzagoris.proxenos.frontend.operationFrom
 import java.io.IOException
+import java.time.Duration
+import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,8 +24,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 sealed interface GuiIntent {
   data class Show(val destination: Destination) : GuiIntent
@@ -61,10 +66,19 @@ sealed interface GuiIntent {
   data object CancelTry : GuiIntent
   data object ShowTried : GuiIntent
   data object DismissNotice : GuiIntent
+  /** Stop command… on the selected running command: the confirmation opens. */
+  data object AskStopCommand : GuiIntent
+  data object CancelStopCommand : GuiIntent
+  data object ConfirmStopCommand : GuiIntent
+  /** The selected entry's unresolved outcome has been seen. */
+  data object Acknowledge : GuiIntent
 }
 
 /** What this window's `request_id`s start with: a TryOperation from here is a `gui-` one. */
 private const val CALLER = "gui"
+
+/** How often a running command's output is read while Activity shows (GUI-SPEC §3.5). */
+private val OUTPUT_READ_INTERVAL = 1.seconds
 
 private val Outcome<*>.tone: Tone get() = when (this) {
   is Outcome.Ok -> Tone.Ok
@@ -87,6 +101,7 @@ class GuiOwner(
     scope.launch {
       if (!opened) {
         opened = true
+        scope.launch { poll() }
         attach()
       }
     }
@@ -122,6 +137,13 @@ class GuiOwner(
           state.selectedWorkspace?.let { perform(ManagementAct.Rename(it.workspace.id, intent.name.trim())) }
         is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
           perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
+        GuiIntent.ConfirmStopCommand -> state.stopCommandTarget?.takeIf { it.stopping == null && state.inFlight == null }?.let { running ->
+            val command = state.commandOf(running)
+            val act = ManagementAct.StopOperation(running.entry)
+            // It returns once the command is reaped; the phases come from the stream meanwhile.
+            perform(act) { performed(act, null).copy(notice = Wording.stopped(command), noticeEntry = running.entry) }
+          }
+        GuiIntent.Acknowledge -> if (state.canAcknowledge) perform(ManagementAct.Acknowledge(state.selectedEntry!!.id))
         is GuiIntent.Try -> if (state.trying != null && state.inFlight == null)
           state.selectedWorkspace?.let { tryOperation(state.trying.tool, it.workspace.name, intent.given) }
         else -> current.value = state.after(intent)
@@ -134,6 +156,35 @@ class GuiOwner(
       emit(Attachment.Absent(Reason.StartFailed(failed.message ?: "Could not attach to the Runtime.")))
     }.collect { next ->
       current.value = current.value.observed(next)
+    }
+  }
+
+  /**
+   * What each running command has printed, asked for rather than streamed, so a window nobody has
+   * on Activity costs the Runtime nothing. Not an act: it shows no progress and blocks nothing.
+   * A command stops being polled when it ends or a read comes back null, and there is no final
+   * read — its entry carries the recorded detail.
+   */
+  private suspend fun poll() {
+    while (true) {
+      delay(OUTPUT_READ_INTERVAL)
+      val state = current.value
+      for (running in state.running) {
+        if (running.entry !in state.polled) continue
+        // OperationStarted is published before the command is spawned, and a read in that gap is
+        // null, which would end its polling for good: a command is first read once it has run an
+        // interval. A spawn slower than that still loses its polling; the stream still ends it.
+        if (Duration.between(running.startedAt, Instant.now()) < OUTPUT_READ_INTERVAL.toJavaDuration()) continue
+        val output = try {
+          management.perform(ManagementAct.ReadOutput(running.entry))
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          // A transport failure is not a null read; the stream's end says what happened.
+          continue
+        }
+        current.value = current.value.read(running.entry, output)
+      }
     }
   }
 

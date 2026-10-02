@@ -46,6 +46,12 @@ object Wording {
 
   const val ALREADY_STOPPING: String = "already stopping — there is no second, harder stop"
 
+  /** A stop confirmed for a command that has already ended: nothing is confirmed as though it ran. */
+  const val ALREADY_ENDED: String = "That command has already ended; there is nothing to stop."
+
+  /** What the 64 KiB bound has dropped from a running command's buffer. */
+  fun dropped(bytes: Int): String = "$bytes bytes dropped from its middle by the 64 KiB bound"
+
   /**
    * What is known once the stop has run its course — not that everything ended: survivors are
    * never rounded off to "stopped", and the entry is where the reaping names them.
@@ -75,6 +81,20 @@ object Wording {
   const val UNDELIVERED: String =
     "Undelivered: this Operation completed on this machine and its answer never reached ChatGPT. ChatGPT saw a failure " +
       "and does not know the change was made. Nothing is replayed or retried: what it did stays done, and nothing here does it again."
+
+  /** What an Uncertain entry means, where it is selected: never "failed", which would promise nothing changed. */
+  const val UNCERTAIN: String =
+    "Uncertain: what this Operation did on this machine cannot be known — it was stopped, cancelled or timed out, or its Root went " +
+      "Broken partway. Unlike a failure, it does not promise that nothing changed, and nothing was rolled back."
+
+  /** What an Unclaimed entry means, where it is selected. */
+  const val UNCLAIMED: String =
+    "Unclaimed: this Promoted Operation completed and nobody collected its outcome, so ChatGPT has not heard what it did. " +
+      "A later get_result settles it. Below Command nothing can collect it, and only Acknowledging it settles it."
+
+  /** What Acknowledge records, beside the act that records it. */
+  const val ACKNOWLEDGE: String =
+    "Acknowledge records that you have seen this outcome, as a fact of its own in Activity. It changes nothing else."
 
   /**
    * One catalog entry against one Workspace as it now stands: whether a call naming it would be

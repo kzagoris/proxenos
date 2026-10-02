@@ -21,6 +21,7 @@ import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.Wording
 import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import io.github.kzagoris.proxenos.frontend.askedOf
+import io.github.kzagoris.proxenos.frontend.commandOf
 import io.github.kzagoris.proxenos.frontend.feed
 import io.github.kzagoris.proxenos.frontend.folded
 import io.github.kzagoris.proxenos.frontend.operationFrom
@@ -96,7 +97,7 @@ data class Home(
 
   val selectedRow: FeedRow? get() = (selected as? Target.Feed)?.let { target -> feedRows.find { target.entry in it } }
 
-  val selectedEntry: ActivityEntry? get() = selectedRow?.let { row -> row.entries.firstOrNull { it.needsAttention } ?: row.entries.last() }
+  val selectedEntry: ActivityEntry? get() = selectedRow?.detailed
 
   val selectedRunning: RunningOperation? get() = (selected as? Target.Band)?.let { target -> band.find { it.entry == target.entry } }
 
@@ -270,8 +271,7 @@ data class Home(
    * The command line a running `run_command` was given: from what it has said so far once that
    * has been read, and until then from the arguments its entry was opened with.
    */
-  fun commandOf(running: RunningOperation): String =
-    outputs[running.entry]?.command ?: running.arguments.removePrefix("command=").substringBeforeLast(" cwd=")
+  fun commandOf(running: RunningOperation): String = commandOf(running, outputs[running.entry])
 
   fun say(text: String, tone: Tone = Tone.Plain): Home = copy(notice = Notice(text, tone))
 
@@ -401,7 +401,7 @@ sealed interface Overlay {
    */
   data class StopCommand(val entry: ActivityEntryId) : Overlay {
     override fun press(key: Key, home: Home): Step {
-      val running = home.band.find { it.entry == entry } ?: return Step(home.copy(overlay = null).say("That command has already ended; there is nothing to stop."))
+      val running = home.band.find { it.entry == entry } ?: return Step(home.copy(overlay = null).say(Wording.ALREADY_ENDED))
       if (key.name != "y") return Step(home.cancelled())
       if (running.stopping != null) return Step(home.copy(overlay = null).say(Wording.ALREADY_STOPPING, Tone.Warn))
       return Step(home.copy(overlay = null, notice = null), Command.Perform(ManagementAct.StopOperation(entry), Wording.stopped(home.commandOf(running))))

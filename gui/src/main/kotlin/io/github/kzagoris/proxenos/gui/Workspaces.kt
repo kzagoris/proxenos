@@ -56,20 +56,10 @@ private fun WorkspaceList(state: GuiState, send: (GuiIntent) -> Unit, compact: B
   val ids = workspaces.map { it.workspace.id }
   val rows = remember(ids) { ids.associateWith { FocusRequester() } }
   var focused by remember { mutableStateOf<WorkspaceId?>(null) }
-  val keys = Modifier.onPreviewKeyEvent { event ->
-    val from = ids.indexOf(focused)
-    if (from < 0 || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-    val to = when (event.key) {
-      Key.DirectionUp -> ids.getOrNull(from - 1)
-      Key.DirectionDown -> ids.getOrNull(from + 1)
-      Key.MoveHome -> ids.firstOrNull()
-      Key.MoveEnd -> ids.lastOrNull()
-      else -> return@onPreviewKeyEvent false
-    } ?: return@onPreviewKeyEvent true
+  val keys = Modifier.listKeys(ids, { focused }) { to ->
     rows.getValue(to).requestFocus()
     // In one pane, activation opens the detail; moving focus keeps the list available.
     if (!compact) send(GuiIntent.SelectWorkspace(to))
-    true
   }
   Column(modifier.verticalScroll(rememberScrollState()).then(keys).padding(Look.pad),
     verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -139,7 +129,7 @@ private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier
     state.loweredCommands(selected).forEach { running ->
       Column(verticalArrangement = Arrangement.spacedBy(Look.gap)) {
         Banner("Command still running below Command", Tone.Warn, Res.drawable.warning)
-        Text(Wording.lowered(running.arguments.removePrefix("command=").substringBeforeLast(" cwd="), workspace.name, workspace.accessLevel,
+        Text(Wording.lowered(state.commandOf(running), workspace.name, workspace.accessLevel,
           clock.format(running.startedAt), running.promoted), style = MaterialTheme.typography.bodySmall)
         Btn("Show running command", { send(GuiIntent.ShowActivity(running.entry)) })
       }
@@ -191,14 +181,7 @@ internal fun CommandDialog(state: GuiState, send: (GuiIntent) -> Unit) {
     },
     dismissButton = { Btn("Cancel", { send(GuiIntent.CancelCommand) }, Modifier.focusRequester(cancel)) },
     confirmButton = { Btn("Raise to Command", { send(GuiIntent.ConfirmCommand) }, enabled = state.inFlight == null) },
-    modifier = Modifier.onPreviewKeyEvent { event ->
-      when (event.key) {
-        Key.Escape -> true.also { if (event.type == KeyEventType.KeyDown) send(GuiIntent.CancelCommand) }
-        // Consume both halves: foundation buttons activate Enter on KeyUp.
-        Key.Enter, Key.NumPadEnter -> true
-        else -> false
-      }
-    },
+    modifier = Modifier.confirmation { send(GuiIntent.CancelCommand) },
   )
   LaunchedEffect(Unit) { cancel.requestFocus() }
 }
