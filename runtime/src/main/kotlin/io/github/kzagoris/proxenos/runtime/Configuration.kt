@@ -42,7 +42,8 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration = refus
   // Read first, and from the one place the wizard writes: nothing overrides where it lives.
   val credentials = readCredentials(configDirectory.resolve("credentials"))
 
-  val toml = ConfigToml.read(environment)
+  // A GUI-only setting must not refuse a Runtime start, even when its value is invalid.
+  val toml = ConfigToml.read(environment, ignored = "gui_scale")
   val tomlFile = toml.file
 
   fun path(tomlKey: String, environmentKey: String, default: () -> Path?): Path? =
@@ -91,7 +92,7 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration = refus
  * It resolves exactly as [sourceConfiguration] does, so the Runtime reads the registry written.
  */
 fun sourceStateDirectory(environment: Map<String, String>): Path = refusingToStart {
-  stateDirectory(environment, ConfigToml.home(environment), ConfigToml.read(environment))
+  stateDirectory(environment, ConfigToml.home(environment), ConfigToml.read(environment, ignored = "gui_scale"))
 }
 
 private fun stateDirectory(environment: Map<String, String>, home: Path, toml: ConfigToml): Path =
@@ -116,7 +117,7 @@ private val SETTINGS = listOf(
   "tunnel_client", "logical_host", "command_budget_seconds", "kill_grace_seconds",
   "command_concurrency", "delivery_retention_minutes", "delivery_record_quota",
   "delivery_key_quota", "activity_retention_days", "tunnel_poll_timeout_seconds",
-  "tunnel_poll_deadline_guardrail_seconds",
+  "tunnel_poll_deadline_guardrail_seconds", "gui_scale",
 )
 
 /** tunnel-client's own cap on its long-poll wait (ADR 0005). */

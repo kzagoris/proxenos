@@ -9,6 +9,8 @@ session: the JDK's AWT has no Wayland toolkit, so a private rootful Xwayland sta
 --closes still needs Xvfb. --closes 20 also needs python-xlib to send actual
 window-close and confirmation input. It holds Stop's reply at a fixture socket, so closing
 does not deliberately Stop the fixture Runtime, and a real TUI stays attached throughout.
+--scales needs python-xlib and a virtual display at least 2200x1520; it checks G19's native
+window sizes, absolute overrides on a density-2 JVM, and the invalid-value diagnostic.
 """
 import argparse
 import contextlib
@@ -178,9 +180,58 @@ def closes(gui, env, runtime_socket, count, output):
         x.close()
 
 
+def scales(gui, env):
+    from Xlib import X, display, protocol
+
+    x = display.Display()
+    config = Path(env["HOME"], ".config/proxenos/config.toml")
+    log = Path(env["XDG_RUNTIME_DIR"], "proxenos/gui.log")
+    try:
+        for native, value, expected in (
+            (1, "1.5", (1650, 1140)), (1, None, (1100, 760)),
+            (2, None, (2200, 1520)), (1, "2", (2200, 1520)),
+            (2, "1.5", (1650, 1140)), (2, "0", (2200, 1520)),
+        ):
+            config.write_text("" if value is None else f"gui_scale = {value}\n")
+            offset = log.stat().st_size
+            with open(Path(env["HOME"], "scale-stderr"), "w+b") as errors:
+                process = subprocess.Popen([str(gui)], env=dict(env, GDK_SCALE=str(native)), stderr=errors)
+                try:
+                    def window():
+                        for child in x.screen().root.query_tree().children:
+                            if child.get_wm_name() == "Proxenos" and child.get_attributes().map_state == X.IsViewable:
+                                return child
+                    w = until("scaled GUI window appears", window)
+                    until("scaled GUI attaches and draws", lambda: all(
+                        words in log.read_bytes()[offset:].decode() for words in ("first frame", "Attached")))
+                    bounds = w.get_geometry()
+                    assert (bounds.width, bounds.height) == expected, (native, value, bounds, expected)
+                    w.send_event(protocol.event.ClientMessage(window=w, client_type=x.intern_atom("WM_PROTOCOLS"),
+                        data=(32, [x.intern_atom("WM_DELETE_WINDOW"), X.CurrentTime, 0, 0, 0])))
+                    x.flush()
+                    assert process.wait(timeout=10) == 0
+                    errors.seek(0)
+                    stderr = errors.read().decode()
+                    session = log.read_bytes()[offset:].decode()
+                    for text in (stderr, session):
+                        diagnostics = [line for line in text.splitlines() if "gui_scale" in line]
+                        assert len(diagnostics) == (1 if value == "0" else 0), diagnostics
+                        if diagnostics:
+                            assert "using the JVM density" in diagnostics[0]
+                    print(f"ok: GDK_SCALE={native}, gui_scale={value or 'unset'}: {expected[0]}x{expected[1]}px", flush=True)
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+    finally:
+        config.unlink(missing_ok=True)
+        x.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--closes", type=int, default=0)
+    parser.add_argument("--scales", action="store_true")
     parser.add_argument("--xwayland", action="store_true", help="draw on a private rootful Xwayland")
     args = parser.parse_args()
     if args.xwayland and args.closes:
@@ -226,6 +277,10 @@ def run(args):
             print("ok: unpacked, symlinked bin/gui starts the Runtime, attaches and draws; JAVA_HOME ignored")
             runtime_socket = Path(env["XDG_RUNTIME_DIR"], "proxenos/control.sock")
             try:
+                if args.scales:
+                    # The first scaled GUI must start a Runtime with gui_scale in its config.
+                    subprocess.run([tui.TUI, "stop"], env=env, capture_output=True, timeout=15, check=True)
+                    scales(gui, env)
                 if args.closes:
                     closes(gui, env, runtime_socket, args.closes, output)
             finally:

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -46,6 +47,7 @@ fun main(args: Array<String>) {
     val fontName = Fonts.desktopName()
     log.say("UI font asked for: ${fontName ?: "none named; the default"}")
     val fonts = Fonts.named(fontName)
+    val scale = sourceGuiScale(System.getenv(), log::say)
     GuiOwner(RuntimeAttachment(socket, RuntimeAttachment.executable())).use { owner ->
       application(exitProcessOnExit = false) {
         val state by owner.state.collectAsState()
@@ -55,19 +57,24 @@ fun main(args: Array<String>) {
         val scheme = remember { DesktopScheme(log::say) }
         LaunchedEffect(scheme) { scheme.watch() }
         val dark by scheme.dark.collectAsState()
+        // The native window still uses the JVM density; LocalDensity only sizes its content (§9).
+        val nativeDensity = LocalDensity.current.density
+        val windowRatio = (scale ?: nativeDensity) / nativeDensity
         Window(onCloseRequest = close, title = "Proxenos",
-          state = rememberWindowState(width = 1100.dp, height = 760.dp),
+          state = rememberWindowState(width = (1100 * windowRatio).dp, height = (760 * windowRatio).dp),
           onPreviewKeyEvent = { event -> shortcut(event, state, owner::accept, close) },
         ) {
           val chooser = remember(window) { PortalFolderChooser(window, log::say) }
-          ProxenosTheme(dark, fonts) {
-            Box(Modifier.fillMaxSize().drawWithContent {
-              drawContent()
-              if (!drawn) {
-                drawn = true
-                log.say("first frame")
-              }
-            }) { Shell(state, owner::accept, chooser) }
+          GuiDensity(scale) {
+            ProxenosTheme(dark, fonts) {
+              Box(Modifier.fillMaxSize().drawWithContent {
+                drawContent()
+                if (!drawn) {
+                  drawn = true
+                  log.say("first frame")
+                }
+              }) { Shell(state, owner::accept, chooser) }
+            }
           }
         }
         LaunchedEffect(state.runtimeWords) { log.say(state.runtimeWords) }

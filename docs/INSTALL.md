@@ -42,6 +42,15 @@ the official binary and checks it before anything runs it.
   Screen readers are unsupported. Its startup diagnostics are in
   `$XDG_RUNTIME_DIR/proxenos/gui.log`.
 
+The GUI follows the JVM's density, which on X11/XWayland uses integer `GDK_SCALE`, even if
+that differs from the monitor's scale. Set `gui_scale = 1.5` in
+`$XDG_CONFIG_HOME/proxenos/config.toml` (or `~/.config/proxenos/config.toml` when unset) for
+an absolute density of 1.5 pixels per dp. It scales the content and initial window together;
+restart the GUI to apply it. A finite positive number is required; an invalid value gives one
+sentence in stderr and `gui.log` and follows the JVM density. The Runtime ignores the key.
+If `GDK_SCALE=2` makes the GUI too large on a scale-1 monitor, use `gui_scale = 1` or fix
+`GDK_SCALE`.
+
 ## 2. Get the distribution
 
 Each [release](https://github.com/kzagoris/proxenos/releases/latest) publishes two archives:

@@ -136,6 +136,17 @@ class ConfigurationTest {
     assertEquals(2, config.commandConcurrency)
   }
 
+  @Test
+  fun `GUI density does not affect Runtime configuration even when invalid`() {
+    credentials()
+    val defaults = sourceConfiguration(environment()).config
+    for (value in listOf("1.5", "2", "0", "-1", "nan", "inf", "true", "\"large\"")) {
+      configToml("gui_scale = $value")
+      assertEquals(defaults, sourceConfiguration(environment()).config, value)
+      assertEquals(defaults.stateDirectory, sourceStateDirectory(environment()), value)
+    }
+  }
+
   /** The poll cycle the tunnel child is launched with is the one Connected is judged against. */
   @Test
   fun `config toml sets the tunnel's poll wait, up to the ten minutes tunnel-client accepts`() {

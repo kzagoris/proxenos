@@ -11,7 +11,7 @@ class ConfigRefused(message: String) : Exception(message)
 
 
 /**
- * `config.toml`, read key by key. The Runtime reads all of it and a frontend only [ControlSocket.KEY],
+ * `config.toml`, read key by key. The Runtime reads its settings and a frontend only its own,
  * which is why it lives here, in the module both ends reach. Each key is taken
  * once by name, and whatever is left at the end is a key nothing took — a typo, most likely, and
  * refused rather than ignored.
@@ -23,6 +23,14 @@ class ConfigToml private constructor(val file: Path, values: Map<String, TomlVal
     null -> null
     is TomlValue.Text -> value.value
     is TomlValue.Integer -> refuse(value, "$key must be a quoted string.")
+    is TomlValue.Decimal -> refuse(value, "$key must be a quoted string.")
+  }
+
+  fun number(key: String): Float? = when (val value = unread.remove(key)) {
+    null -> null
+    is TomlValue.Integer -> value.value.toFloat()
+    is TomlValue.Decimal -> value.value.toFloat()
+    is TomlValue.Text -> refuse(value, "$key must be a number, not a quoted string.")
   }
 
   fun path(key: String): Path? = text(key)?.let { absolute(it, "$key in $file") }
@@ -43,6 +51,7 @@ class ConfigToml private constructor(val file: Path, values: Map<String, TomlVal
     is TomlValue.Integer -> value.value.takeIf { it in 1..Int.MAX_VALUE }?.toInt()
       ?: refuse(value, "$key must be a whole number of at least 1.")
     is TomlValue.Text -> refuse(value, "$key must be a whole number, not a quoted string.")
+    is TomlValue.Decimal -> refuse(value, "$key must be a whole number, not a decimal.")
   }
 
   fun duration(key: String, unit: (Int) -> Duration): Duration? = count(key)?.let(unit)
@@ -74,11 +83,11 @@ class ConfigToml private constructor(val file: Path, values: Map<String, TomlVal
 
     fun file(environment: Map<String, String>): Path = directory(environment).resolve("config.toml")
 
-    /** The file, or no settings when there is none: every setting has a default. [only] is [parseConfigToml]'s. */
-    fun read(environment: Map<String, String>, only: String? = null): ConfigToml {
+    /** The file, or defaults when absent. [only] selects a frontend's key; [ignored] skips another surface's. */
+    fun read(environment: Map<String, String>, only: String? = null, ignored: String? = null): ConfigToml {
       val file = file(environment)
       val values = try {
-        parseConfigToml(Files.readString(file), file, directory(environment).resolve("credentials"), only)
+        parseConfigToml(Files.readString(file), file, directory(environment).resolve("credentials"), only, ignored)
       } catch (_: NoSuchFileException) {
         emptyMap()
       } catch (unreadable: IOException) {
@@ -96,11 +105,13 @@ internal sealed interface TomlValue {
   data class Text(val value: String, override val line: Int) : TomlValue
 
   data class Integer(val value: Long, override val line: Int) : TomlValue
+
+  data class Decimal(val value: Double, override val line: Int) : TomlValue
 }
 
 /**
  * The part of TOML `config.toml` needs, and no more: flat `key = value` lines, where a value is a
- * basic or literal string or an integer, and `#` comments. Every override is one key and one
+ * basic or literal string or a number, and `#` comments. Every override is one key and one
  * scalar, so a TOML library would be a dependency carried for a file that never nests.
  *
  * Anything outside that subset is refused with its line number rather than skipped — a tunable
@@ -111,7 +122,7 @@ internal sealed interface TomlValue {
  * With [only], every line but that key's is skipped unread: a frontend wants one setting, and a
  * mistake elsewhere in the file must not keep it from reaching a Runtime already running.
  */
-internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path, only: String? = null): Map<String, TomlValue> {
+internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path, only: String? = null, ignored: String? = null): Map<String, TomlValue> {
   val values = linkedMapOf<String, TomlValue>()
   text.lines().forEachIndexed { index, raw ->
     val number = index + 1
@@ -120,6 +131,7 @@ internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path, on
     val line = raw.trim()
     if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
     if (only != null && line.substringBefore('=').trim() != only) return@forEachIndexed
+    if (ignored != null && line.substringBefore('=').trim() == ignored) return@forEachIndexed
     if (line.startsWith("[")) refuse("tables are not used; every setting is a top-level key = value.")
     val key = line.substringBefore('=', missingDelimiterValue = "").trim()
     if (key.isEmpty() || !KEY.matches(key)) refuse("expected key = value.")
@@ -130,7 +142,7 @@ internal fun parseConfigToml(text: String, file: Path, credentialsFile: Path, on
     )
     if (key in values) refuse("$key is set twice.")
     val value = parseValue(line.substringAfter('=').trim(), number) ?: refuse(
-      "$key is not a quoted string or a whole number.",
+      "$key is not a quoted string or a number.",
     )
     values[key] = value
   }
@@ -175,11 +187,15 @@ private fun parseValue(text: String, line: Int): TomlValue? {
     }
     else -> {
       val number = text.substringBefore('#').trim()
-      if (!Regex("[+-]?[0-9](_?[0-9])*").matches(number)) return null
-      return number.replace("_", "").toLongOrNull()?.let { TomlValue.Integer(it, line) }
+      if (Regex("[+-]?[0-9](_?[0-9])*").matches(number))
+        return number.replace("_", "").toLongOrNull()?.let { TomlValue.Integer(it, line) }
+      if (!DECIMAL.matches(number)) return null
+      return number.replace("_", "").toDoubleOrNull()?.let { TomlValue.Decimal(it, line) }
     }
   }
 }
+
+private val DECIMAL = Regex("[+-]?(0|[1-9](_?[0-9])*)(\\.[0-9](_?[0-9])*)?([eE][+-]?[0-9](_?[0-9])*)?")
 
 /** What may follow a closed string on its line: nothing, or a comment. */
 private fun isComment(rest: String): Boolean = rest.isBlank() || rest.trimStart().startsWith("#")
