@@ -29,6 +29,9 @@ class WorkspacesTest {
     start = RuntimeStart(RuntimeStartId("first"), at),
   )
 
+  private fun ComposeUiTest.registration() =
+    onNode(hasText("Registration") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)).performClick()
+
   private fun level(text: String) = hasText(text) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
 
   private class Harness(snapshot: RuntimeEvent.Snapshot) {
@@ -151,6 +154,7 @@ class WorkspacesTest {
   fun `Rename opens the name field and Escape cancels without changing the Workspace`() = runComposeUiTest {
     val gui = shell()
     onNode(hasText("notes") and hasClickAction()).performClick()
+    registration()
     onNodeWithText("Rename…").performClick()
     onNode(hasSetTextAction() and hasText("notes")).assertExists()
     onAllNodes(isRoot()).onLast().performKeyInput { pressKey(Key.Escape) }
@@ -162,6 +166,7 @@ class WorkspacesTest {
   fun `Move confirms on Cancel and explains Read before submitting a new Root`() = runComposeUiTest {
     val gui = shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(accessLevel = AccessLevel.Write), false))))
     onNode(hasText("notes") and hasClickAction()).performClick()
+    registration()
     onNodeWithText("Move to another folder…").performClick()
     onNodeWithText("Cancel").assertIsFocused()
     onNodeWithText("lands at Read", substring = true).assertExists()
@@ -190,6 +195,7 @@ class WorkspacesTest {
     val running = RunningOperation(ActivityEntryId("command-entry"), Origin.ChatGpt, notes.name, "run_command", "command=sleep 30 cwd=.", at, promoted = true)
     val gui = shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(accessLevel = AccessLevel.Command), false)), running = listOf(running)))
     onNode(hasText("notes") and hasClickAction()).performClick()
+    registration()
     onNodeWithText("Forget…").performClick()
     onNodeWithText("Cancel").assertIsFocused()
     onNodeWithText("Activity stays", substring = true).assertExists()
@@ -208,6 +214,7 @@ class WorkspacesTest {
     val running = RunningOperation(ActivityEntryId("command-entry"), Origin.ChatGpt, "notes", "run_command", "command=sleep 30 cwd=.", at)
     shell(snapshot.copy(workspaces = listOf(WorkspaceState(notes.copy(name = "renamed", accessLevel = AccessLevel.Command), false)), running = listOf(running)))
     onNode(hasText("renamed") and hasClickAction()).performClick()
+    registration()
     onNodeWithText("Forget…").performClick()
     onNodeWithText("sleep 30", substring = true).assertExists()
     onNodeWithText("Workspace at start: notes", substring = true).assertExists()

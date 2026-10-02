@@ -2,7 +2,10 @@ package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.AccessLevel
+import io.github.kzagoris.proxenos.coreapi.ActivityEntry
 import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
+import io.github.kzagoris.proxenos.coreapi.Operation
+import io.github.kzagoris.proxenos.coreapi.Origin
 import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
@@ -18,6 +21,31 @@ enum class Destination { Workspaces, Activity, Connection }
 enum class Stage { Runtime, Tunnel, Connector }
 
 enum class Registration { Rename, Move, Reconfirm, Forget }
+
+/** The Try form open on one catalog entry for the selected Workspace, and its last answer. */
+data class Trying(val tool: String, val result: Tried? = null) {
+  /**
+   * The newest entry that can be the last try's, once the stream has carried it: one of [tool]'s
+   * against the Workspace it named that was not there before it, carrying its key if it has one.
+   * [activity] is oldest first.
+   */
+  fun entryIn(activity: List<ActivityEntry>): ActivityEntryId? {
+    val tried = result ?: return null
+    return activity.lastOrNull {
+      it.id !in tried.before && it.origin == Origin.Frontend && it.tool == tool && it.workspace == tried.workspace &&
+        (tried.key == null || it.arguments.endsWith("${Operation.KEY_ARGUMENT}=${tried.key}"))
+    }?.id
+  }
+}
+
+/** A try's answer in the pipeline's [words], and what [Trying.entryIn] finds its entry by. */
+data class Tried(
+  val words: String,
+  val tone: Tone,
+  val workspace: String,
+  val key: String?,
+  val before: Set<ActivityEntryId>,
+)
 
 data class GuiState(
   val attachment: Attachment = Attachment.Attaching,
@@ -38,6 +66,7 @@ data class GuiState(
   /** The running command the Workspaces banner opens; Activity detail is built in its own ticket. */
   val activity: ActivityEntryId? = null,
   val commandConfirmation: WorkspaceId? = null,
+  val trying: Trying? = null,
 ) {
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
   val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null
@@ -47,9 +76,11 @@ data class GuiState(
   val canDisconnect: Boolean get() = snapshot != null && snapshot?.runtime?.state != RuntimeState.Disconnected && inFlight == null && !dialogOpen
   val canAcknowledgeConnector: Boolean get() = snapshot?.connectorUnconfirmed == true && inFlight == null && !dialogOpen
   val selectedWorkspace: WorkspaceState? get() = snapshot?.workspaces?.find { it.workspace.id == workspace }
-  val canSetLevel: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
-  val canEditRegistration: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
-  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null || registration != null
+  /** Setting its level, opening a registration dialog or a Try form. */
+  val canActOnWorkspace: Boolean get() = selectedWorkspace != null && inFlight == null && !dialogOpen
+  val dialogOpen: Boolean get() = stopConfirmation || adding || commandConfirmation != null || registration != null || trying != null
+
+  val triedEntry: ActivityEntryId? get() = trying?.entryIn(snapshot?.activity.orEmpty())
 
   val runtimeWords: String get() = when (val current = attachment) {
     Attachment.Starting -> "Starting"
@@ -70,8 +101,10 @@ data class GuiState(
     return if (newStart) GuiState(attachment = next, inFlight = inFlight, destination = destination, stage = stage)
     else {
       val attached = next is Attachment.Attached
+      val stillThere = next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace }
       copy(attachment = next, stopConfirmation = stopConfirmation && attached, adding = adding && attached,
-        registration = registration.takeIf { next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace } },
+        registration = registration.takeIf { stillThere },
+        trying = trying.takeIf { stillThere },
         workspace = workspace.takeIf { attached },
         activity = activity.takeIf { attached },
         commandConfirmation = commandConfirmation.takeIf { id ->
@@ -96,25 +129,34 @@ data class GuiState(
     GuiIntent.AskStop -> if (canStop && !dialogOpen) copy(stopConfirmation = true, refusal = null) else this
     GuiIntent.CancelStop -> copy(stopConfirmation = false, refusal = null)
     GuiIntent.AddWorkspace -> if (canAdd && !dialogOpen) copy(adding = true, destination = Destination.Workspaces, refusal = null) else this
-    GuiIntent.AskForget -> if (canEditRegistration) copy(registration = Registration.Forget, refusal = null) else this
-    GuiIntent.AskReconfirm -> if (canEditRegistration && selectedWorkspace?.broken == true) copy(registration = Registration.Reconfirm, refusal = null) else this
-    GuiIntent.AskMove -> if (canEditRegistration) copy(registration = Registration.Move, refusal = null) else this
-    GuiIntent.AskRename -> if (canEditRegistration) copy(registration = Registration.Rename, refusal = null) else this
+    GuiIntent.AskForget -> if (canActOnWorkspace) copy(registration = Registration.Forget, refusal = null) else this
+    GuiIntent.AskReconfirm -> if (canActOnWorkspace && selectedWorkspace?.broken == true) copy(registration = Registration.Reconfirm, refusal = null) else this
+    GuiIntent.AskMove -> if (canActOnWorkspace) copy(registration = Registration.Move, refusal = null) else this
+    GuiIntent.AskRename -> if (canActOnWorkspace) copy(registration = Registration.Rename, refusal = null) else this
     GuiIntent.CancelRegistration -> copy(registration = null, refusal = null)
     GuiIntent.CancelAdd -> copy(adding = false, refusal = null)
-    is GuiIntent.SetLevel -> if (canSetLevel && intent.level == AccessLevel.Command && selectedWorkspace?.workspace?.accessLevel != AccessLevel.Command)
+    is GuiIntent.SetLevel -> if (canActOnWorkspace && intent.level == AccessLevel.Command && selectedWorkspace?.workspace?.accessLevel != AccessLevel.Command)
       copy(commandConfirmation = workspace, refusal = null) else this
     GuiIntent.CancelCommand -> copy(commandConfirmation = null, refusal = null)
+    is GuiIntent.AskTry -> if (canActOnWorkspace) copy(trying = Trying(intent.tool), refusal = null) else this
+    GuiIntent.CancelTry -> copy(trying = null, refusal = null)
+    GuiIntent.ShowTried -> triedEntry?.let { copy(trying = null, refusal = null, destination = Destination.Activity, activity = it) } ?: this
     GuiIntent.DismissNotice -> copy(notice = null)
     GuiIntent.StartRuntime, GuiIntent.ConfirmStop, GuiIntent.ConnectTunnel, GuiIntent.DisconnectTunnel,
-    GuiIntent.AcknowledgeConnector, GuiIntent.ConfirmCommand, is GuiIntent.Register, is GuiIntent.Rename, is GuiIntent.Move, GuiIntent.ConfirmReconfirm, GuiIntent.ConfirmForget -> this
+    GuiIntent.AcknowledgeConnector, GuiIntent.ConfirmCommand, is GuiIntent.Register, is GuiIntent.Rename, is GuiIntent.Move, GuiIntent.ConfirmReconfirm, GuiIntent.ConfirmForget,
+    is GuiIntent.Try -> this
   }
 
   fun starting(): GuiState = GuiState(attachment = Attachment.Starting, destination = destination, stage = stage)
 
   /** One act in flight per window (GUI-SPEC §3.3); everything else stays live. */
   fun performing(act: ManagementAct<*>): GuiState =
-    copy(inFlight = act, notice = null, refusal = null, stopConfirmation = false)
+    copy(inFlight = act, notice = null, refusal = null, stopConfirmation = false,
+      trying = if (act is ManagementAct.TryOperation<*>) trying?.copy(result = null) else trying)
+
+  /** A try's answer lands in its form if that is still open, and in the snackbar otherwise. */
+  fun tried(result: Tried): GuiState =
+    copy(inFlight = null, trying = trying?.copy(result = result), notice = result.words.takeIf { trying == null })
 
   /**
    * [words] null is success. A refusal lands in the dialog that asked, if it is still open, and in
@@ -125,7 +167,8 @@ data class GuiState(
       (act is ManagementAct.Reconfirm && (registration == Registration.Move || registration == Registration.Reconfirm)) ||
       (act is ManagementAct.Rename && registration == Registration.Rename) ||
       (act is ManagementAct.Register && adding) ||
-      (act is ManagementAct.SetLevel && commandConfirmation == act.id)
+      (act is ManagementAct.SetLevel && commandConfirmation == act.id) ||
+      (act is ManagementAct.TryOperation<*> && trying != null)
     return copy(
       inFlight = null,
       registration = registration.takeUnless { (act is ManagementAct.Rename || act is ManagementAct.Reconfirm || act is ManagementAct.Forget) && words == null },

@@ -68,9 +68,7 @@ private fun RootDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
   }
   val cancel = { send(if (moving) GuiIntent.CancelRegistration else GuiIntent.CancelAdd) }
   val submit = { if (ready) send(if (moving) GuiIntent.Move(root) else GuiIntent.Register(root, name.ifBlank { null })) }
-  val enter = Modifier.onPreviewKeyEvent { event ->
-    if (event.key == Key.Enter || event.key == Key.NumPadEnter) true.also { if (event.type == KeyEventType.KeyDown) submit() } else false
-  }
+  val enter = Modifier.enter(submit)
   AlertDialog(
     onDismissRequest = cancel,
     title = { Text(if (moving) "Move '${workspace!!.name}' to another folder?" else "Add Workspace") },
@@ -175,9 +173,7 @@ internal fun RenameDialog(state: GuiState, send: (GuiIntent) -> Unit) {
     title = { Text("Rename Workspace") },
     text = {
       Column(verticalArrangement = Arrangement.spacedBy(Look.gap)) {
-        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().focusRequester(field).onPreviewKeyEvent {
-          if (it.key == Key.Enter || it.key == Key.NumPadEnter) true.also { _ -> if (it.type == KeyEventType.KeyDown) submit() } else false
-        }, label = { Text("Name") }, singleLine = true)
+        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().focusRequester(field).enter(submit), label = { Text("Name") }, singleLine = true)
         state.refusal?.let { Text(it, color = LocalStatus.current.bad) }
       }
     },

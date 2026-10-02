@@ -89,6 +89,7 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = 
   if (state.registration == Registration.Move) MoveDialog(state, send, chooser)
   if (state.registration == Registration.Reconfirm) ReconfirmDialog(state, send)
   if (state.registration == Registration.Forget) ForgetDialog(state, send)
+  if (state.trying != null) TryDialog(state, send)
 }
 
 @Composable
@@ -106,6 +107,7 @@ private fun Body(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean, m
           is ManagementAct.Reconfirm -> "Re-confirming the Workspace at Read"
           is ManagementAct.Forget -> "Forgetting the Workspace"
           is ManagementAct.SetLevel -> "Setting Access Level to ${act.level}"
+          is ManagementAct.TryOperation<*> -> "Trying ${state.trying?.tool ?: "an Operation"}"
           else -> "Working"
         },
           style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -264,6 +266,11 @@ private fun ActivityPane(state: GuiState) {
     Section("Running now · $running of 4")
     Section("This start · ${feed.size} entries · ${feed.count { it.needsAttention }} need attention")
   }
+}
+
+/** Enter submits from a field; KeyUp is consumed too, since foundation buttons activate on it. */
+internal fun Modifier.enter(submit: () -> Unit) = onPreviewKeyEvent { event ->
+  if (event.key == Key.Enter || event.key == Key.NumPadEnter) true.also { if (event.type == KeyEventType.KeyDown) submit() } else false
 }
 
 /** A dialog's own Esc: the test scene has no Esc-to-dismiss, and cancel is idempotent (GUI-SPEC §5). */

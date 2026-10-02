@@ -110,9 +110,13 @@ private fun WorkspaceRow(state: WorkspaceState, selected: Boolean, lowered: Bool
   }
 }
 
+/** GUI-SPEC §4.3. Which tab shows is the window's own business, not the Runtime's. */
+private enum class DetailTab { Access, Tools, Registration }
+
 @Composable
 private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier: Modifier) {
   val selected = state.selectedWorkspace
+  var tab by remember { mutableStateOf(DetailTab.Access) }
   Column(modifier.verticalScroll(rememberScrollState()).padding(Look.pad),
     verticalArrangement = Arrangement.spacedBy(Look.gap * 1.5f)) {
     if (selected == null) {
@@ -129,8 +133,8 @@ private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier
       Banner("Broken", Tone.Bad, Res.drawable.error)
       Text("The Root no longer resolves to the registered directory. ChatGPT cannot use this Workspace until you re-confirm it.",
         style = MaterialTheme.typography.bodySmall)
-      Btn("Re-confirm this folder…", { send(GuiIntent.AskReconfirm) }, enabled = state.canEditRegistration)
-      Btn("Choose another folder…", { send(GuiIntent.AskMove) }, enabled = state.canEditRegistration)
+      Btn("Re-confirm this folder…", { send(GuiIntent.AskReconfirm) }, enabled = state.canActOnWorkspace)
+      Btn("Choose another folder…", { send(GuiIntent.AskMove) }, enabled = state.canActOnWorkspace)
     }
     state.loweredCommands(selected).forEach { running ->
       Column(verticalArrangement = Arrangement.spacedBy(Look.gap)) {
@@ -140,26 +144,34 @@ private fun WorkspaceDetail(state: GuiState, send: (GuiIntent) -> Unit, modifier
         Btn("Show running command", { send(GuiIntent.ShowActivity(running.entry)) })
       }
     }
-    Section("Access")
-    Box(Modifier.horizontalScroll(rememberScrollState())) {
-      SingleChoiceSegmentedButtonRow {
-        AccessLevel.entries.forEachIndexed { index, level ->
-          SegmentedButton(
-            selected = workspace.accessLevel == level,
-            onClick = { send(GuiIntent.SetLevel(level)) },
-            enabled = state.canSetLevel,
-            shape = SegmentedButtonDefaults.itemShape(index, AccessLevel.entries.size),
-            icon = { Ic(level.reading().icon, LocalStatus.current.of(level.reading().tone)) },
-          ) { Text(level.name) }
+    PrimaryTabRow(tab.ordinal, containerColor = Color.Transparent) {
+      DetailTab.entries.forEach { Tab(tab == it, { tab = it }, text = { Text(it.name) }) }
+    }
+    when (tab) {
+      DetailTab.Access -> {
+        Box(Modifier.horizontalScroll(rememberScrollState())) {
+          SingleChoiceSegmentedButtonRow {
+            AccessLevel.entries.forEachIndexed { index, level ->
+              SegmentedButton(
+                selected = workspace.accessLevel == level,
+                onClick = { send(GuiIntent.SetLevel(level)) },
+                enabled = state.canActOnWorkspace,
+                shape = SegmentedButtonDefaults.itemShape(index, AccessLevel.entries.size),
+                icon = { Ic(level.reading().icon, LocalStatus.current.of(level.reading().tone)) },
+              ) { Text(level.name) }
+            }
+          }
         }
+        Text(Wording.NONE_EXPLANATION, style = MaterialTheme.typography.bodySmall)
+        Wording.commandAuthority(workspace).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+      }
+      DetailTab.Tools -> ToolsTab(state, selected, send)
+      DetailTab.Registration -> {
+        Btn("Rename…", { send(GuiIntent.AskRename) }, enabled = state.canActOnWorkspace)
+        Btn("Move to another folder…", { send(GuiIntent.AskMove) }, enabled = state.canActOnWorkspace)
+        Btn("Forget…", { send(GuiIntent.AskForget) }, enabled = state.canActOnWorkspace)
       }
     }
-    Text(Wording.NONE_EXPLANATION, style = MaterialTheme.typography.bodySmall)
-    Wording.commandAuthority(workspace).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-    Section("Registration")
-    Btn("Rename…", { send(GuiIntent.AskRename) }, enabled = state.canEditRegistration)
-    Btn("Move to another folder…", { send(GuiIntent.AskMove) }, enabled = state.canEditRegistration)
-    Btn("Forget…", { send(GuiIntent.AskForget) }, enabled = state.canEditRegistration)
   }
 }
 

@@ -4,12 +4,16 @@ import io.github.kzagoris.proxenos.control.NotSent
 import io.github.kzagoris.proxenos.coreapi.ManagementAct
 import io.github.kzagoris.proxenos.coreapi.AccessLevel
 import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
+import io.github.kzagoris.proxenos.coreapi.Operation
+import io.github.kzagoris.proxenos.coreapi.Outcome
 import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.frontend.Wording
 import io.github.kzagoris.proxenos.frontend.absoluteRoot
+import io.github.kzagoris.proxenos.frontend.operationFrom
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -51,7 +55,21 @@ sealed interface GuiIntent {
   data class Rename(val name: String) : GuiIntent
   /** [root] as typed; it is made absolute here, never in the Runtime's working directory. */
   data class Register(val root: String, val name: String?) : GuiIntent
+  data class AskTry(val tool: String) : GuiIntent
+  /** What was typed for each argument the open Try form asks; an empty one is not given. */
+  data class Try(val given: Map<String, String>) : GuiIntent
+  data object CancelTry : GuiIntent
+  data object ShowTried : GuiIntent
   data object DismissNotice : GuiIntent
+}
+
+/** What this window's `request_id`s start with: a TryOperation from here is a `gui-` one. */
+private const val CALLER = "gui"
+
+private val Outcome<*>.tone: Tone get() = when (this) {
+  is Outcome.Ok -> Tone.Ok
+  is Outcome.Failed -> Tone.Warn
+  is Outcome.Uncertain -> Tone.Bad
 }
 
 /** GUI-SPEC §3: state changes and intake share one dispatcher, independently of painting. */
@@ -86,7 +104,7 @@ class GuiOwner(
         GuiIntent.ConnectTunnel -> if (state.canConnect) perform(ManagementAct.Connect)
         GuiIntent.DisconnectTunnel -> if (state.canDisconnect) perform(ManagementAct.Disconnect)
         GuiIntent.AcknowledgeConnector -> if (state.canAcknowledgeConnector) perform(ManagementAct.AcknowledgeConnector)
-        is GuiIntent.SetLevel -> if (state.canSetLevel) {
+        is GuiIntent.SetLevel -> if (state.canActOnWorkspace) {
           val workspace = state.selectedWorkspace!!.workspace
           if (intent.level == AccessLevel.Command) current.value = state.after(intent)
           else if (intent.level != workspace.accessLevel) perform(ManagementAct.SetLevel(workspace.id, intent.level))
@@ -104,6 +122,8 @@ class GuiOwner(
           state.selectedWorkspace?.let { perform(ManagementAct.Rename(it.workspace.id, intent.name.trim())) }
         is GuiIntent.Register -> if (state.adding && state.inFlight == null && intent.root.isNotBlank())
           perform(ManagementAct.Register(absoluteRoot(intent.root).toString(), intent.name?.trim()?.ifBlank { null }))
+        is GuiIntent.Try -> if (state.trying != null && state.inFlight == null)
+          state.selectedWorkspace?.let { tryOperation(state.trying.tool, it.workspace.name, intent.given) }
         else -> current.value = state.after(intent)
       }
     }
@@ -117,12 +137,31 @@ class GuiOwner(
     }
   }
 
+  /**
+   * A frontend is an adapter like the `mcp` one: it builds the Operation or refuses to, and what
+   * the Operation then does, every Access Level refusal included, is the pipeline's to say.
+   */
+  private suspend fun tryOperation(tool: String, workspace: String, given: Map<String, String>) {
+    val op = try {
+      operationFrom(CALLER, tool, workspace, given)
+    } catch (refused: IllegalArgumentException) {
+      current.value = current.value.copy(refusal = "${refused.message} Nothing was tried.")
+      return
+    }
+    val before = current.value.snapshot?.activity.orEmpty().mapTo(HashSet()) { it.id }
+    perform(ManagementAct.TryOperation(op)) { outcome ->
+      tried(Tried(Wording.tried(tool, workspace, outcome, promotedLocation = "it is under Running now in Activity"),
+        outcome.tone, workspace, (op as? Operation.Scoped<*>)?.deliveryKey, before))
+    }
+  }
+
   /** The stream decides what the screen shows; the act's result only says how it went. Never retried. */
-  private suspend fun perform(act: ManagementAct<*>) {
+  private suspend fun <R> perform(act: ManagementAct<R>, done: GuiState.(R) -> GuiState = { performed(act, null) }) {
     current.value = current.value.performing(act)
     val words = try {
-      management.perform(act)
-      null
+      val result = management.perform(act)
+      current.value = current.value.done(result)
+      return
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (_: NotSent) {

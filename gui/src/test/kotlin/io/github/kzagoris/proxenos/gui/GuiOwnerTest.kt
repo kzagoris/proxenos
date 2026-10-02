@@ -231,6 +231,62 @@ class GuiOwnerTest {
   }
 
   @Test
+  fun `Try at None is answered as no such Workspace, answers at Read in the pipeline's words, and keys each write afresh`() = runBlocking<Unit> {
+    val root = Files.createDirectory(temporary.resolve("notes"))
+    Files.writeString(root.resolve("hello.txt"), "hello\n")
+    val workspace = core.perform(ManagementAct.Register(root.toString()))
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.None))
+    val gui = owner()
+    gui.until { it.snapshot?.workspaces?.size == 1 }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    gui.until { it.workspace == workspace.id }
+
+    suspend fun tried(tool: String, given: Map<String, String>): Tried {
+      gui.accept(GuiIntent.AskTry(tool))
+      gui.until { it.trying?.tool == tool && it.trying.result == null }
+      gui.accept(GuiIntent.Try(given))
+      return gui.until { it.trying?.result != null && it.inFlight == null }.trying!!.result!!
+    }
+    suspend fun shown(): ActivityEntry {
+      gui.until { it.triedEntry != null }
+      gui.accept(GuiIntent.ShowTried)
+      val id = gui.until { it.destination == Destination.Activity && it.trying == null }.activity
+      val entry = gui.until { state -> state.snapshot!!.activity.single { it.id == id }.outcome !is ActivityOutcome.InFlight }
+        .snapshot!!.activity.single { it.id == id }
+      gui.accept(GuiIntent.Show(Destination.Workspaces))
+      gui.until { it.destination == Destination.Workspaces }
+      return entry
+    }
+
+    val withheld = tried("read_file", mapOf("path" to "hello.txt"))
+    assertTrue(withheld.words.startsWith("Tried read_file against 'notes': failed. No such Workspace."), withheld.words)
+    assertEquals(Tone.Warn, withheld.tone)
+    gui.accept(GuiIntent.CancelTry)
+    gui.until { it.trying == null }
+
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Read))
+    gui.until { it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.Read }
+    val read = tried("read_file", mapOf("path" to "hello.txt"))
+    assertEquals("Tried read_file against 'notes': ok. What it returned is in Activity.", read.words)
+    val readEntry = shown()
+    assertEquals(Origin.Frontend, readEntry.origin)
+    assertEquals("read_file", readEntry.tool)
+    assertIs<ActivityOutcome.Ok>(readEntry.outcome)
+
+    core.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    gui.until { it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.Write }
+    val writes = List(2) {
+      val write = tried("write_file", mapOf("path" to "hello.txt", "content" to "again\n"))
+      assertEquals(Tone.Ok, write.tone, write.words)
+      shown()
+    }
+    val keys = writes.map { it.arguments.substringAfter("request_id=") }
+    assertTrue(keys.all { it.startsWith("gui-") }, keys.toString())
+    assertEquals(2, keys.toSet().size, "each try is a new execution with its own request_id")
+    assertTrue(writes.none { it.deliveries > 0 })
+  }
+
+  @Test
   fun `constructing an owner waits for the window to open before attaching`() = runBlocking<Unit> {
     val gui = GuiOwner(RuntimeAttachment(socket, null)).also { owners += it }
     delay(100)
