@@ -20,6 +20,8 @@ dependencies {
   // control's own harness does. Test-only: the boundary check polices main, which still
   // cannot reach the core.
   testImplementation(project(":core"))
+  // Cross-frontend acceptance: a TUI and two GUI owners observe one real Runtime.
+  testImplementation(project(":gui"))
 }
 
 application {

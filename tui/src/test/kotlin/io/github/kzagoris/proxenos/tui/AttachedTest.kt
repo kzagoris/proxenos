@@ -13,6 +13,8 @@ import io.github.kzagoris.proxenos.core.WorkspaceRegistry
 import io.github.kzagoris.proxenos.coreapi.*
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.gui.GuiIntent
+import io.github.kzagoris.proxenos.gui.GuiOwner
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +47,7 @@ class AttachedTest {
   private lateinit var socket: Path
   // As in Mosaic, screen updates have one owner even while socket calls suspend.
   private val scope = CoroutineScope(Dispatchers.IO.limitedParallelism(1))
+  private val guis = mutableListOf<GuiOwner>()
 
   @BeforeTest
   fun `a Runtime on the control socket`() {
@@ -73,10 +76,13 @@ class AttachedTest {
 
   @AfterTest
   fun `nothing outlives the test`() = runBlocking {
+    guis.forEach { it.close() }
     scope.cancel()
     server.stop()
     pipeline.stop()
   }
+
+  private fun gui(): GuiOwner = GuiOwner(RuntimeAttachment(socket, null)).also { guis += it; it.open() }
 
   /** One TUI: its screen state, moved on by the attachment and by the keys it is given. */
   private inner class Tui(managementOverride: WorkspaceManagement? = null) {
@@ -130,6 +136,52 @@ class AttachedTest {
     second.press("m", "2")
     first.until("the first sees the level the second set") { home -> home.workspaces.single().workspace.accessLevel == AccessLevel.Write }
     assertTrue(render(first.home.value, Frame(140, 40)).any { "notes · Write" in it.plain })
+  }
+
+  @Test
+  fun `a TUI level change and command reach two GUIs and a forgotten selection stays gone`() = runBlocking {
+    val tui = Tui()
+    val first = gui()
+    val second = gui()
+    tui.until("TUI attaches") { it.snapshot != null }
+    withTimeout(5.seconds) { first.state.first { it.snapshot != null } }
+    withTimeout(5.seconds) { second.state.first { it.snapshot != null } }
+
+    val root = Files.createDirectory(temporary.resolve("scripts"))
+    val workspace = tui.management.perform(ManagementAct.Register(root.toString()))
+    Files.createDirectory(temporary.resolve("other")).let { tui.management.perform(ManagementAct.Register(it.toString())) }
+    tui.until("both Workspaces appear") { it.workspaces.size == 2 }
+    for (gui in listOf(first, second)) {
+      withTimeout(5.seconds) { gui.state.first { it.snapshot?.workspaces?.size == 2 } }
+      gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+      withTimeout(5.seconds) { gui.state.first { it.workspace == workspace.id } }
+    }
+
+    tui.press("m", "3", "y")
+    tui.until("TUI sees Command") { it.workspaces.first().workspace.accessLevel == AccessLevel.Command }
+    for (gui in listOf(first, second)) {
+      val changed = withTimeout(5.seconds) { gui.state.first { it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.Command } }
+      assertEquals(workspace.id, changed.workspace)
+    }
+
+    val runCommand = tui.home.value.snapshot!!.catalog.indexOfFirst { it.name == "run_command" }
+    tui.press("w", *Array(runCommand) { "ArrowDown" }, "t", *"sleep 30".map(Char::toString).toTypedArray(), "Enter", "Enter")
+    val running = tui.until("the TUI sees its command") { it.band.singleOrNull()?.promoted == true }.band.single()
+    for (gui in listOf(first, second)) {
+      val followed = withTimeout(5.seconds) { gui.state.first { it.running.singleOrNull()?.entry == running.entry } }
+      assertEquals(workspace.id, followed.workspace)
+    }
+
+    // Forget is available on the management seam but not as a TUI key (GUI-SPEC §1).
+    tui.management.perform(ManagementAct.Forget(workspace.id))
+    tui.until("TUI sees the remaining Workspace") { it.workspaces.size == 1 }
+    for (gui in listOf(first, second)) {
+      val gone = withTimeout(5.seconds) { gui.state.first { it.snapshot?.workspaces?.size == 1 } }
+      assertEquals(workspace.id, gone.workspace)
+      assertNull(gone.selectedWorkspace)
+      assertEquals("other", gone.snapshot!!.workspaces.single().workspace.name)
+      assertEquals(running.entry, gone.running.single().entry)
+    }
   }
 
   @Test

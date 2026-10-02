@@ -65,6 +65,60 @@ class GuiOwnerTest {
   private suspend fun GuiOwner.until(predicate: (GuiState) -> Boolean): GuiState =
     withTimeout(5.seconds) { state.first(predicate) }
 
+  @Test
+  fun `Register from the GUI appears through the stream and keeps its generated identity`() = runBlocking<Unit> {
+    val root = Files.createDirectory(temporary.resolve("notes"))
+    val gui = owner()
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.AddWorkspace)
+    gui.until { it.adding }
+    gui.accept(GuiIntent.Register(root.toString(), "Notes"))
+    val registered = gui.until { it.snapshot?.workspaces?.singleOrNull()?.workspace?.name == "Notes" && it.inFlight == null }
+    val workspace = registered.snapshot!!.workspaces.single().workspace
+    assertEquals(root.toString(), workspace.root)
+    assertEquals(AccessLevel.Read, workspace.accessLevel)
+    assertNull(registered.notice)
+    assertFalse(registered.adding)
+    assertEquals(workspace, (core.observe().first() as RuntimeEvent.Snapshot).workspaces.single().workspace)
+  }
+
+  @Test
+  fun `a hidden window consumes the named burst before it is shown again`() = runBlocking<Unit> {
+    val gui = owner()
+    gui.until { it.snapshot != null }
+    // No StateFlow collector while the window is hidden. Eight independent clients produce
+    // 1,000 read-only Try acts, as in GUI-SPEC §14.4; each opens and completes an Activity entry.
+    val clients = List(8) { ManagementClient(socket) }
+    val halfway = CompletableDeferred<Unit>()
+    val resume = CompletableDeferred<Unit>()
+    val reached = AtomicInteger()
+    withTimeout(90.seconds) {
+      val workers = clients.map { client ->
+        async(Dispatchers.IO) {
+          repeat(50) {
+            assertIs<Outcome.Ok<List<WorkspaceListing>>>(client.perform(ManagementAct.TryOperation(Operation.ListWorkspaces)))
+          }
+          if (reached.incrementAndGet() == clients.size) halfway.complete(Unit)
+          resume.await()
+          repeat(75) {
+            assertIs<Outcome.Ok<List<WorkspaceListing>>>(client.perform(ManagementAct.TryOperation(Operation.ListWorkspaces)))
+          }
+        }
+      }
+      halfway.await()
+      while (gui.state.value.snapshot?.activity?.size != 400) delay(10)
+      resume.complete(Unit)
+      workers.awaitAll()
+      while (gui.state.value.snapshot?.activity?.size != 1_000) delay(10)
+    }
+
+    val current = gui.state.value.snapshot!!
+    val fresh = core.observe().first() as RuntimeEvent.Snapshot
+    assertEquals(fresh.activity.map { it.id }, current.activity.map { it.id })
+    assertEquals(1_000, current.feed.size)
+    assertEquals(1_000, gui.state.first().feedRows.size)
+  }
+
 
   @Test
   fun `Rename through the owner preserves the selected identity`() = runBlocking<Unit> {
