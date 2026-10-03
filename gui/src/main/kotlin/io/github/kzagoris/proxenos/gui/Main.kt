@@ -12,10 +12,12 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.kzagoris.proxenos.control.ConfigRefused
 import io.github.kzagoris.proxenos.control.ControlSocket
+import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
 import java.awt.Toolkit
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -43,6 +45,9 @@ fun main(args: Array<String>) {
     val toolkit = Toolkit.getDefaultToolkit()
     toolkit.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }.set(null, "proxenos")
     val smoke = System.getenv("PROXENOS_GUI_SMOKE") == "1"
+    // Evidence for GUI-SPEC §14.4, never a gate: when a frame first draws a newer Activity entry.
+    val trace = System.getenv("PROXENOS_GUI_TRACE") == "1"
+    var traced: ActivityEntryId? = null
     // A family that is not installed falls back silently, so the log names the one asked for.
     val fontName = Fonts.desktopName()
     log.say("UI font asked for: ${fontName ?: "none named; the default"}")
@@ -71,7 +76,16 @@ fun main(args: Array<String>) {
                 drawContent()
                 if (!drawn) {
                   drawn = true
-                  log.say("first frame")
+                  log.say(if (trace) "first frame at=${Instant.now()}" else "first frame")
+                }
+                // Reading state here makes this draw follow every change while tracing, and only then.
+                if (trace) {
+                  val activity = state.snapshot?.activity.orEmpty()
+                  val newest = activity.lastOrNull()
+                  if (newest != null && newest.id != traced) {
+                    traced = newest.id
+                    log.say("frame at=${Instant.now()} newest=${newest.at} entries=${activity.size}")
+                  }
                 }
               }) { Shell(state, owner::accept, chooser) }
             }
