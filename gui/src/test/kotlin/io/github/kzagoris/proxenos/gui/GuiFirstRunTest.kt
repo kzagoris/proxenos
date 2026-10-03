@@ -10,6 +10,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
@@ -19,12 +20,13 @@ import kotlin.time.Duration.Companion.seconds
 class GuiFirstRunTest {
   @TempDir lateinit var temporary: Path
 
+  private fun quote(value: String) = "'" + value.replace("'", "'\"'\"'") + "'"
+
   @Test
   fun `first run names the wizard and a wide credential mode refuses an explicit Start`() = runBlocking<Unit> {
     val config = Files.createDirectories(temporary.resolve("config"))
     val socket = temporary.resolve("control.sock")
     val launcher = temporary.resolve("runtime")
-    fun quote(value: String) = "'" + value.replace("'", "'\"'\"'") + "'"
     Files.writeString(launcher, "#!/bin/sh\n" +
       "export XDG_CONFIG_HOME=${quote(config.toString())}\n" +
       "export JAVA_HOME=${quote(System.getProperty("java.home"))}\n" +
@@ -67,13 +69,16 @@ class GuiFirstRunTest {
     Files.writeString(tunnel, "#!/bin/sh\necho started >> '$starts'\necho \"\$PPID\" > '$pid'\nexec sleep 300\n")
     Files.setPosixFilePermissions(tunnel, PosixFilePermissions.fromString("rwx------"))
     val launcher = temporary.resolve("runtime")
-    fun quote(value: String) = "'" + value.replace("'", "'\"'\"'") + "'"
+    val ready = Files.createDirectory(temporary.resolve("launch-ready"))
+    val gate = temporary.resolve("launch-gate")
     Files.writeString(launcher, "#!/bin/sh\n" +
       "export XDG_CONFIG_HOME=${quote(config.parent.toString())}\n" +
       "export XDG_STATE_HOME=${quote(state.toString())}\n" +
       "export XDG_RUNTIME_DIR=${quote(run.toString())}\n" +
       "export PROXENOS_TUNNEL_CLIENT=${quote(tunnel.toString())}\n" +
       "export JAVA_HOME=${quote(System.getProperty("java.home"))}\n" +
+      "touch ${quote(ready.toString())}/${'$'}${'$'}\n" +
+      "while [ ! -e ${quote(gate.toString())} ]; do sleep 0.05; done\n" +
       "exec ${quote(System.getProperty("proxenos.testRuntime"))}\n")
     Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwx------"))
 
@@ -82,13 +87,29 @@ class GuiFirstRunTest {
     try {
       first.open()
       second.open()
+      withTimeout(10.seconds) {
+        while (Files.list(ready).use { it.count() } != 2L) delay(10)
+      }
+      assertTrue(listOf(first, second).all { it.state.value.attachment == Attachment.Starting })
+      Files.createFile(gate)
       val arrivals = listOf(first, second).map { gui ->
         async { withTimeout(15.seconds) { gui.state.first { it.snapshot != null || it.attachment is Attachment.Absent } } }
       }.map { it.await() }
-      assertTrue(arrivals.any { it.snapshot != null }, arrivals.toString())
-      assertTrue(arrivals.all { it.snapshot != null || "already running" in it.runtimeWords }, arrivals.toString())
+      assertEquals(1, arrivals.count { it.snapshot != null }, arrivals.toString())
+      assertEquals(1, arrivals.count { it.attachment is Attachment.Absent && "already running" in it.runtimeWords }, arrivals.toString())
+      withTimeout(10.seconds) {
+        while (!Files.readString(run.resolve("runtime.log")).contains("already running")) delay(10)
+        while (!Files.exists(starts)) delay(10)
+      }
       assertEquals(1, Files.readAllLines(starts).size, "both GUI launches must share one Runtime")
+      for ((gui, arrival) in listOf(first, second).zip(arrivals)) {
+        if (arrival.attachment is Attachment.Absent) {
+          gui.accept(GuiIntent.StartRuntime)
+          withTimeout(10.seconds) { gui.state.first { it.snapshot != null } }
+        }
+      }
     } finally {
+      if (!Files.exists(gate)) Files.createFile(gate)
       first.close()
       second.close()
       runCatching { ManagementClient(socket).perform(ManagementAct.Stop) }

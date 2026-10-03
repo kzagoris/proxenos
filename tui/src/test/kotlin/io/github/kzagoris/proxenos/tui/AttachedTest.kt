@@ -82,7 +82,10 @@ class AttachedTest {
     pipeline.stop()
   }
 
-  private fun gui(): GuiOwner = GuiOwner(RuntimeAttachment(socket, null)).also { guis += it; it.open() }
+  private fun gui(managementOverride: WorkspaceManagement? = null): GuiOwner {
+    val attachment = RuntimeAttachment(socket, null)
+    return GuiOwner(attachment, managementOverride ?: attachment.management).also { guis += it; it.open() }
+  }
 
   /** One TUI: its screen state, moved on by the attachment and by the keys it is given. */
   private inner class Tui(managementOverride: WorkspaceManagement? = null) {
@@ -139,17 +142,18 @@ class AttachedTest {
   }
 
   @Test
-  fun `a TUI level change and command reach two GUIs and a forgotten selection stays gone`() = runBlocking {
+  fun `a TUI level change and command reach two GUIs and a management client forgets their selection`() = runBlocking {
     val tui = Tui()
     val first = gui()
     val second = gui()
+    val management = RuntimeAttachment(socket, null).management
     tui.until("TUI attaches") { it.snapshot != null }
     withTimeout(5.seconds) { first.state.first { it.snapshot != null } }
     withTimeout(5.seconds) { second.state.first { it.snapshot != null } }
 
     val root = Files.createDirectory(temporary.resolve("scripts"))
-    val workspace = tui.management.perform(ManagementAct.Register(root.toString()))
-    Files.createDirectory(temporary.resolve("other")).let { tui.management.perform(ManagementAct.Register(it.toString())) }
+    val workspace = management.perform(ManagementAct.Register(root.toString()))
+    Files.createDirectory(temporary.resolve("other")).let { management.perform(ManagementAct.Register(it.toString())) }
     tui.until("both Workspaces appear") { it.workspaces.size == 2 }
     for (gui in listOf(first, second)) {
       withTimeout(5.seconds) { gui.state.first { it.snapshot?.workspaces?.size == 2 } }
@@ -173,7 +177,7 @@ class AttachedTest {
     }
 
     // Forget is available on the management seam but not as a TUI key (GUI-SPEC §1).
-    tui.management.perform(ManagementAct.Forget(workspace.id))
+    management.perform(ManagementAct.Forget(workspace.id))
     tui.until("TUI sees the remaining Workspace") { it.workspaces.size == 1 }
     for (gui in listOf(first, second)) {
       val gone = withTimeout(5.seconds) { gui.state.first { it.snapshot?.workspaces?.size == 1 } }
@@ -182,6 +186,50 @@ class AttachedTest {
       assertEquals("other", gone.snapshot!!.workspaces.single().workspace.name)
       assertEquals(running.entry, gone.running.single().entry)
     }
+  }
+
+  @Test
+  fun `GUI and TUI level changes both succeed and both show the last applied level`() = runBlocking {
+    val client = RuntimeAttachment(socket, null).management
+    val applied = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val delayed = object : WorkspaceManagement by client {
+      override suspend fun <R> perform(act: ManagementAct<R>): R {
+        val result = client.perform(act)
+        if (act is ManagementAct.SetLevel && act.level == AccessLevel.Write) {
+          applied.complete(Unit)
+          release.await()
+        }
+        return result
+      }
+    }
+    val tui = Tui()
+    val gui = gui(delayed)
+    tui.until("TUI attaches") { it.snapshot != null }
+    withTimeout(5.seconds) { gui.state.first { it.snapshot != null } }
+    val workspace = client.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("notes")).toString()))
+    tui.until("TUI sees the Workspace") { it.workspaces.singleOrNull()?.workspace?.id == workspace.id }
+    withTimeout(5.seconds) { gui.state.first { it.snapshot?.workspaces?.singleOrNull()?.workspace?.id == workspace.id } }
+    gui.accept(GuiIntent.SelectWorkspace(workspace.id))
+    withTimeout(5.seconds) { gui.state.first { it.workspace == workspace.id } }
+
+    try {
+      gui.accept(GuiIntent.SetLevel(AccessLevel.Write))
+      withTimeout(5.seconds) { applied.await() }
+      tui.until("TUI sees Write") { it.workspaces.single().workspace.accessLevel == AccessLevel.Write }
+      tui.press("m", "0")
+      tui.until("TUI sees None") { it.workspaces.single().workspace.accessLevel == AccessLevel.None }
+    } finally {
+      release.complete(Unit)
+    }
+
+    val settled = withTimeout(5.seconds) {
+      gui.state.first { it.inFlight == null && it.selectedWorkspace?.workspace?.accessLevel == AccessLevel.None }
+    }
+    assertNull(settled.refusal)
+    assertNull(settled.notice)
+    assertEquals(AccessLevel.None, tui.home.value.workspaces.single().workspace.accessLevel)
+    assertTrue(tui.home.value.notice?.text?.contains("now at None") == true)
   }
 
   @Test

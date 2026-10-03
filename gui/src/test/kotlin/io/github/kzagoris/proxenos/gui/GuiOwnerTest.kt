@@ -79,7 +79,9 @@ class GuiOwnerTest {
     assertEquals(AccessLevel.Read, workspace.accessLevel)
     assertNull(registered.notice)
     assertFalse(registered.adding)
-    assertEquals(workspace, (core.observe().first() as RuntimeEvent.Snapshot).workspaces.single().workspace)
+    val observed = RuntimeAttachment(socket, null).attach(startIfAbsent = false)
+      .first { it is Attachment.Attached } as Attachment.Attached
+    assertEquals(workspace, observed.snapshot.workspaces.single().workspace)
   }
 
   @Test
@@ -113,8 +115,9 @@ class GuiOwnerTest {
     }
 
     val current = gui.state.value.snapshot!!
-    val fresh = core.observe().first() as RuntimeEvent.Snapshot
-    assertEquals(fresh.activity.map { it.id }, current.activity.map { it.id })
+    val fresh = RuntimeAttachment(socket, null).attach(startIfAbsent = false)
+      .first { it is Attachment.Attached } as Attachment.Attached
+    assertEquals(fresh.snapshot.activity.map { it.id }, current.activity.map { it.id })
     assertEquals(1_000, current.feed.size)
     assertEquals(1_000, gui.state.first().feedRows.size)
   }
