@@ -1,4 +1,4 @@
-// Compose for anything that draws: `tui` now, a GUI frontend later.
+// Compose compiler for the TUI and GUI frontends.
 //
 // Mosaic publishes no Gradle plugin after 0.12.0, so the Compose compiler plugin is
 // applied by hand — and it is part of the Kotlin release, so its version is the Kotlin version.

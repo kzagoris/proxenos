@@ -1,4 +1,4 @@
-// What every one of the seven artifacts is: a Kotlin library on the JDK 26 toolchain, with its
+// What every module is: a Kotlin library on the JDK 26 toolchain, with its
 // dependency directions policed. Applying the Kotlin plugin by id with no version works because
 // build-logic carries kotlin-gradle-plugin on its classpath at the catalog's version.
 

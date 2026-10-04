@@ -1,5 +1,6 @@
 plugins {
-  id("proxenos.kotlin-application")
+  id("proxenos.kotlin-library")
+  application
   // Drop this and the failure is not "missing plugin" but a back-end inlining crash inside
   // `remember`, which is unrecognisable the first time.
   id("proxenos.compose")

@@ -7,8 +7,8 @@ import java.io.IOException
 import kotlinx.coroutines.runBlocking
 
 /**
- * `runtime register <directory> [--name <name>]`: registers a Workspace at Read, until a
- * frontend can do it over the control socket.
+ * `runtime register <directory> [--name <name>]`: registers a Workspace at Read
+ * while the Runtime is stopped.
  *
  * It refuses while a Runtime is running, by taking the same state-directory lock. That Runtime
  * loaded the registry when it started and rewrites the file from what it holds, so a

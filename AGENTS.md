@@ -28,7 +28,7 @@ python3 tui/drive.py            # pty harness for the dashboard; needs installDi
 
 ## Modules
 
-`core-api`, `core`, `mcp`, `control`, `frontend`, `runtime`, `tui`. Each module declares what it
+`core-api`, `core`, `mcp`, `control`, `frontend`, `runtime`, `tui`, `gui`. Each module declares what it
 may reach in a `moduleBoundaries { mayReach(...) }` block, and the build fails when a module
 reaches anything else, transitively. If a new dependency is wanted, declare it there and justify
 it in the change; frontends must reach the core only through `core-api` and the control socket.

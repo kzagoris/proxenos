@@ -2,7 +2,9 @@ import org.gradle.jvm.application.tasks.CreateStartScripts
 
 plugins {
   id("proxenos.kotlin-library")
-  id("proxenos.compose-resources")
+  id("proxenos.compose")
+  // Generates Res accessors; this module builds its own launcher instead of a Compose application.
+  id("org.jetbrains.compose")
   distribution
 }
 

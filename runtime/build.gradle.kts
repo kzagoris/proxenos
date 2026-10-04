@@ -1,5 +1,6 @@
 plugins {
-  id("proxenos.kotlin-application")
+  id("proxenos.kotlin-library")
+  application
 }
 
 dependencies {
