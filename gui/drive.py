@@ -140,9 +140,14 @@ def closes(gui, env, runtime_socket, count, output):
                 time.sleep(0.4)
                 w.set_input_focus(X.RevertToParent, X.CurrentTime)
                 x.sync()
-                # Click the only act button, with coordinates relative to the fixture window.
+                # Open Connection, then its Runtime stage's Stop button.
                 bounds = w.get_geometry()
                 xtest.fake_input(x, X.MotionNotify, x=bounds.x + 80, y=bounds.y + 190)
+                xtest.fake_input(x, X.ButtonPress, 1)
+                xtest.fake_input(x, X.ButtonRelease, 1)
+                x.sync()
+                time.sleep(0.3)
+                xtest.fake_input(x, X.MotionNotify, x=bounds.x + 620, y=bounds.y + 268)
                 xtest.fake_input(x, X.ButtonPress, 1)
                 xtest.fake_input(x, X.ButtonRelease, 1)
                 x.sync()
