@@ -195,16 +195,39 @@ This happens once; re-run it to rotate the key.
 
 ## 6. Register a Workspace
 
-Nothing is reachable until you register a directory. From the TUI, `[n]` registers one; or, with
-the Runtime stopped:
+Nothing is reachable until you register a directory. In the GUI, **Add Workspace** (`Ctrl+N`)
+registers one; in the TUI, `[n]`; or, with the Runtime stopped:
 
 ```sh
 ~/.local/opt/proxenos/bin/runtime register ~/code/some-project --name some-project
 ```
 
-Every Workspace starts at **Read**. Raise it in the TUI when you mean to.
+Every Workspace starts at **Read**. Raise it in the GUI or the TUI when you mean to.
 
 ## 7. Start it, and create the connector
+
+On the linux-x64 tree, open **Proxenos** from the application menu, or run:
+
+```sh
+~/.local/opt/proxenos/bin/gui
+```
+
+The GUI starts the Runtime if it is not running and attaches to it. Its sidebar has three
+views: **Workspaces** (`Ctrl+1`), where a selected Workspace's **Access**, **Tools** and
+**Registration** tabs set its level, list and **Try…** the tools ChatGPT is served, and rename,
+move or forget it; **Activity** (`Ctrl+2`), with running commands, their output and **Stop
+command…**; and **Connection** (`Ctrl+3`), one row each for **Runtime**, **Tunnel** and
+**Connector**. The status line shows all three from every view. Closing the window leaves the
+Runtime and every Access Level as they were.
+
+On a fresh install the status line shows **Connector · Unconfirmed**. Under **Connection →
+Connector** are the instructions: **Plugins → Add → Create MCP App**, set **Connection** to
+**Tunnel** with your tunnel ID, and choose **No authentication**. Select **I created the
+connector again** once you have completed setup; this records your confirmation, not a
+connectivity measurement. **Connection → Runtime** has **Stop Runtime…**, and **Start Runtime**
+while it is stopped.
+
+From a terminal, or on the portable archive, use the TUI:
 
 ```sh
 ~/.local/opt/proxenos/bin/tui
@@ -212,11 +235,7 @@ Every Workspace starts at **Read**. Raise it in the TUI when you mean to.
 
 The TUI starts the Runtime if it is not running and opens the workspace list. Use `[n]` to
 add a Workspace and `[m]` to manage the selected one. `[a]` opens Activity for this Runtime
-run only; previous runs stay stored in the Runtime but are not shown in the dashboard.
-
-The GUI starts or attaches to the same Runtime and exposes Workspace management, Tools,
-Activity, and the connection stages. Closing its window leaves the Runtime and every Access
-Level as they were. Open it from the application menu or run `bin/gui` from the tree.
+run only; previous runs stay stored in the Runtime but are not shown in either frontend.
 
 In the TUI, `[i]` opens **Review**: one row per link — **Runtime**, **Tunnel**, **Connector** — each with
 its own state, and `[Enter]` opens the selected row's detail. On a fresh install the status
@@ -236,7 +255,7 @@ again from the Runtime detail or from the workspace list while it is not running
 ## 8. The first call
 
 In a ChatGPT conversation with your connector enabled, ask it to list your workspaces. It calls
-`list_workspaces`, the call appears in the TUI's Activity, and ChatGPT answers with the Workspace
+`list_workspaces`, the call appears in Activity in the GUI or the TUI, and ChatGPT answers with the Workspace
 you registered in step 6.
 
 ## After a reboot
