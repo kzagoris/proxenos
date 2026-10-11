@@ -9,7 +9,7 @@ Connect ChatGPT to selected directories on your Linux machine. Proxenos lets Cha
 
 A desktop app and a terminal dashboard manage your workspaces and show what ChatGPT does in them. A separate Runtime answers tool calls through the **OpenAI Secure MCP Tunnel** and continues running when you close either one.
 
-![The Proxenos desktop app's Activity view: ChatGPT's tool calls in a list, and a running npm test streaming its output](docs/images/gui-activity.png)
+https://github.com/user-attachments/assets/9f037f3e-2be1-429a-9f0b-78f0e47454fd
 
 ```text
 ChatGPT → OpenAI Secure MCP Tunnel → local Runtime → your workspaces
@@ -45,6 +45,8 @@ destinations in its sidebar:
   Runtime, connect or disconnect the tunnel, and the steps for creating the connector in ChatGPT.
 
 ![Workspaces: three registered directories at Command, Write and Read, with the Tools tab listing each tool and its Try button](docs/images/gui-workspaces.png)
+
+![Activity: ChatGPT's tool calls in a list, and a running npm test streaming its output](docs/images/gui-activity.png)
 
 The status line at the top shows all three stages from every view. Raising a workspace to
 Command asks for confirmation first. The window follows your desktop's light or dark setting
