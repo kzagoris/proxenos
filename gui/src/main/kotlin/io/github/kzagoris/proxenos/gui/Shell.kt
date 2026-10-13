@@ -34,7 +34,7 @@ import org.jetbrains.compose.resources.DrawableResource
 fun shortcut(event: KeyEvent, state: GuiState, send: (GuiIntent) -> Unit, close: () -> Unit): Boolean {
   if (event.type != KeyEventType.KeyDown) return false
   if (event.isCtrlPressed && event.key == Key.W) return true.also { close() }
-  if (state.dialogOpen) return false
+  if (state.dialogOpen || state.setupVisible) return false
   if (event.isCtrlPressed && !event.isShiftPressed && !event.isAltPressed) {
     val intent = when (event.key) {
       Key.One -> GuiIntent.Show(Destination.Workspaces)
@@ -68,7 +68,8 @@ fun Shell(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = 
   Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
       val compact = maxWidth < Look.compact
-      if (compact) Column(Modifier.fillMaxSize()) {
+      if (state.setupVisible && state.setup != null) SetupPane(state, send, chooser)
+      else if (compact) Column(Modifier.fillMaxSize()) {
         Header(state, send, compact = true)
         Body(state, send, compact = true, Modifier.weight(1f))
         BottomBar(state, send)
@@ -222,7 +223,7 @@ private fun Header(state: GuiState, send: (GuiIntent) -> Unit, compact: Boolean)
 
 /** Runtime · Tunnel · Connector, each measured on its own; a stage opens that stage on Connection. */
 @Composable
-private fun StageStrip(state: GuiState, send: (GuiIntent) -> Unit) {
+internal fun StageStrip(state: GuiState, send: (GuiIntent) -> Unit) {
   val colours = MaterialTheme.colorScheme
   Row(Modifier.height(28.dp).border(1.dp, colours.outlineVariant, RoundedCornerShape(Look.corner)),
     verticalAlignment = Alignment.CenterVertically) {

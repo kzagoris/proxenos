@@ -57,13 +57,69 @@ class GuiOwnerTest {
     pipeline.stop()
   }
 
-  private fun owner(management: WorkspaceManagement? = null): GuiOwner {
+  private fun owner(management: WorkspaceManagement? = null, files: SetupFiles? = null): GuiOwner {
     val attachment = RuntimeAttachment(socket, null)
-    return GuiOwner(attachment, management ?: attachment.management).also { owners += it; it.open() }
+    return GuiOwner(attachment, management ?: attachment.management, files).also { owners += it; it.open() }
   }
 
   private suspend fun GuiOwner.until(predicate: (GuiState) -> Boolean): GuiState =
     withTimeout(5.seconds) { state.first(predicate) }
+
+  @Test
+  fun `guided setup registers at Read and verifies a new ChatGPT Root listing through the real pipeline`() = runBlocking<Unit> {
+    val files = SetupFiles(mapOf("XDG_CONFIG_HOME" to temporary.resolve("configuration").toString()))
+    files.saveProgress(SetupProgress(step = SetupStep.Workspace))
+    val gui = owner(files = files)
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.Register(Files.createDirectory(temporary.resolve("guided-notes")).toString(), "Guided notes"))
+    val registered = gui.until { it.setup?.selected(it.snapshot) != null && it.inFlight == null }
+    val id = registered.setup!!.workspace
+    assertEquals(AccessLevel.Read, registered.snapshot!!.workspaces.single().workspace.accessLevel)
+    gui.accept(GuiIntent.SetupNavigate(SetupStep.ChatGPT))
+    gui.until { it.setup?.step == SetupStep.ChatGPT }
+    gui.accept(GuiIntent.SetupConfirmPlugin)
+    gui.until { it.setup?.step == SetupStep.TryIt }
+    core.perform(ManagementAct.TryOperation(Operation.ListDirectory("Guided notes")))
+    gui.until { it.snapshot?.activity?.any { entry -> entry.origin == Origin.Frontend } == true }
+    assertNull(gui.state.value.setup!!.evidence(gui.state.value.snapshot))
+    gui.close()
+    pipeline.operationsFor(Origin.ChatGpt).perform(Operation.ListDirectory("Guided notes"))
+    val resumed = owner(files = files)
+    resumed.until { it.setup?.evidence(it.snapshot) != null }
+    resumed.accept(GuiIntent.FinishLater)
+    resumed.until { !it.setupVisible }
+    assertEquals(id, files.loadProgress().workspace)
+    resumed.accept(GuiIntent.OpenSetup)
+    resumed.until { it.setupVisible }
+    resumed.accept(GuiIntent.CompleteSetup)
+    resumed.until { it.setup?.completed == true && !it.setupVisible }
+    assertTrue(files.loadProgress().completed)
+  }
+
+  @Test
+  fun `plugin confirmation waits for the management stream and advances even when the reply arrived first`() = runBlocking<Unit> {
+    val workspace = core.perform(ManagementAct.Register(Files.createDirectory(temporary.resolve("plugin-notes")).toString(), "Notes"))
+    val files = SetupFiles(mapOf("XDG_CONFIG_HOME" to temporary.resolve("configuration").toString()))
+    files.saveProgress(SetupProgress(step = SetupStep.ChatGPT, workspace = workspace.id.value))
+    val replied = CompletableDeferred<Unit>()
+    val management = object : WorkspaceManagement by core {
+      override suspend fun <R> perform(act: ManagementAct<R>): R {
+        if (act == ManagementAct.AcknowledgeConnector) {
+          replied.complete(Unit)
+          @Suppress("UNCHECKED_CAST")
+          return Unit as R
+        }
+        return core.perform(act)
+      }
+    }
+    val gui = owner(management, files)
+    gui.until { it.snapshot != null }
+    gui.accept(GuiIntent.SetupConfirmPlugin)
+    replied.await()
+    assertEquals(SetupStep.ChatGPT, gui.state.value.setup!!.step)
+    core.perform(ManagementAct.AcknowledgeConnector)
+    gui.until { it.setup?.step == SetupStep.TryIt }
+  }
 
   @Test
   fun `Register from the GUI appears through the stream and keeps its generated identity`() = runBlocking<Unit> {

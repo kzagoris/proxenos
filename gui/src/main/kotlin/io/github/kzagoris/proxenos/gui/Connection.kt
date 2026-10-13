@@ -112,6 +112,7 @@ private fun StageDetail(state: GuiState, stage: Stage, send: (GuiIntent) -> Unit
       Text(stage.name, style = MaterialTheme.typography.headlineSmall)
       StatusWord(state.reading(stage))
     }
+    if (state.setup != null) Btn("Continue setup", { send(GuiIntent.OpenSetup) }, primary = true)
     Section("Reading")
     val snapshot = state.snapshot
     when (stage) {

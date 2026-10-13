@@ -182,6 +182,21 @@ the recorded hash, measured when this design was tested, is
 
 ## 5. Create the tunnel and write the credentials
 
+On linux-x64, open `bin/gui` for guided setup. It walks you through creating or reusing a
+Platform tunnel, associating the intended ChatGPT workspace, and saving a runtime key locally.
+It then registers a Workspace at Read, shows the ChatGPT plugin settings, and waits for a
+successful ChatGPT Root listing. Use **Finish later** to return to management and **Continue
+setup** in Connection to resume. Progress survives closing the window; unsaved credential fields
+do not. No key is included in setup progress or the ChatGPT plugin settings.
+
+Install the tunnel client first (§4). The GUI checks local requirements and offers a recheck;
+it does not download or install the client. Saving credentials requires an absent Runtime and
+writes the same mode-0600 file as the terminal wizard. To change credentials while it runs, use
+**Stop Runtime…** explicitly first, then **Save & connect**. Stop ends running Operations as
+Uncertain; registrations and Access Levels survive.
+
+For the terminal flow:
+
 ```sh
 ~/.local/opt/proxenos/bin/wizard
 ```

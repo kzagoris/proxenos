@@ -31,7 +31,11 @@ internal fun AddDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
 internal fun MoveDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser? = null) = RootDialog(state, send, chooser, moving = true)
 
 @Composable
-private fun RootDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser?, moving: Boolean) {
+internal fun SetupWorkspaceForm(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser?) =
+  RootDialog(state, send, chooser, moving = false, inline = true)
+
+@Composable
+private fun RootDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: FolderChooser?, moving: Boolean, inline: Boolean = false) {
   val workspace = state.selectedWorkspace?.workspace
   var root by remember { mutableStateOf(if (moving) workspace!!.root else "") }
   var name by remember { mutableStateOf("") }
@@ -69,11 +73,8 @@ private fun RootDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
   val cancel = { send(if (moving) GuiIntent.CancelRegistration else GuiIntent.CancelAdd) }
   val submit = { if (ready) send(if (moving) GuiIntent.Move(root) else GuiIntent.Register(root, name.ifBlank { null })) }
   val enter = Modifier.enter(submit)
-  AlertDialog(
-    onDismissRequest = cancel,
-    title = { Text(if (moving) "Move '${workspace!!.name}' to another folder?" else "Add Workspace") },
-    text = {
-      Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Look.gap)) {
+  val fields = @Composable {
+      Column(if (inline) Modifier else Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Look.gap)) {
         if (moving) Text("It was at ${workspace!!.accessLevel}. It lands at Read because a level granted to the old Root does not carry over to another directory. Raise it again once you have checked what it is.")
         OutlinedTextField(root, { root = it }, Modifier.fillMaxWidth().then(if (moving) Modifier else Modifier.focusRequester(focus)).then(enter),
           label = { Text("Root") }, singleLine = true,
@@ -106,7 +107,14 @@ private fun RootDialog(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
         state.refusal?.let { Text(it, color = LocalStatus.current.bad) }
         if (state.inFlight != null) LinearProgressIndicator(Modifier.fillMaxWidth())
       }
-    },
+  }
+  if (inline) {
+    fields()
+    Btn(label, submit, enabled = ready, primary = true)
+  } else AlertDialog(
+    onDismissRequest = cancel,
+    title = { Text(if (moving) "Move '${workspace!!.name}' to another folder?" else "Add Workspace") },
+    text = fields,
     dismissButton = { Btn("Cancel", cancel, if (moving) Modifier.focusRequester(focus) else Modifier) },
     confirmButton = { Btn(label, submit, enabled = ready, primary = true) },
     modifier = Modifier.escape(cancel),

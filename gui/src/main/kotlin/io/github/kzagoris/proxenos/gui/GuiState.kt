@@ -56,6 +56,13 @@ data class Tried(
 
 data class GuiState(
   val attachment: Attachment = Attachment.Attaching,
+  val setup: SetupProgress? = null,
+  val setupVisible: Boolean = false,
+  val setupTunnelId: String = "",
+  val setupHasCredentials: Boolean = false,
+  val setupError: String? = null,
+  val setupBusy: Boolean = false,
+  val setupChecks: List<String>? = null,
   val stopConfirmation: Boolean = false,
   val inFlight: ManagementAct<*>? = null,
   /** An act's outcome for the snackbar. */
@@ -88,7 +95,7 @@ data class GuiState(
   val noticeEntry: ActivityEntryId? = null,
 ) {
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
-  val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null
+  val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null && !setupBusy
   val canStop: Boolean get() = snapshot != null && inFlight == null
   val canAdd: Boolean get() = snapshot != null && inFlight == null
   val canConnect: Boolean get() = snapshot?.runtime?.state == RuntimeState.Disconnected && inFlight == null && !dialogOpen
@@ -155,7 +162,8 @@ data class GuiState(
    */
   fun observed(next: Attachment): GuiState {
     val newStart = next is Attachment.Attached && snapshot?.start?.id != next.snapshot.start?.id
-    return if (newStart) GuiState(attachment = next, inFlight = inFlight, destination = destination, stage = stage)
+    return if (newStart) GuiState(attachment = next, inFlight = inFlight, destination = destination, stage = stage,
+      setup = setup, setupVisible = setupVisible, setupTunnelId = setupTunnelId, setupHasCredentials = setupHasCredentials, setupError = setupError, setupBusy = setupBusy, setupChecks = setupChecks)
     else {
       val attached = next is Attachment.Attached
       val stillThere = next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace }
@@ -180,10 +188,14 @@ data class GuiState(
 
   /** What an intent that sends nothing to the Runtime does: navigation and opening dialogs. */
   fun after(intent: GuiIntent): GuiState = when (intent) {
-    is GuiIntent.Show -> if (dialogOpen) this else copy(destination = intent.destination)
-    is GuiIntent.ShowStage -> if (dialogOpen) this else copy(destination = Destination.Connection, stage = intent.stage)
+    GuiIntent.OpenSetup -> if (dialogOpen || setup == null) this else copy(setupVisible = true)
+    GuiIntent.FinishLater -> if (dialogOpen || setupBusy) this else copy(setupVisible = false)
+    GuiIntent.CheckSetup, is GuiIntent.SetupNavigate, is GuiIntent.SetupAssociated, is GuiIntent.SetupChoose,
+    is GuiIntent.SaveCredentials, GuiIntent.SetupConfirmPlugin, GuiIntent.CompleteSetup -> this
+    is GuiIntent.Show -> if (dialogOpen) this else copy(destination = intent.destination, setupVisible = false)
+    is GuiIntent.ShowStage -> if (dialogOpen) this else copy(destination = Destination.Connection, stage = intent.stage, setupVisible = false)
     is GuiIntent.SelectWorkspace -> if (dialogOpen) this else copy(workspace = intent.id, destination = Destination.Workspaces)
-    is GuiIntent.ShowActivity -> if (dialogOpen) this else copy(activity = intent.entry, destination = Destination.Activity)
+    is GuiIntent.ShowActivity -> if (dialogOpen) this else copy(activity = intent.entry, destination = Destination.Activity, setupVisible = false)
     GuiIntent.Back -> when {
       dialogOpen -> this
       destination == Destination.Connection && stage != null -> copy(stage = null)
@@ -215,7 +227,7 @@ data class GuiState(
     is GuiIntent.Try -> this
   }
 
-  fun starting(): GuiState = GuiState(attachment = Attachment.Starting, destination = destination, stage = stage)
+  fun starting(): GuiState = copy(attachment = Attachment.Starting, stopped = false, notice = null, refusal = null)
 
   /** One act in flight per window (GUI-SPEC §3.3); everything else stays live. */
   fun performing(act: ManagementAct<*>): GuiState =
@@ -235,7 +247,7 @@ data class GuiState(
     val inDialog = (act is ManagementAct.Forget && registration == Registration.Forget) ||
       (act is ManagementAct.Reconfirm && (registration == Registration.Move || registration == Registration.Reconfirm)) ||
       (act is ManagementAct.Rename && registration == Registration.Rename) ||
-      (act is ManagementAct.Register && adding) ||
+      (act is ManagementAct.Register && (adding || (setupVisible && setup?.step == SetupStep.Workspace))) ||
       (act is ManagementAct.SetLevel && commandConfirmation == act.id) ||
       (act is ManagementAct.TryOperation<*> && trying != null)
     return copy(

@@ -23,6 +23,43 @@ class GuiFirstRunTest {
   private fun quote(value: String) = "'" + value.replace("'", "'\"'\"'") + "'"
 
   @Test
+  fun `guided credentials start the real Runtime and survive closing the GUI`() = runBlocking<Unit> {
+    val config = temporary.resolve("configuration")
+    val state = temporary.resolve("state")
+    Files.createDirectories(state.resolve("proxenos"))
+    Files.createFile(state.resolve("proxenos/disconnected"))
+    val run = Files.createDirectories(temporary.resolve("run"))
+    val socket = run.resolve("control.sock")
+    val tunnel = Files.writeString(temporary.resolve("tunnel-client"), "#!/bin/sh\nexec sleep 300\n")
+    Files.setPosixFilePermissions(tunnel, PosixFilePermissions.fromString("rwx------"))
+    val environment = mapOf("XDG_CONFIG_HOME" to config.toString(), "XDG_STATE_HOME" to state.toString(),
+      "XDG_RUNTIME_DIR" to run.toString(), "PROXENOS_TUNNEL_CLIENT" to tunnel.toString(),
+      "JAVA_HOME" to System.getProperty("java.home"))
+    val launcher = temporary.resolve("runtime")
+    Files.writeString(launcher, "#!/bin/sh\n" + environment.entries.joinToString("") { (name, value) -> "export $name=${quote(value)}\n" } +
+      "exec ${quote(System.getProperty("proxenos.testRuntime"))}\n")
+    Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwx------"))
+    val files = SetupFiles(environment)
+    val client = ManagementClient(socket)
+    val gui = GuiOwner(RuntimeAttachment(socket, launcher), setupFiles = files)
+    try {
+      gui.open()
+      withTimeout(10.seconds) { gui.state.first { it.attachment is Attachment.Absent && it.setup != null } }
+      gui.accept(GuiIntent.SaveCredentials("tunnel_fixture", "fixture-key"))
+      val attached = withTimeout(10.seconds) { gui.state.first { it.snapshot?.runtime?.state == io.github.kzagoris.proxenos.coreapi.RuntimeState.Connecting } }
+      assertEquals("tunnel_fixture", attached.setupTunnelId)
+      assertEquals(SetupStep.Tunnel, attached.setup!!.step)
+      assertEquals("tunnel_fixture", files.tunnelId())
+      assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(config.resolve("proxenos/credentials")))
+      gui.close()
+      assertNotNull(withTimeout(5.seconds) { client.observe().first() })
+    } finally {
+      gui.close()
+      runCatching { client.perform(ManagementAct.Stop) }
+    }
+  }
+
+  @Test
   fun `first run names the wizard and a wide credential mode refuses an explicit Start`() = runBlocking<Unit> {
     val config = Files.createDirectories(temporary.resolve("config"))
     val socket = temporary.resolve("control.sock")

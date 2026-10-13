@@ -53,7 +53,7 @@ fun main(args: Array<String>) {
     log.say("UI font asked for: ${fontName ?: "none named; the default"}")
     val fonts = Fonts.named(fontName)
     val scale = sourceGuiScale(System.getenv(), log::say)
-    GuiOwner(RuntimeAttachment(socket, RuntimeAttachment.executable())).use { owner ->
+    GuiOwner(RuntimeAttachment(socket, RuntimeAttachment.executable()), setupFiles = SetupFiles()).use { owner ->
       application(exitProcessOnExit = false) {
         val state by owner.state.collectAsState()
         var drawn by remember { mutableStateOf(false) }
