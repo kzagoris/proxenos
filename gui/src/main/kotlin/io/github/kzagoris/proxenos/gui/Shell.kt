@@ -256,7 +256,12 @@ private fun AbsentPane(state: GuiState, send: (GuiIntent) -> Unit) {
       style = MaterialTheme.typography.headlineSmall,
     )
     RuntimeWords(state)
-    Btn("Start Runtime", { send(GuiIntent.StartRuntime) }, enabled = state.canStart, primary = true, icon = Res.drawable.power_settings_new)
+    if (state.setup != null) {
+      if (!state.setupHasCredentials) Text("Continue setup to create a tunnel and save this machine’s credentials.")
+      Btn("Continue setup", { send(GuiIntent.OpenSetup) }, primary = !state.setupHasCredentials)
+    }
+    if (state.setup == null || state.setupHasCredentials)
+      Btn("Start Runtime", { send(GuiIntent.StartRuntime) }, enabled = state.canStart, primary = true, icon = Res.drawable.power_settings_new)
   }
 }
 

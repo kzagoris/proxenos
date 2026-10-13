@@ -44,7 +44,10 @@ class GuiFirstRunTest {
     val gui = GuiOwner(RuntimeAttachment(socket, launcher), setupFiles = files)
     try {
       gui.open()
-      withTimeout(10.seconds) { gui.state.first { it.attachment is Attachment.Absent && it.setup != null } }
+      val welcome = withTimeout(10.seconds) { gui.state.first { it.attachment is Attachment.Absent && it.setup != null } }
+      assertTrue(welcome.setupVisible)
+      assertEquals(Attachment.Absent(Reason.NotAnswering), welcome.attachment)
+      assertFalse(Files.exists(run.resolve("runtime.log")), "onboarding must wait for credentials before starting the Runtime")
       gui.accept(GuiIntent.SaveCredentials("tunnel_fixture", "fixture-key"))
       val attached = withTimeout(10.seconds) { gui.state.first { it.snapshot?.runtime?.state == io.github.kzagoris.proxenos.coreapi.RuntimeState.Connecting } }
       assertEquals("tunnel_fixture", attached.setupTunnelId)

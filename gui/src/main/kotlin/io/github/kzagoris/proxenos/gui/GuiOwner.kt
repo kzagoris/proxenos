@@ -121,7 +121,7 @@ class GuiOwner(
             val savedId = withContext(Dispatchers.IO) { files.tunnelId() }
             val tunnelId = savedId ?: progress.tunnelId
             current.value = current.value.copy(setup = progress, setupTunnelId = tunnelId, setupHasCredentials = savedId != null,
-              setupVisible = !progress.completed && (tunnelId.isBlank() || progress.step != SetupStep.Welcome))
+              setupVisible = savedId == null || (!progress.completed && progress.step != SetupStep.Welcome))
             checkSetup()
           } catch (_: Exception) {
             current.value = current.value.copy(setup = SetupProgress(), setupVisible = true,
@@ -129,7 +129,9 @@ class GuiOwner(
           }
         }
         scope.launch { poll() }
-        attach()
+        // Credential entry is part of onboarding; attach to an existing Runtime, but do not
+        // launch an absent one just to receive its terminal-wizard diagnostic (ADR 0012).
+        attach(startIfAbsent = setupFiles == null || current.value.setupHasCredentials)
       }
     }
   }
@@ -275,8 +277,8 @@ class GuiOwner(
     }
   }
 
-  private suspend fun attach() {
-    attachment.open().catch { failed ->
+  private suspend fun attach(startIfAbsent: Boolean = true) {
+    attachment.attach(startIfAbsent).catch { failed ->
       emit(Attachment.Absent(Reason.StartFailed(failed.message ?: "Could not attach to the Runtime.")))
     }.collect { next ->
       val previous = current.value

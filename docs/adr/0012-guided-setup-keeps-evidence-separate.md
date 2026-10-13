@@ -9,6 +9,11 @@ Saving credentials replaces the existing file atomically at mode 0600 and starts
 An attached Runtime must be Stopped explicitly first: silently restarting it would end running
 Operations and change exposure without the user's intent. The terminal wizard remains available.
 
+When no saved credentials are available, opening the GUI enters onboarding and only attempts to
+attach to an existing Runtime. It waits for Save & connect before starting an absent Runtime,
+instead of presenting the Runtime's terminal-wizard startup refusal. Leaving onboarding keeps a
+Continue setup action on the absent Runtime screen, so credential creation remains reachable.
+
 Creating a ChatGPT plugin remains the user's word (ADR 0007). Verification instead requires a
 successful ChatGPT-origin `list_directory` of the selected Workspace's Root, started after the
 verification step began, in the current Runtime start. Frontend Try Operations, earlier Activity,

@@ -24,6 +24,17 @@ import kotlin.test.*
  */
 @OptIn(ExperimentalTestApi::class)
 class ShellTest {
+  @Test
+  fun `leaving onboarding without credentials offers a way back to credential setup`() = runComposeUiTest {
+    val harness = shell(GuiState(attachment = Attachment.Absent(Reason.NotAnswering),
+      setup = SetupProgress(step = SetupStep.Tunnel, tunnelPart = 2), setupVisible = true))
+    onNodeWithText("Finish later").performClick()
+    onNodeWithText("Continue setup").performClick()
+    onNodeWithText("Runtime key").assertExists()
+    onNodeWithText("Save & connect").assertIsNotEnabled()
+    assertTrue(harness.sent.none { it == GuiIntent.StartRuntime })
+  }
+
   private val at = Instant.parse("2026-10-01T00:00:00Z")
 
   private fun snapshot(tunnel: RuntimeState = RuntimeState.Connecting, unconfirmed: Boolean = false) = RuntimeEvent.Snapshot(
