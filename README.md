@@ -105,31 +105,36 @@ opens at the wrong size, set `gui_scale` as the [installation guide](docs/INSTAL
 
 ## 2. Follow the desktop setup wizard
 
-Open **Proxenos** from your application menu, or run `./bin/gui`. New installs open a guided
-setup wizard with five steps:
+Open **Proxenos** from your application menu, or run `./bin/gui`. On a new install it opens a
+setup wizard that takes you from creating a tunnel to ChatGPT's first successful request, in
+five steps:
 
-1. **Welcome** checks local requirements and lets you create a tunnel or use an existing one.
-2. **Tunnel** guides you through OpenAI Platform, the ChatGPT workspace association, and saving
-   your tunnel ID and runtime key. Expand the illustrated guides when you need help finding a
-   setting. **Save & connect** saves the credentials locally and starts the Runtime.
-3. **Workspace** lets you register a directory at **Read**, or select an existing workspace.
-4. **ChatGPT** shows the plugin settings: **Connection · Tunnel**, your tunnel ID, and
-   **No authentication**. Create the plugin in ChatGPT, then confirm that you have done so.
-5. **Try it** waits for a new, successful ChatGPT `list_directory` of the selected workspace's
-   root. It shows the received Operation and its time; confirmation alone does not test the connection.
+1. **Welcome** checks that `tunnel-client` is installed and asks whether you want a new tunnel
+   or one you already have.
+2. **Tunnel** walks you through creating the tunnel in OpenAI Platform, associating it with your
+   ChatGPT workspace, and entering its tunnel ID and runtime key. Expand the illustrated guides
+   when you cannot find a setting. **Save & connect** saves the credentials and starts the Runtime.
+3. **Workspace** registers a directory at **Read**, or lets you choose a workspace you have
+   already registered.
+4. **ChatGPT** lists the settings for the new plugin: **Connection · Tunnel**, your tunnel ID,
+   and **No authentication**. Create the plugin in ChatGPT, then confirm here.
+5. **Try it** waits until ChatGPT lists the workspace's root with `list_directory`, then shows
+   the Operation it received and when. Your confirmation in step 4 does not count; only a real,
+   successful request from ChatGPT does.
 
-![Welcome: the desktop setup wizard shows its five steps, local requirements, and options to create or reuse a tunnel](docs/images/gui-setup-welcome.png)
+![Welcome step: how this machine, the tunnel and ChatGPT connect, a local requirements check, and the choice between a new and an existing tunnel](docs/images/gui-setup-welcome.png)
 
-![Tunnel: the setup wizard guides tunnel creation with an expandable illustrated Platform guide and a tunnel ID field](docs/images/gui-setup-tunnel.png)
+![Tunnel step: links to Platform tunnel settings, expandable creation and tunnel ID guides, and the tunnel ID field](docs/images/gui-setup-tunnel.png)
 
-Use **Finish later** to return to management, then **Continue setup** in **Connection** to
-resume. Progress survives closing the window; an unsaved runtime key does not. Closing the
-window leaves a running Runtime in place. The GUI checks requirements but does not install
-`tunnel-client`; use the verified installer in step 1 first.
+You can leave at any point: **Finish later** returns to the main window, and **Continue setup**
+in **Connection** picks up where you left off. Closing the window keeps your completed steps and
+leaves the Runtime running, but it discards a runtime key you have not saved yet. The wizard
+checks for `tunnel-client` but never installs it, so run `./bin/install-tunnel-client` from
+step 1 first.
 
-Credentials are stored in `${XDG_CONFIG_HOME:-~/.config}/proxenos/credentials` at mode `0600`,
-readable and writable only by your user. The key stays local. To replace credentials while the
-Runtime is running, explicitly **Stop Runtime…** first; this ends running Operations.
+The credentials are saved to `${XDG_CONFIG_HOME:-~/.config}/proxenos/credentials` with mode
+`0600`, so only your user can read or write them. To replace them while the Runtime is running,
+**Stop Runtime…** first; stopping it ends any running Operations.
 
 ### Terminal setup
 
