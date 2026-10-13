@@ -1,5 +1,7 @@
 package io.github.kzagoris.proxenos.gui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.FocusInteraction
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.platform.SystemFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 // GUI-SPEC §6, "C+1 · Sidebar": neutral zinc greys and one blue accent. Not the Omarchy theme,
@@ -180,6 +183,8 @@ private class MarksNode(private val source: InteractionSource) :
   private var focused = 0
   private var hovered = 0
   private var pressed = 0
+  private val wash = Animatable(0f)
+  private var washJob: Job? = null
   private lateinit var colours: MarkColours
 
   override fun onAttach() {
@@ -194,6 +199,9 @@ private class MarksNode(private val source: InteractionSource) :
           is PressInteraction.Press -> pressed++
           is PressInteraction.Release, is PressInteraction.Cancel -> pressed--
         }
+        val target = if (pressed > 0) 0.18f else if (hovered > 0) 0.10f else 0f
+        washJob?.cancel()
+        washJob = coroutineScope.launch { wash.animateTo(target, tween(if (pressed > 0) 70 else 140)) }
         invalidateDraw()
       }
     }
@@ -206,8 +214,8 @@ private class MarksNode(private val source: InteractionSource) :
 
   override fun ContentDrawScope.draw() {
     val corner = CornerRadius(Look.corner.toPx())
-    if (pressed > 0 || hovered > 0) drawRoundRect(colours.wash.copy(alpha = if (pressed > 0) 0.12f else 0.06f), cornerRadius = corner)
     drawContent()
+    drawRoundRect(colours.wash.copy(alpha = wash.value), cornerRadius = corner)
     if (focused > 0) {
       // Two strokes, so the ring shows on a filled button whose fill is the ring's own colour.
       val ring = 2.dp.toPx()

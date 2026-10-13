@@ -14,6 +14,8 @@ import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
 import java.nio.channels.ServerSocketChannel
+import java.nio.channels.SocketChannel
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText
@@ -85,6 +87,20 @@ class ManagementClientTest {
   }
 
   private fun project(name: String): Path = Files.createDirectories(temporary.resolve(name))
+
+  @Test
+  fun `malformed requests are refused without disabling later management connections`() = runBlocking {
+    for (request in listOf("{\"type\":\"Observe\"}", "{\"@type\":\"unknown\"}", "not json")) {
+      SocketChannel.open(StandardProtocolFamily.UNIX).use { channel ->
+        channel.connect(UnixDomainSocketAddress.of(config.controlSocket))
+        channel.write(ByteBuffer.wrap("$request\n".toByteArray()))
+        assertTrue(assertIs<Reply.Refused>(Frames(channel).reply()).invalidArgument)
+      }
+      assertIs<RuntimeEvent.Snapshot>(withTimeout(5.seconds) { client.observe().first() })
+    }
+    val registered = client.perform(ManagementAct.Register(project("still-answering").toString(), "still-answering"))
+    assertEquals("still-answering", registered.name)
+  }
 
   @Test
   fun `each registry act round-trips and answers what the core answers`() = runBlocking<Unit> {

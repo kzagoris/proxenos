@@ -20,6 +20,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.serialization.SerializationException
 
 /**
  * The Runtime's end of the control socket: a [WorkspaceManagement] served to whoever
@@ -72,7 +73,13 @@ class ControlServer(
     try {
       val peer = channel.getOption(ExtendedSocketOptions.SO_PEERCRED).user().name
       if (peer != owner) return frames.send(Reply.Refused("The control socket serves $owner only, not $peer."))
-      when (val request = runInterruptible { frames.request() }) {
+      val request = try {
+        runInterruptible { frames.request() }
+      } catch (_: SerializationException) {
+        frames.send(Reply.Refused("Invalid management request.", invalidArgument = true))
+        return
+      }
+      when (request) {
         null -> Unit
         is Request.Perform -> frames.send(perform(request))
         Request.Observe -> observe(channel, frames)

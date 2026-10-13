@@ -41,7 +41,7 @@ internal fun SetupPane(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
           Text("Connect to ChatGPT", style = MaterialTheme.typography.labelLarge, color = colours.onSurfaceVariant)
           SetupStep.entries.forEachIndexed { index, step ->
             val selected = step == progress.step
-            TextButton(onClick = { send(GuiIntent.SetupNavigate(step, if (step == SetupStep.Tunnel) progress.tunnelPart else 0)) },
+            TextBtn(onClick = { send(GuiIntent.SetupNavigate(step, if (step == SetupStep.Tunnel) progress.tunnelPart else 0)) },
               enabled = index <= maxOf(progress.furthest, progress.step).ordinal && !state.setupBusy,
               colors = ButtonDefaults.textButtonColors(containerColor = if (selected) colours.primaryContainer else colours.surfaceContainerLow),
               modifier = Modifier.fillMaxWidth()) {
@@ -67,7 +67,7 @@ internal fun SetupPane(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
             SetupStep.ChatGPT -> SetupChatGPT(state, send)
             SetupStep.TryIt -> SetupTry(state, send)
           }
-          if (progress.step != SetupStep.Welcome) TextButton(onClick = {
+          if (progress.step != SetupStep.Welcome) TextBtn(onClick = {
             if (progress.step == SetupStep.Tunnel && progress.tunnelPart > 0)
               send(GuiIntent.SetupNavigate(SetupStep.Tunnel, progress.tunnelPart - 1))
             else send(GuiIntent.SetupNavigate(SetupStep.entries[progress.step.ordinal - 1]))
@@ -77,7 +77,7 @@ internal fun SetupPane(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
       if (compact) Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
           SetupStep.entries.forEachIndexed { index, step ->
-            TextButton(onClick = { send(GuiIntent.SetupNavigate(step, if (step == SetupStep.Tunnel) progress.tunnelPart else 0)) },
+            TextBtn(onClick = { send(GuiIntent.SetupNavigate(step, if (step == SetupStep.Tunnel) progress.tunnelPart else 0)) },
               enabled = index <= maxOf(progress.furthest, progress.step).ordinal && !state.setupBusy) {
               Text("${index + 1} ${step.label}", color = if (step == progress.step) colours.primary else colours.onSurfaceVariant)
             }
@@ -102,15 +102,18 @@ private fun SetupTitle(title: String, description: String) {
 }
 
 @Composable
-private fun SetupNote(text: String, warning: Boolean = false) {
+private fun SetupNote(text: String, warning: Boolean = false, busy: Boolean = false) {
   Surface(color = if (warning) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
     shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
-    Text(text, Modifier.padding(16.dp), color = if (warning) LocalStatus.current.warn else MaterialTheme.colorScheme.onSurface)
+    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+      if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+      Text(text, Modifier.weight(1f), color = if (warning) LocalStatus.current.warn else MaterialTheme.colorScheme.onSurface)
+    }
   }
 }
 
 @Composable
-private fun SetupLink(label: String, url: String) {
+internal fun SetupLink(label: String, url: String) {
   val handler = LocalUriHandler.current
   var failed by remember { mutableStateOf(false) }
   Btn("$label ↗", {
@@ -120,7 +123,7 @@ private fun SetupLink(label: String, url: String) {
 }
 
 @Composable
-private fun SetupCopy(label: String, value: String) {
+internal fun SetupCopy(label: String, value: String) {
   val clipboard = LocalClipboardManager.current
   var copied by remember(value) { mutableStateOf(false) }
   var failed by remember { mutableStateOf(false) }
@@ -155,32 +158,56 @@ private fun SetupTunnel(state: GuiState, send: (GuiIntent) -> Unit) {
   var key by remember { mutableStateOf("") }
   var showKey by remember { mutableStateOf(false) }
   var editing by remember { mutableStateOf(false) }
+  LaunchedEffect(state.setupCredentialRevision) {
+    editing = false
+    key = ""
+    showKey = false
+  }
   val tunnel = state.snapshot?.runtime?.state
+  val saved = state.setupSavedTunnelId == state.setupTunnelId && state.setupHasCredentials && !editing
   SetupTitle(when (progress.tunnelPart) { 0 -> "Create your tunnel"; 1 -> "Choose the ChatGPT workspace"; else -> "Connect this machine" },
-    "A tunnel carries requests between ChatGPT and Proxenos. Complete the Platform steps, then return here.")
+    if (progress.tunnelPart == 2 && saved) "Your credentials are saved. Watch the connection status below, then choose a Workspace."
+    else "A tunnel carries requests between ChatGPT and Proxenos. Complete the Platform steps, then return here.")
   Text("1. Create tunnel   /   2. Associate workspace   /   3. Connect", style = MaterialTheme.typography.bodySmall)
-  SetupLink("Open Platform tunnel settings", PLATFORM)
+  if (progress.tunnelPart < 2 || !saved) {
+    SetupLink("Open Platform tunnel settings", PLATFORM)
+    SetupCopy("Copy Platform tunnel settings link", PLATFORM)
+  }
   when (progress.tunnelPart) {
     0 -> {
       Text("Create a tunnel with a name you’ll recognize, such as Proxenos · My computer. Copy its tunnel ID here.")
+      CreationGuide()
+      TunnelIdGuide()
       OutlinedTextField(id, { id = it }, label = { Text("Tunnel ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       Text("Creating a tunnel requires Tunnels Read + Manage in the intended Platform organization. Using it requires Read + Use.")
       Btn("I created the tunnel", { send(GuiIntent.SetupNavigate(SetupStep.Tunnel, 1, id)) }, enabled = id.isNotBlank(), primary = true)
     }
     1 -> {
-      Text("Open your tunnel’s associations and add the ChatGPT workspace where you want to use Proxenos.")
+      Text("Open the tunnel you created or want to reuse. Copy its ID, then review or edit its associations to include the ChatGPT workspace where you want to use Proxenos.")
+      TunnelIdGuide()
+      OutlinedTextField(id, { id = it }, label = { Text("Tunnel ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+      AssociationGuide()
       SetupNote("A tunnel associated only with a Platform organization may not appear in your intended ChatGPT workspace.")
       Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(progress.associated, { send(GuiIntent.SetupAssociated(it)) })
         Text("I associated the intended ChatGPT workspace.")
       }
-      Btn("Continue", { send(GuiIntent.SetupNavigate(SetupStep.Tunnel, 2)) }, enabled = progress.associated, primary = true)
+      Btn("Continue", { send(GuiIntent.SetupNavigate(SetupStep.Tunnel, 2, id)) }, enabled = progress.associated && id.isNotBlank(), primary = true)
     }
     else -> {
+      if (saved) Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text("Credentials saved on this machine", style = MaterialTheme.typography.titleMedium)
+          SelectionContainer { Text("Tunnel ID: ${state.setupSavedTunnelId}") }
+          Text("Runtime key: saved securely (hidden)")
+          Text("You do not need to enter these values again.", style = MaterialTheme.typography.bodySmall)
+        }
+      }
       when (tunnel) {
         RuntimeState.Connected -> SetupNote("✓ Tunnel · Connected\nThe last successful poll is recent. This checks the tunnel link; create the plugin and try a ChatGPT request next.")
         RuntimeState.Connecting -> {
-          SetupNote("Tunnel · Connecting\nNo successful poll yet.")
+          SetupNote("Tunnel · Connecting\nNo successful poll yet.", busy = true)
           state.snapshot?.let { snapshot -> snapshot.connectingWords?.let { words ->
             SelectionContainer { Column { Wording.connecting(clock.format(snapshot.runtime.enteredAt), words).forEach { Text(it) } } }
           } }
@@ -191,32 +218,43 @@ private fun SetupTunnel(state: GuiState, send: (GuiIntent) -> Unit) {
           Btn("Connect", { send(GuiIntent.ConnectTunnel) }, enabled = state.canConnect)
         }
         null -> {
-          (state.attachment as? Attachment.Absent)?.reason?.let { if (it is Reason.StartFailed) Text(it.words, color = LocalStatus.current.warn) }
+          (state.attachment as? Attachment.Absent)?.reason?.let { if (it is Reason.StartFailed)
+            SetupNote("${if (saved) "Credentials are saved, but the Runtime could not start." else "The Runtime could not start."}\n${it.words}", warning = true) }
           if (state.attachment == Attachment.Starting || state.attachment == Attachment.Attaching) Text(state.runtimeWords)
         }
       }
-      if (tunnel == RuntimeState.Connected && !editing) {
-        Btn("Choose a Workspace", { send(GuiIntent.SetupNavigate(SetupStep.Workspace)) }, primary = true)
-        TextButton(onClick = { editing = true }) { Text("Review tunnel values") }
-        Text(Wording.CONNECTED_CAVEAT, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      if (saved || (tunnel == RuntimeState.Connected && !editing && !state.setupHasCredentials)) {
+        if (tunnel == RuntimeState.Connected) {
+          Btn("Choose a Workspace", { send(GuiIntent.SetupNavigate(SetupStep.Workspace)) }, primary = true)
+          Text(Wording.CONNECTED_CAVEAT, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+          Text("Saving confirms local storage. Tunnel · Connected confirms the tunnel ID and key work with OpenAI.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+          if (state.attachment is Attachment.Absent) Btn("Start with saved credentials", { send(GuiIntent.StartRuntime) }, enabled = state.canStart, primary = true)
+        }
+        TextBtn(onClick = { editing = true }, enabled = !state.setupBusy && state.inFlight == null &&
+          state.attachment != Attachment.Starting && state.attachment != Attachment.Attaching) { Text("Change credentials") }
         return
       }
       else Text("Continue when the Tunnel is Connected. Check the tunnel ID, runtime key, intended Platform organization and tunnel access if it keeps waiting.")
       HorizontalDivider()
-      Text("Create a runtime key for this tunnel in Platform, then paste it below. Values are saved only when you choose Save & connect.")
+      if (state.setupHasCredentials && state.setupSavedTunnelId != state.setupTunnelId) {
+        SetupNote("Saved credentials belong to ${state.setupSavedTunnelId}. To use ${state.setupTunnelId}, save its runtime key below.", warning = true)
+      }
+      Text("Use a saved runtime API key or create a new one in Platform → Runtime API keys. The key is separate from the tunnel ID. Values are saved only when you choose Save & connect.")
+      RuntimeKeyGuide()
       OutlinedTextField(id, { id = it }, label = { Text("Tunnel ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
       OutlinedTextField(key, { key = it }, label = { Text("Runtime key") }, singleLine = true,
         visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = { TextButton(onClick = { showKey = !showKey }) { Text(if (showKey) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
+        trailingIcon = { TextBtn(onClick = { showKey = !showKey }) { Text(if (showKey) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
       Text("Your key is saved locally in the credentials file, readable only by your user account. It is never copied to ChatGPT.", style = MaterialTheme.typography.bodySmall)
       if (state.snapshot != null) {
         SetupNote("The running Runtime keeps its current credentials. To change them, Stop Runtime explicitly, then save and start it again. Stop ends running Operations as Uncertain; registrations and Access Levels survive.", warning = true)
         Btn("Stop Runtime…", { send(GuiIntent.AskStop) }, enabled = state.canStop)
       } else {
         Btn("Save & connect", {
-          send(GuiIntent.SaveCredentials(id, key)); key = ""; showKey = false
+          send(GuiIntent.SaveCredentials(id, key))
         }, enabled = state.canStart && id.isNotBlank() && key.isNotBlank(), primary = true)
-        if (state.setupHasCredentials) Btn("Start with saved credentials", { send(GuiIntent.StartRuntime) }, enabled = state.canStart)
       }
       Text("Saving starts the Runtime and connects the tunnel. Existing Workspaces keep their Access Levels.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -239,7 +277,7 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
     Btn("Add another Workspace", { send(GuiIntent.AddWorkspace) }, enabled = state.canAdd)
   }
   state.snapshot?.workspaces.orEmpty().filter { !it.broken && it.workspace.accessLevel != AccessLevel.None }.forEach {
-    TextButton(onClick = { send(GuiIntent.SetupChoose(it.workspace.id)) }, enabled = state.inFlight == null) {
+    TextBtn(onClick = { send(GuiIntent.SetupChoose(it.workspace.id)) }, enabled = state.inFlight == null) {
       Text("Use ${it.workspace.name} · ${it.workspace.accessLevel}")
     }
   }
@@ -250,12 +288,13 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
 
 @Composable
 private fun SetupChatGPT(state: GuiState, send: (GuiIntent) -> Unit) {
+  val tunnelId = state.setupSavedTunnelId ?: state.setupTunnelId
   SetupTitle("Add Proxenos to ChatGPT", "Create a custom MCP plugin using your tunnel. Keep the Runtime running while you do this.")
   Text("1. Open ChatGPT → Plugins → + → Add custom MCP server.\n2. Enter these settings, review ChatGPT’s warning, then choose Create as a plugin.")
-  SelectionContainer { Text("Name: Proxenos\nConnection: Tunnel\nTunnel ID: ${state.setupTunnelId.ifBlank { "Use the tunnel configured for this Runtime" }}\nAuthentication: No authentication") }
+  SelectionContainer { Text("Name: Proxenos\nConnection: Tunnel\nTunnel ID: ${tunnelId.ifBlank { "Use the tunnel configured for this Runtime" }}\nAuthentication: No authentication") }
   FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     SetupCopy("Copy name", "Proxenos")
-    if (state.setupTunnelId.isNotBlank()) SetupCopy("Copy tunnel ID", state.setupTunnelId)
+    if (tunnelId.isNotBlank()) SetupCopy("Copy tunnel ID", tunnelId)
     SetupLink("Open ChatGPT", CHATGPT)
   }
   Section("My tunnel isn’t listed")
@@ -276,7 +315,8 @@ private fun SetupTry(state: GuiState, send: (GuiIntent) -> Unit) {
     SelectionContainer { SetupNote(progress.prompt(state.snapshot)) }
     SetupCopy("Copy prompt", progress.prompt(state.snapshot))
     SetupLink("Open ChatGPT", CHATGPT)
-    SetupNote("Waiting for a successful ChatGPT Root listing\nThe Operation will also appear in Activity.")
+    SetupNote("Waiting for a successful ChatGPT Root listing\nThe Operation will also appear in Activity.",
+      busy = state.snapshot?.runtime?.state == RuntimeState.Connected && progress.selected(state.snapshot) != null)
     if (progress.selected(state.snapshot) == null) Text("Your selected Workspace is unavailable. Return to Workspace and choose one.", color = LocalStatus.current.warn)
     if (state.snapshot == null) Btn("Review tunnel setup", { send(GuiIntent.SetupNavigate(SetupStep.Tunnel, 2)) })
     Text("If nothing appears, confirm the plugin is selected, the Tunnel is Connected and the Workspace is at Read or higher. Check ChatGPT for a tool error. A frontend Try does not count.")

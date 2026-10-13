@@ -59,7 +59,8 @@ data class GuiState(
   val setup: SetupProgress? = null,
   val setupVisible: Boolean = false,
   val setupTunnelId: String = "",
-  val setupHasCredentials: Boolean = false,
+  val setupSavedTunnelId: String? = null,
+  val setupCredentialRevision: Int = 0,
   val setupError: String? = null,
   val setupBusy: Boolean = false,
   val setupChecks: List<String>? = null,
@@ -94,6 +95,7 @@ data class GuiState(
   /** The entry the snackbar's Show entry opens. */
   val noticeEntry: ActivityEntryId? = null,
 ) {
+  val setupHasCredentials: Boolean get() = setupSavedTunnelId != null
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
   val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null && !setupBusy
   val canStop: Boolean get() = snapshot != null && inFlight == null
@@ -163,7 +165,8 @@ data class GuiState(
   fun observed(next: Attachment): GuiState {
     val newStart = next is Attachment.Attached && snapshot?.start?.id != next.snapshot.start?.id
     return if (newStart) GuiState(attachment = next, inFlight = inFlight, destination = destination, stage = stage,
-      setup = setup, setupVisible = setupVisible, setupTunnelId = setupTunnelId, setupHasCredentials = setupHasCredentials, setupError = setupError, setupBusy = setupBusy, setupChecks = setupChecks)
+      setup = setup, setupVisible = setupVisible, setupTunnelId = setupTunnelId, setupSavedTunnelId = setupSavedTunnelId,
+      setupCredentialRevision = setupCredentialRevision, setupError = setupError, setupBusy = setupBusy, setupChecks = setupChecks)
     else {
       val attached = next is Attachment.Attached
       val stillThere = next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace }

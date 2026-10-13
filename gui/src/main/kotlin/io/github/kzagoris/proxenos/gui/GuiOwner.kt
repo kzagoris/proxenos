@@ -120,7 +120,7 @@ class GuiOwner(
             val progress = withContext(Dispatchers.IO) { files.loadProgress() }
             val savedId = withContext(Dispatchers.IO) { files.tunnelId() }
             val tunnelId = savedId ?: progress.tunnelId
-            current.value = current.value.copy(setup = progress, setupTunnelId = tunnelId, setupHasCredentials = savedId != null,
+            current.value = current.value.copy(setup = progress, setupTunnelId = tunnelId, setupSavedTunnelId = savedId,
               setupVisible = savedId == null || (!progress.completed && progress.step != SetupStep.Welcome))
             checkSetup()
           } catch (_: Exception) {
@@ -261,7 +261,8 @@ class GuiOwner(
       // A stream loss is not evidence the Runtime stopped. Never change credentials underneath it.
       check(!attachment.answering()) { "The Runtime is still answering. Stop it explicitly before saving new credentials." }
       withContext(Dispatchers.IO) { files.saveCredentials(intent.tunnelId, intent.runtimeKey) }
-      current.value = current.value.copy(setupTunnelId = intent.tunnelId.trim(), setupHasCredentials = true, setupBusy = false)
+      current.value = current.value.copy(setupTunnelId = intent.tunnelId.trim(), setupSavedTunnelId = intent.tunnelId.trim(),
+        setupCredentialRevision = current.value.setupCredentialRevision + 1, setupBusy = false)
       current.value.setup?.let { changeSetup(it.copy(step = SetupStep.Tunnel, tunnelPart = 2, waitingSince = null, completed = false)) }
       connectAfterCredentialStart = true
       current.value = current.value.starting()

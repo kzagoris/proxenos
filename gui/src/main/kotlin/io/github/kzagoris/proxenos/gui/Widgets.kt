@@ -3,17 +3,25 @@ package io.github.kzagoris.proxenos.gui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -22,12 +30,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import io.github.kzagoris.proxenos.gui.res.Res
+import io.github.kzagoris.proxenos.gui.res.sync
 
 // The look's own parts (GUI-SPEC §6), drawn with foundation as the prototype drew them. Material
 // supplies the complex widgets only.
@@ -41,7 +53,8 @@ fun Ic(icon: DrawableResource, tint: Color = LocalContentColor.current, size: Dp
 fun StatusWord(reading: Reading, modifier: Modifier = Modifier) {
   val colour = LocalStatus.current.of(reading.tone)
   Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-    Ic(reading.icon, colour, 15.dp)
+    if (reading.icon == Res.drawable.sync) CircularProgressIndicator(Modifier.size(15.dp), color = colour, strokeWidth = 1.5.dp)
+    else Ic(reading.icon, colour, 15.dp)
     Text(reading.word, style = MaterialTheme.typography.bodySmall, color = colour, maxLines = 1)
   }
 }
@@ -66,6 +79,7 @@ fun Btn(
     modifier.height(28.dp).alpha(if (enabled) 1f else 0.45f).clip(shape)
       .then(if (primary) Modifier.background(colours.primary) else Modifier.border(1.dp, colours.outline, shape))
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+      .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
       .padding(horizontal = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
@@ -75,6 +89,23 @@ fun Btn(
       Text(text, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
     }
   }
+}
+
+/** Material text actions use the same feedback as the foundation controls, without a ripple. */
+@Composable
+internal fun TextBtn(
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+  colors: ButtonColors = ButtonDefaults.textButtonColors(),
+  content: @Composable RowScope.() -> Unit,
+) {
+  val interactions = remember { MutableInteractionSource() }
+  TextButton(onClick, modifier.clip(MaterialTheme.shapes.small)
+    .indication(interactions, LocalIndication.current)
+    .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default),
+    enabled = enabled, shape = MaterialTheme.shapes.small, colors = colors,
+    interactionSource = interactions, content = content)
 }
 
 /** A status-tinted one-line banner, optionally with the act that reviews it. */
