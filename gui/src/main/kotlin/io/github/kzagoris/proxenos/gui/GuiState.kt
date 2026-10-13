@@ -97,6 +97,25 @@ data class GuiState(
 ) {
   val setupHasCredentials: Boolean get() = setupSavedTunnelId != null
   val snapshot: RuntimeEvent.Snapshot? get() = (attachment as? Attachment.Attached)?.snapshot
+  /**
+   * Why setup cannot open [step] now, or null when it can. The owner refuses exactly these steps,
+   * and the page disables whatever would ask for one, saying why.
+   */
+  fun setupLock(step: SetupStep): String? {
+    val selected = setup?.selected(snapshot)
+    val ready = selected?.usable == true
+    return when (step) {
+      SetupStep.Welcome, SetupStep.Tunnel -> null
+      SetupStep.Workspace -> if (snapshot?.runtime?.state == RuntimeState.Connected) null else "Needs Tunnel · Connected"
+      SetupStep.ChatGPT, SetupStep.TryIt -> when {
+        snapshot == null -> "Needs the Runtime running"
+        !ready -> "Needs a Workspace at Read or higher"
+        step == SetupStep.TryIt && snapshot?.connectorUnconfirmed != false -> "Needs the plugin confirmed"
+        else -> null
+      }
+    }
+  }
+
   val canStart: Boolean get() = attachment is Attachment.Absent && inFlight == null && !setupBusy
   val canStop: Boolean get() = snapshot != null && inFlight == null
   val canAdd: Boolean get() = snapshot != null && inFlight == null

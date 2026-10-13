@@ -77,10 +77,12 @@ internal fun SetupPane(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
                   SetupStep.ChatGPT -> SetupChatGPT(state, send)
                   SetupStep.TryIt -> SetupTry(state, send)
                 }
-                if (shown.step != SetupStep.Welcome) Btn("Back", {
-                  if (shown.step == SetupStep.Tunnel && shown.part > 0) send(GuiIntent.SetupNavigate(SetupStep.Tunnel, shown.part - 1))
-                  else send(GuiIntent.SetupNavigate(SetupStep.entries[shown.step.ordinal - 1]))
-                }, enabled = !state.setupBusy, icon = Res.drawable.arrow_back)
+                if (shown.step != SetupStep.Welcome) {
+                  val (previous, part) = if (shown.step == SetupStep.Tunnel && shown.part > 0) SetupStep.Tunnel to shown.part - 1
+                    else SetupStep.entries[shown.step.ordinal - 1] to 0
+                  Btn("Back", { send(GuiIntent.SetupNavigate(previous, part)) },
+                    enabled = !state.setupBusy && state.setupLock(previous) == null, icon = Res.drawable.arrow_back)
+                }
               }
             }
           }
@@ -88,14 +90,14 @@ internal fun SetupPane(state: GuiState, send: (GuiIntent) -> Unit, chooser: Fold
       }
       if (compact) Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().hairlineBottom(colours.outlineVariant).padding(horizontal = 12.dp, vertical = 8.dp)) {
-          StepTrack(progress, !state.setupBusy, navigate)
+          StepTrack(progress, state::setupLock, !state.setupBusy, navigate)
         }
         page(Modifier.weight(1f).fillMaxWidth())
       } else Row(Modifier.fillMaxSize()) {
         Column(Modifier.width(232.dp).fillMaxHeight().background(colours.surfaceContainerLow).hairlineEnd(colours.outlineVariant)
           .padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("Connect to ChatGPT", style = MaterialTheme.typography.labelLarge, color = colours.onSurfaceVariant)
-          StepRail(progress, !state.setupBusy, navigate)
+          StepRail(progress, state::setupLock, !state.setupBusy, navigate)
           Spacer(Modifier.weight(1f))
           Text("You can leave and continue later. Completed setup steps stay here.", style = MaterialTheme.typography.bodySmall, color = colours.onSurfaceVariant)
         }
@@ -291,7 +293,7 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
     }
     Btn("Add another Workspace", { send(GuiIntent.AddWorkspace) }, enabled = state.canAdd)
   }
-  state.snapshot?.workspaces.orEmpty().filter { !it.broken && it.workspace.accessLevel != AccessLevel.None }.forEach {
+  state.snapshot?.workspaces.orEmpty().filter { it.usable }.forEach {
     TextBtn(onClick = { send(GuiIntent.SetupChoose(it.workspace.id)) }, enabled = state.inFlight == null) {
       Text("Use ${it.workspace.name} · ${it.workspace.accessLevel}")
     }
@@ -299,7 +301,7 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
   Text("None withholds the Workspace. Write allows file changes. Command runs programs with the full authority of your Linux account, beyond the Root. Change Access Levels later in Workspaces.",
     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
   Btn("Continue to ChatGPT", { send(GuiIntent.SetupNavigate(SetupStep.ChatGPT)) },
-    enabled = selected != null && !selected.broken && selected.workspace.accessLevel != AccessLevel.None, primary = true)
+    enabled = selected?.usable == true, primary = true)
 }
 
 @Composable

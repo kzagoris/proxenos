@@ -28,6 +28,9 @@ sealed interface Reason {
   /** Nothing answered on the control socket, or the stream it held ended. */
   data object NotAnswering : Reason
 
-  /** A start was asked for and did not come to answer; [words] are what came back, verbatim where the Runtime said them. */
+  /**
+   * A start was asked for and did not come to answer. [words] are whole sentences saying why,
+   * the Runtime's own where it said them, so a frontend can place them after its own heading.
+   */
   data class StartFailed(val words: String) : Reason
 }

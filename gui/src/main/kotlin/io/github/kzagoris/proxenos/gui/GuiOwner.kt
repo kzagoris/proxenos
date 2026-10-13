@@ -142,11 +142,11 @@ class GuiOwner(
       when (intent) {
         GuiIntent.CheckSetup -> checkSetup()
         is GuiIntent.SetupAssociated -> state.setup?.let { changeSetup(it.copy(associated = intent.associated)) }
-        is GuiIntent.SetupChoose -> if (state.snapshot?.workspaces?.any { it.workspace.id == intent.id && !it.broken && it.workspace.accessLevel != AccessLevel.None } == true)
+        is GuiIntent.SetupChoose -> if (state.snapshot?.workspaces?.any { it.workspace.id == intent.id && it.usable } == true)
           state.setup?.let { changeSetup(it.copy(workspace = intent.id.value, waitingSince = null, completed = false)) }
         is GuiIntent.SetupNavigate -> navigateSetup(intent)
         is GuiIntent.SaveCredentials -> saveCredentials(intent)
-        GuiIntent.SetupConfirmPlugin -> if (state.setup?.selected(state.snapshot)?.let { !it.broken && it.workspace.accessLevel != AccessLevel.None } == true && state.inFlight == null) {
+        GuiIntent.SetupConfirmPlugin -> if (state.setup?.selected(state.snapshot)?.usable == true && state.inFlight == null) {
           if (state.snapshot?.connectorUnconfirmed == true) {
             perform(ManagementAct.AcknowledgeConnector)
             awaitingPluginConfirmation = current.value.notice == Wording.CONNECTOR_ACKNOWLEDGED
@@ -234,14 +234,7 @@ class GuiOwner(
     val progress = state.setup ?: return
     if (state.setupBusy || state.dialogOpen) return
     val selected = progress.selected(state.snapshot)
-    val ready = selected != null && !selected.broken && selected.workspace.accessLevel != AccessLevel.None
-    val allowed = when (intent.step) {
-      SetupStep.Welcome, SetupStep.Tunnel -> true
-      SetupStep.Workspace -> state.snapshot?.runtime?.state == io.github.kzagoris.proxenos.coreapi.RuntimeState.Connected
-      SetupStep.ChatGPT -> ready
-      SetupStep.TryIt -> ready && state.snapshot?.connectorUnconfirmed == false
-    }
-    if (allowed) {
+    if (state.setupLock(intent.step) == null) {
       intent.tunnelId?.let { current.value = current.value.copy(setupTunnelId = it.trim()) }
       changeSetup(progress.copy(tunnelId = current.value.setupTunnelId, furthest = maxOf(progress.furthest, progress.step, intent.step), step = intent.step, tunnelPart = intent.tunnelPart.coerceIn(0, 2),
       waitingSince = if (intent.step == SetupStep.TryIt) progress.waitingSince.takeIf {
@@ -293,9 +286,9 @@ class GuiOwner(
       if (progress?.step == SetupStep.TryIt && !progress.completed && next is Attachment.Attached &&
         (progress.waitingStart != next.snapshot.start?.id?.value ||
           progress.waitingRoot != selected?.workspace?.root || progress.waitingName != selected?.workspace?.name ||
-          (previous.snapshot != null && previous.setup?.selected(previous.snapshot) != selected) || (progress.waitingSince == null &&
-            selected != null && !selected.broken && selected.workspace.accessLevel != AccessLevel.None))) {
-        val ready = selected != null && !selected.broken && selected.workspace.accessLevel != AccessLevel.None
+          (previous.snapshot != null && previous.setup?.selected(previous.snapshot) != selected) ||
+          (progress.waitingSince == null && selected?.usable == true))) {
+        val ready = selected?.usable == true
         changeSetup(progress.copy(waitingStart = next.snapshot.start?.id?.value, waitingSince = if (ready) Instant.now().toEpochMilli() else null,
           waitingRoot = selected?.workspace?.root, waitingName = selected?.workspace?.name, completed = false))
       }

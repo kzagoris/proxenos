@@ -5,6 +5,9 @@ import io.github.kzagoris.proxenos.coreapi.*
 // The five pages of the approved Guided flow; connection readings remain independent.
 enum class SetupStep(val label: String) { Welcome("Welcome"), Tunnel("Tunnel"), Workspace("Workspace"), ChatGPT("ChatGPT"), TryIt("Try it") }
 
+/** Setup can use this Workspace: its Root is not Broken and it is not withheld at None. */
+val WorkspaceState.usable: Boolean get() = !broken && workspace.accessLevel != AccessLevel.None
+
 data class SetupProgress(
   val step: SetupStep = SetupStep.Welcome,
   val tunnelPart: Int = 0,

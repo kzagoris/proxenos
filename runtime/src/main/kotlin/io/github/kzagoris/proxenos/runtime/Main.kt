@@ -1,6 +1,7 @@
 package io.github.kzagoris.proxenos.runtime
 
 import io.github.kzagoris.proxenos.control.ControlServer
+import io.github.kzagoris.proxenos.control.ControlSocket
 import io.github.kzagoris.proxenos.core.Activity
 import io.github.kzagoris.proxenos.core.ConnectorAcknowledgement
 import io.github.kzagoris.proxenos.core.RuntimeFeed
@@ -37,7 +38,7 @@ fun main(args: Array<String>) {
       else -> throw UsageError("Unknown command: ${args.first()}")
     }
   } catch (refused: StartRefused) {
-    say(if (args.isEmpty()) "will not start. ${refused.message}" else "${refused.message}")
+    say(if (args.isEmpty()) "${ControlSocket.REFUSAL}${refused.message}" else "${refused.message}")
     exitProcess(REFUSED)
   } catch (usage: UsageError) {
     say("${usage.message}\n$USAGE")

@@ -172,7 +172,7 @@ class RuntimeAttachmentTest {
     val refusing = stub("echo 'runtime: will not start. No credentials file at /x/credentials.' >&2\nexit 78")
     val seen = RuntimeAttachment(socket, refusing).open().settled()
     assertEquals(Attachment.Starting, seen.first())
-    assertEquals(Attachment.Absent(Reason.StartFailed("will not start. No credentials file at /x/credentials.")), seen.last())
+    assertEquals(Attachment.Absent(Reason.StartFailed("No credentials file at /x/credentials.")), seen.last())
   }
 
   @Test

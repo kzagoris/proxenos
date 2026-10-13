@@ -14,6 +14,12 @@ object ControlSocket {
   const val KEY = "control_socket"
 
   /**
+   * How the Runtime opens its refusal to start on standard error, for a person reading it. A
+   * frontend that started it says so in its own words, and drops this.
+   */
+  const val REFUSAL = "will not start. "
+
+  /**
    * For a frontend. `config.toml` is read only when neither [flag] nor the environment settles
    * it, and then only its [KEY] line, so a file the Runtime would refuse elsewhere does not stop
    * a frontend reaching a Runtime already running.

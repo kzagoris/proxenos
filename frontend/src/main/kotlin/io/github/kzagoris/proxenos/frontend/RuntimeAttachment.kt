@@ -109,12 +109,12 @@ class RuntimeAttachment(
   }
 
   private suspend fun spawn(): String? {
-    val program = executable ?: return "cannot find the Runtime to start: neither $VARIABLE nor the $PROPERTY " +
+    val program = executable ?: return "Cannot find the Runtime to start: neither $VARIABLE nor the $PROPERTY " +
       "property the launcher scripts set names it. $SET_VARIABLE"
     // setsid would start and then fail to run it, and say so only in the log. A bare name is
     // left to setsid, which looks it up on PATH as any exec does.
     if ('/' in program.toString() && !Files.isExecutable(program)) {
-      return "cannot start $program: there is no executable file there. $SET_VARIABLE"
+      return "Cannot start $program: there is no executable file there. $SET_VARIABLE"
     }
     val from: Long
     val process = try {
@@ -129,18 +129,21 @@ class RuntimeAttachment(
         .redirectErrorStream(true)
         .start()
     } catch (failed: IOException) {
-      return "could not start $program: ${failed.message}"
+      return "Could not start $program: ${failed.message}"
     }
     val deadline = System.nanoTime() + patience.inWholeNanoseconds
     while (System.nanoTime() < deadline) {
       if (answering()) return null
-      if (!process.isAlive && !answering()) return said(from) ?: "the Runtime exited with status ${process.exitValue()} and said nothing."
+      if (!process.isAlive && !answering()) return said(from) ?: "The Runtime exited with status ${process.exitValue()} and said nothing."
       delay(100.milliseconds)
     }
-    return "the Runtime did not answer on $socket within $patience. What it said is in $log."
+    return "The Runtime did not answer on $socket within $patience. What it said is in $log."
   }
 
-  /** What the Runtime wrote to [log] since [from], without its `runtime:` prefix. */
+  /**
+   * What the Runtime wrote to [log] since [from], without its `runtime:` prefix or the `will not
+   * start.` that opens a refusal: every frontend already says the Runtime did not start.
+   */
   private fun said(from: Long): String? {
     val words = try {
       Files.newByteChannel(log).use { channel ->
@@ -151,7 +154,7 @@ class RuntimeAttachment(
       return null
     }
     return words
-      .lines().map { it.removePrefix("runtime: ").trim() }.filter { it.isNotEmpty() }
+      .lines().map { it.removePrefix("runtime: ").removePrefix(ControlSocket.REFUSAL).trim() }.filter { it.isNotEmpty() }
       .joinToString(" ").ifEmpty { null }
   }
 

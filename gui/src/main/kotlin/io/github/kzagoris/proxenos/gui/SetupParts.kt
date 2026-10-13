@@ -47,6 +47,14 @@ private fun SetupProgress.mark(index: Int) = when {
   else -> Mark.Ahead
 }
 
+/** Why a reached step cannot open now. The current step and those not reached yet have no lock to show. */
+private fun SetupProgress.lockAt(index: Int, lock: (SetupStep) -> String?) =
+  if (index == step.ordinal || index > reached()) null else lock(SetupStep.entries[index])
+
+/** Whether a step can be opened from the rail or the track. */
+private fun SetupProgress.opens(index: Int, enabled: Boolean, lock: (SetupStep) -> String?) =
+  enabled && index <= reached() && lockAt(index, lock) == null
+
 private fun SetupProgress.partMark(part: Int) = when {
   step == SetupStep.Tunnel && part == tunnelPart -> Mark.Current
   completed || reached() > SetupStep.Tunnel.ordinal -> Mark.Done
@@ -80,10 +88,11 @@ private val GAP = 10.dp
 
 /**
  * The sidebar's steps: a line joins them and fills in as setup advances. Tunnel's three parts sit
- * under it as markers only; its page moves between them.
+ * under it as markers only; its page moves between them. A step reached before that cannot open
+ * now says why, under its name, from [lock].
  */
 @Composable
-internal fun StepRail(progress: SetupProgress, enabled: Boolean, navigate: (SetupStep) -> Unit) {
+internal fun StepRail(progress: SetupProgress, lock: (SetupStep) -> String?, enabled: Boolean, navigate: (SetupStep) -> Unit) {
   val colours = MaterialTheme.colorScheme
   Column {
     SetupStep.entries.forEachIndexed { index, step ->
@@ -99,13 +108,16 @@ internal fun StepRail(progress: SetupProgress, enabled: Boolean, navigate: (Setu
         drawLine(colours.outlineVariant, Offset(x, top), Offset(x, bottom), width)
         drawLine(colours.primary, Offset(x, top), Offset(x, top + (bottom - top) * filled.value), width)
       }) {
-        val reachable = enabled && index <= progress.reached()
+        val locked = progress.lockAt(index, lock)
+        val reachable = progress.opens(index, enabled, lock)
         Row(Modifier.fillMaxWidth().height(ROW).clip(RoundedCornerShape(Look.corner))
           .pressable(reachable) { navigate(step) }.padding(horizontal = INSET),
           verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
           StepCircle(mark, index + 1, CIRCLE)
           StepLabel(step.label, mark, MaterialTheme.typography.bodyMedium, dim = !reachable)
         }
+        if (locked != null) Text(locked, Modifier.padding(start = INSET + CIRCLE + 10.dp, bottom = 2.dp),
+          style = MaterialTheme.typography.bodySmall, color = colours.onSurfaceVariant)
         if (step == SetupStep.Tunnel) Column(Modifier.padding(start = INSET + CIRCLE + 10.dp, top = 2.dp, bottom = 2.dp)) {
           TUNNEL_PARTS.forEachIndexed { part, label ->
             val partMark = progress.partMark(part)
@@ -146,9 +158,10 @@ private fun PartDot(mark: Mark) {
 
 /** The steps in one line, for a narrow window: circles joined by short lines. */
 @Composable
-internal fun StepTrack(progress: SetupProgress, enabled: Boolean, navigate: (SetupStep) -> Unit) {
+internal fun StepTrack(progress: SetupProgress, lock: (SetupStep) -> String?, enabled: Boolean, navigate: (SetupStep) -> Unit) {
   Track(SetupStep.entries.mapIndexed { index, step -> step.label to progress.mark(index) },
-    reachable = { enabled && it <= progress.reached() }, select = { navigate(SetupStep.entries[it]) },
+    reachable = { progress.opens(it, enabled, lock) },
+    select = { navigate(SetupStep.entries[it]) },
     modifier = Modifier.horizontalScroll(rememberScrollState()))
 }
 

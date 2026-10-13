@@ -271,7 +271,7 @@ class HomeScreenTest {
 
   @Test
   fun `the Review list is the three stages in the order they are fixed, and can't-tell is never a fault`() {
-    val detached = Home().observed(Attachment.Absent(Reason.StartFailed("cannot find the Runtime to start.")))
+    val detached = Home().observed(Attachment.Absent(Reason.StartFailed("Cannot find the Runtime to start.")))
     val rows = render(detached.keys("i"), frame).filter { line -> Stage.entries.any { "${it.name} · " in line.plain } }
     assertEquals(
       listOf("> Runtime · Not running", "Tunnel · Can't tell", "Connector · Can't tell"),
@@ -283,7 +283,7 @@ class HomeScreenTest {
     assertTrue("nothing to measure until the Runtime is running" in tunnel, tunnel)
 
     // The reason [S] failed is under the Runtime row, in the words that came back.
-    assertTrue("cannot find the Runtime to start" in detached.keys("i").prose())
+    assertTrue("Cannot find the Runtime to start" in detached.keys("i").prose())
   }
 
   @Test

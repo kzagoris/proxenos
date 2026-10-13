@@ -216,6 +216,23 @@ class SetupPaneTest {
   }
 
   @Test
+  fun `a reached step the owner would refuse is disabled with its reason while an open one navigates`() = runComposeUiTest {
+    val sent = mutableListOf<GuiIntent>()
+    setContent { ProxenosTheme(false) { Box(Modifier.size(1000.dp, 760.dp)) {
+      Shell(GuiState(attachment = Attachment.Absent(Reason.NotAnswering), setupVisible = true,
+        setup = SetupProgress(step = SetupStep.TryIt, furthest = SetupStep.TryIt, tunnelPart = 2)), sent::add)
+    } } }
+    onNodeWithText("ChatGPT").assertIsNotEnabled()
+    onNodeWithText("Workspace").assertIsNotEnabled()
+    onNodeWithText("Needs the Runtime running").assertExists()
+    onNodeWithText("Needs Tunnel · Connected").assertExists()
+    onNodeWithText("Back").performScrollTo().assertIsNotEnabled()
+    // The stage strip has a Tunnel button too; the rail's step is the one whose whole text is the name.
+    onNode(SemanticsMatcher.expectValue(SemanticsProperties.Text, listOf(AnnotatedString("Tunnel")))).performClick()
+    assertEquals(GuiIntent.SetupNavigate(SetupStep.Tunnel, 2), sent.last())
+  }
+
+  @Test
   fun `credential entry hides the runtime key and saving needs both values`() = runComposeUiTest {
     val sent = mutableListOf<GuiIntent>()
     setContent { ProxenosTheme(true) { Box(Modifier.size(700.dp, 760.dp)) {
