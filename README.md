@@ -103,9 +103,37 @@ needs x86_64, X11 or XWayland, libGL, libX11 and fontconfig; native Wayland with
 unsupported. Startup diagnostics are appended to `$XDG_RUNTIME_DIR/proxenos/gui.log`. If it
 opens at the wrong size, set `gui_scale` as the [installation guide](docs/INSTALL.md) describes.
 
-## 2. Configure the OpenAI tunnel
+## 2. Follow the desktop setup wizard
 
-Run the interactive setup wizard:
+Open **Proxenos** from your application menu, or run `./bin/gui`. New installs open a guided
+setup wizard with five steps:
+
+1. **Welcome** checks local requirements and lets you create a tunnel or use an existing one.
+2. **Tunnel** guides you through OpenAI Platform, the ChatGPT workspace association, and saving
+   your tunnel ID and runtime key. Expand the illustrated guides when you need help finding a
+   setting. **Save & connect** saves the credentials locally and starts the Runtime.
+3. **Workspace** lets you register a directory at **Read**, or select an existing workspace.
+4. **ChatGPT** shows the plugin settings: **Connection · Tunnel**, your tunnel ID, and
+   **No authentication**. Create the plugin in ChatGPT, then confirm that you have done so.
+5. **Try it** waits for a new, successful ChatGPT `list_directory` of the selected workspace's
+   root. It shows the received Operation and its time; confirmation alone does not test the connection.
+
+![Welcome: the desktop setup wizard shows its five steps, local requirements, and options to create or reuse a tunnel](docs/images/gui-setup-welcome.png)
+
+![Tunnel: the setup wizard guides tunnel creation with an expandable illustrated Platform guide and a tunnel ID field](docs/images/gui-setup-tunnel.png)
+
+Use **Finish later** to return to management, then **Continue setup** in **Connection** to
+resume. Progress survives closing the window; an unsaved runtime key does not. Closing the
+window leaves a running Runtime in place. The GUI checks requirements but does not install
+`tunnel-client`; use the verified installer in step 1 first.
+
+Credentials are stored in `${XDG_CONFIG_HOME:-~/.config}/proxenos/credentials` at mode `0600`,
+readable and writable only by your user. The key stays local. To replace credentials while the
+Runtime is running, explicitly **Stop Runtime…** first; this ends running Operations.
+
+### Terminal setup
+
+For the portable archive or a terminal workflow, run the interactive terminal wizard:
 
 ```bash
 ./bin/wizard
@@ -121,7 +149,11 @@ ${XDG_CONFIG_HOME:-~/.config}/proxenos/credentials
 
 The file contains `TUNNEL_ID` and `RUNTIME_KEY` and is written with mode `0600` (readable and writable only by its owner). The Runtime refuses credentials with broader permissions. Keep this file outside the repository. The wizard supplies the credentials; the verified installer in step 1 supplies `tunnel-client`.
 
-## 3. Open Proxenos and add a workspace
+## 3. Manage your workspaces
+
+If you completed desktop setup, your first workspace is already registered. Open **Workspaces**
+to manage it or add another. If you used the terminal wizard, open the desktop app or TUI and
+register your first workspace as follows.
 
 Open **Proxenos** from your application menu, or run:
 
@@ -129,7 +161,7 @@ Open **Proxenos** from your application menu, or run:
 ./bin/gui
 ```
 
-The desktop app starts the Runtime if necessary, then attaches to it.
+With saved credentials, the desktop app starts the Runtime if necessary, then attaches to it.
 
 1. Select **Add Workspace** (`Ctrl+N`).
 2. Choose its root directory, or type the path, and give it a name such as `my-project`.
@@ -151,12 +183,15 @@ This command registers it at Read and requires the Runtime to be stopped. Use th
 
 ## 4. Create the connection in ChatGPT
 
+Desktop setup includes this handoff and the first-request check. These are also the steps to
+follow after terminal setup, or when you need to create the connection again.
+
 Keep the Runtime running throughout these steps.
 
 1. In ChatGPT, open **Settings → Security and login** and enable **Developer mode**. A workspace administrator may need to grant access first.
 2. Open **Plugins**, select **Add** at the top right, and choose **Create MCP App**. The **New Plugin** dialog opens.
 3. Give it a name such as **Proxenos** and a description such as “Read and work with my registered local workspaces.”
-4. Under **Connection**, switch from **Server URL** to **Tunnel** and enter the `tunnel_...` ID the wizard printed.
+4. Under **Connection**, switch from **Server URL** to **Tunnel** and enter the `tunnel_...` ID shown during setup.
 5. Set **Authentication** to **No authentication**. The dialog defaults to OAuth, which fails before any tool call. This application's MCP endpoint does not implement OAuth; the tunnel uses the runtime key you saved locally.
 6. Tick **I understand and want to continue**, select **Create**, and then **Connect Proxenos**.
 7. Start a new conversation, type **`@`**, and pick **Proxenos** from the **Plugins** list.
