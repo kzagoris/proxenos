@@ -1,6 +1,8 @@
 package io.github.kzagoris.proxenos.gui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.LocalIndication
@@ -124,23 +126,41 @@ class Fonts(val sans: FontFamily, val mono: FontFamily) {
     }
 
     /**
-     * The desktop's UI font name: `gsettings` prints `'Adwaita Sans 11'`, and the trailing number
-     * is the size, not part of the name. Null where there is no answer within a second.
+     * The desktop's UI font name from [desktop]: `gsettings` prints `'Adwaita Sans 11'`, and the
+     * trailing number is the size, not part of the name. Null where there is no answer.
      */
-    fun desktopName(): String? = try {
-      val process = ProcessBuilder("gsettings", "get", "org.gnome.desktop.interface", "font-name")
-        .redirectErrorStream(true).start()
-      if (!process.waitFor(1, TimeUnit.SECONDS)) {
-        process.destroyForcibly()
-        null
-      } else if (process.exitValue() != 0) null
-      else process.inputStream.bufferedReader().readText().trim().trim('\'')
-        .replace(Regex("\\s+\\d+(\\.\\d+)?$"), "").ifBlank { null }
-    } catch (_: java.io.IOException) {
-      null
-    }
+    fun desktopName(desktop: Map<String, String>): String? = desktop["font-name"]?.trim('\'')
+      ?.replace(Regex("\\s+\\d+(\\.\\d+)?$"), "")?.ifBlank { null }
   }
 }
+
+/** Whether [desktop] allows animation; only an explicit `false` turns motion off. */
+fun desktopAnimations(desktop: Map<String, String>): Boolean = desktop["enable-animations"] != "false"
+
+/**
+ * Every `org.gnome.desktop.interface` key as `gsettings` prints its value, from one process so
+ * startup waits once. Empty where there is no answer within a second.
+ */
+fun desktopInterface(): Map<String, String> = try {
+  val process = ProcessBuilder("gsettings", "list-recursively", "org.gnome.desktop.interface")
+    .redirectErrorStream(true).start()
+  if (!process.waitFor(1, TimeUnit.SECONDS)) {
+    process.destroyForcibly()
+    emptyMap()
+  } else if (process.exitValue() != 0) emptyMap()
+  else process.inputStream.bufferedReader().readLines().mapNotNull { line ->
+    line.split(' ', limit = 3).takeIf { it.size == 3 }?.let { (_, key, value) -> key to value.trim() }
+  }.toMap()
+} catch (_: java.io.IOException) {
+  emptyMap()
+}
+
+/** False when the desktop turned animation off: every transition then snaps to its end. */
+val LocalMotion = staticCompositionLocalOf { true }
+
+/** A short transition, or none at all where the desktop asks for no animation. */
+@Composable
+fun <T> motion(millis: Int, delay: Int = 0): FiniteAnimationSpec<T> = if (LocalMotion.current) tween(millis, delay) else snap()
 
 private fun typography(family: FontFamily): Typography {
   fun style(size: Int, weight: FontWeight = FontWeight.Normal) =
@@ -186,6 +206,7 @@ private class MarksNode(private val source: InteractionSource) :
   private val wash = Animatable(0f)
   private var washJob: Job? = null
   private lateinit var colours: MarkColours
+  private var motion = true
 
   override fun onAttach() {
     onObservedReadsChanged()
@@ -199,16 +220,21 @@ private class MarksNode(private val source: InteractionSource) :
           is PressInteraction.Press -> pressed++
           is PressInteraction.Release, is PressInteraction.Cancel -> pressed--
         }
-        val target = if (pressed > 0) 0.18f else if (hovered > 0) 0.10f else 0f
+        val target = if (pressed > 0) 0.20f else if (hovered > 0) 0.12f else 0f
         washJob?.cancel()
-        washJob = coroutineScope.launch { wash.animateTo(target, tween(if (pressed > 0) 70 else 140)) }
+        washJob = coroutineScope.launch {
+          if (motion) wash.animateTo(target, tween(if (pressed > 0) 70 else 140)) else wash.snapTo(target)
+        }
         invalidateDraw()
       }
     }
   }
 
   override fun onObservedReadsChanged() {
-    observeReads { colours = currentValueOf(LocalMarkColours) }
+    observeReads {
+      colours = currentValueOf(LocalMarkColours)
+      motion = currentValueOf(LocalMotion)
+    }
     invalidateDraw()
   }
 
@@ -228,7 +254,7 @@ private class MarksNode(private val source: InteractionSource) :
 }
 
 @Composable
-fun ProxenosTheme(dark: Boolean, fonts: Fonts = Fonts.Default, content: @Composable () -> Unit) {
+fun ProxenosTheme(dark: Boolean, fonts: Fonts = Fonts.Default, motion: Boolean = true, content: @Composable () -> Unit) {
   val scheme = if (dark) io.github.kzagoris.proxenos.gui.dark else light
   MaterialTheme(
     colorScheme = scheme,
@@ -241,6 +267,7 @@ fun ProxenosTheme(dark: Boolean, fonts: Fonts = Fonts.Default, content: @Composa
       LocalRippleConfiguration provides null,
       LocalTonalElevationEnabled provides false,
       LocalMarkColours provides MarkColours(scheme.primary, scheme.surface, scheme.onSurface),
+      LocalMotion provides motion,
       LocalIndication provides Marks,
       content = content,
     )

@@ -49,9 +49,11 @@ fun main(args: Array<String>) {
     val trace = System.getenv("PROXENOS_GUI_TRACE") == "1"
     var traced: ActivityEntryId? = null
     // A family that is not installed falls back silently, so the log names the one asked for.
-    val fontName = Fonts.desktopName()
+    val desktop = desktopInterface()
+    val fontName = Fonts.desktopName(desktop)
     log.say("UI font asked for: ${fontName ?: "none named; the default"}")
     val fonts = Fonts.named(fontName)
+    val motion = desktopAnimations(desktop)
     val scale = sourceGuiScale(System.getenv(), log::say)
     GuiOwner(RuntimeAttachment(socket, RuntimeAttachment.executable()), setupFiles = SetupFiles()).use { owner ->
       application(exitProcessOnExit = false) {
@@ -71,7 +73,7 @@ fun main(args: Array<String>) {
         ) {
           val chooser = remember(window) { PortalFolderChooser(window, log::say) }
           GuiDensity(scale) {
-            ProxenosTheme(dark, fonts) {
+            ProxenosTheme(dark, fonts, motion) {
               Box(Modifier.fillMaxSize().drawWithContent {
                 drawContent()
                 if (!drawn) {

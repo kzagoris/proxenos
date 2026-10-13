@@ -1,5 +1,11 @@
 package io.github.kzagoris.proxenos.gui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -8,14 +14,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import io.github.kzagoris.proxenos.gui.res.*
 
 private const val TUNNEL_DOCS = "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"
 private const val KEY_DOCS = "https://github.com/openai/tunnel-client/blob/master/docs/permissions.md"
 private const val RUNTIME_KEYS = "https://platform.openai.com/settings/organization/api-keys"
 
 @Composable
-internal fun CreationGuide() = TunnelGuide("creation") {
+internal fun CreationGuide() = TunnelGuide("creation", "Create the tunnel in Platform, with a suggested name and description.") {
   GuideStep(1, "Open Platform → Tunnels → Create tunnel", "Choose the Platform organization that will manage the tunnel.")
   GuideStep(2, "Fill in the creation form", "Name and Description are both required. Use a name that identifies this computer.")
   Illustration("Create tunnel") {
@@ -33,7 +42,7 @@ internal fun CreationGuide() = TunnelGuide("creation") {
 }
 
 @Composable
-internal fun TunnelIdGuide() = TunnelGuide("tunnel ID") {
+internal fun TunnelIdGuide() = TunnelGuide("tunnel ID", "Where Platform shows the tunnel_… ID to copy.") {
   GuideStep(1, "Open the tunnel you want to use", "In Platform → Tunnels, select your existing tunnel or the one you just created.")
   Illustration("Find the tunnel ID") {
     Text("Proxenos · My computer", style = MaterialTheme.typography.titleSmall)
@@ -45,7 +54,7 @@ internal fun TunnelIdGuide() = TunnelGuide("tunnel ID") {
 }
 
 @Composable
-internal fun AssociationGuide() = TunnelGuide("association") {
+internal fun AssociationGuide() = TunnelGuide("association", "Include the ChatGPT workspace where you will add Proxenos.") {
   GuideStep(1, "Open the existing tunnel’s settings", "Select the tunnel in Platform → Tunnels, then open its edit or association controls.")
   Illustration("Review or edit associations") {
     ExampleField("Organizations", "Your Platform organization", 2)
@@ -59,7 +68,7 @@ internal fun AssociationGuide() = TunnelGuide("association") {
 }
 
 @Composable
-internal fun RuntimeKeyGuide() = TunnelGuide("runtime key") {
+internal fun RuntimeKeyGuide() = TunnelGuide("runtime key", "Create a Restricted key with Tunnels Read + Use.") {
   GuideStep(1, "Open Runtime API keys in Platform", "Use the organization whose tunnel you selected. Runtime API keys and Admin API keys are separate; Proxenos needs a runtime key.")
   SetupLink("Open Runtime API keys", RUNTIME_KEYS)
   SetupCopy("Copy Runtime API keys link", RUNTIME_KEYS)
@@ -75,15 +84,32 @@ internal fun RuntimeKeyGuide() = TunnelGuide("runtime key") {
   GuideSource(KEY_DOCS)
 }
 
+/** A guide folded to one line: the whole header opens it, and its arrow turns as it unfolds. */
 @Composable
-private fun TunnelGuide(name: String, content: @Composable ColumnScope.() -> Unit) {
+private fun TunnelGuide(name: String, summary: String, content: @Composable ColumnScope.() -> Unit) {
   var expanded by rememberSaveable { mutableStateOf(false) }
   val colours = MaterialTheme.colorScheme
+  val turn = animateFloatAsState(if (expanded) 180f else 0f, motion(200))
   Surface(color = colours.surfaceContainerLow, shape = MaterialTheme.shapes.medium,
     modifier = Modifier.fillMaxWidth().border(1.dp, colours.outlineVariant, MaterialTheme.shapes.medium)) {
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      TextBtn(onClick = { expanded = !expanded }) { Text("${if (expanded) "Hide" else "Show"} $name guide") }
-      if (expanded) content()
+    Column {
+      Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).pressable(true) { expanded = !expanded }
+        .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Ic(Res.drawable.help, colours.primary, 18.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          Text("${if (expanded) "Hide" else "Show"} $name guide", style = MaterialTheme.typography.titleSmall, color = colours.primary)
+          Text(summary, style = MaterialTheme.typography.bodySmall, color = colours.onSurfaceVariant)
+        }
+        Box(Modifier.graphicsLayer { rotationZ = turn.value }) { Ic(Res.drawable.expand_more, colours.onSurfaceVariant, 20.dp) }
+      }
+      AnimatedVisibility(expanded, enter = expandVertically(motion(220)) + fadeIn(motion(220)),
+        exit = shrinkVertically(motion(180)) + fadeOut(motion(120))) {
+        Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          HorizontalDivider(color = colours.outlineVariant)
+          content()
+        }
+      }
     }
   }
 }
