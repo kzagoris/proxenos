@@ -252,19 +252,19 @@ command…**; and **Connection** (`Ctrl+3`), one row each for **Runtime**, **Tun
 Runtime and every Access Level as they were.
 
 On a fresh install the status line shows **Connector · Unconfirmed**. Under **Connection →
-Connector** are the instructions: **Settings → Plugins → Add → Add MCP server** (or
-**+ → Add custom MCP server**), set **Connection** to
-**Tunnel** with your tunnel ID, and choose **No authentication**. Select **I created the
+Connector** are the instructions: **use ChatGPT on the web at [chatgpt.com](https://chatgpt.com/)**,
+open **Plugins from the main sidebar → Add → Add custom MCP server**, set **Connection** to
+**Tunnel**, enter **the same tunnel ID from the tunnel you created in OpenAI Platform and saved
+in Proxenos**, and choose **No authentication**. Create the plugin, review its tools, and click
+**Connect** for the plugin when prompted. Select **I created the
 connector again** once you have completed setup; this records your confirmation, not a
 connectivity measurement. **Connection → Runtime** has **Stop Runtime…**, and **Start Runtime**
 while it is stopped.
 
-If ChatGPT's desktop form only offers **STDIO** and **Streamable HTTP**, open
-[ChatGPT on the web](https://chatgpt.com/) and add the tunnel there. The desktop form configures
-direct MCP connections; a tunnel ID is neither a server URL nor a command to launch. Look for
-**Connection → Tunnel**, as described in OpenAI's
-[connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). If Tunnel is
-unavailable there too, check custom MCP access with your ChatGPT workspace administrator.
+**Settings → Plugins** on the web manages installed plugins. Creation is on the main
+**Plugins** page, as described in OpenAI's
+[connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). If custom MCP
+access is unavailable there, check with your ChatGPT workspace administrator.
 
 From a terminal, or on the portable archive, use the TUI:
 
@@ -279,8 +279,8 @@ run only; previous runs stay stored in the Runtime but are not shown in either f
 In the TUI, `[i]` opens **Review**: one row per link — **Runtime**, **Tunnel**, **Connector** — each with
 its own state, and `[Enter]` opens the selected row's detail. On a fresh install the status
 line shows **Connector · Unconfirmed**; the Connector detail carries the instructions:
-**Settings → Plugins → Add → Add MCP server** (or **+ → Add custom MCP server**), set
-**Connection** to **Tunnel** with your tunnel ID, and
+**ChatGPT on the web → Plugins from the main sidebar → Add → Add custom MCP server**, set
+**Connection** to **Tunnel**, enter **the same tunnel ID from your OpenAI Platform tunnel**, and
 choose **No authentication**. Press `[C]` there once you have
 completed setup; this records your confirmation, not a connectivity measurement.
 A connection failure and the tunnel's own words are on the Tunnel row and its detail. A stage

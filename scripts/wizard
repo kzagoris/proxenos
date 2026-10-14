@@ -349,15 +349,16 @@ done
 note "Held in memory only, until it is written in stage 6."
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "Check custom MCP access in ChatGPT"
+stage "Check custom MCP access in ChatGPT on the web"
 say "Open ChatGPT on the web. Custom MCP access depends on your account and"
 say "workspace policy. If your account requires developer mode, enable it"
 say "in ChatGPT settings. Menu locations vary by version."
-open_url "https://chatgpt.com/#settings"
-step "Check Settings → Plugins for Add → Add MCP server (or Add custom MCP server)."
+open_url "https://chatgpt.com/"
+step "Open Plugins from the main sidebar, then Add → Add custom MCP server."
+note "Settings → Plugins manages installed plugins; creation is on the main Plugins page."
 note "If custom MCP access is unavailable, ask your workspace administrator."
-note "A form with only STDIO and Streamable HTTP configures direct MCP"
-note "connections. For this setup, use the web form with Connection: Tunnel."
+note "When creating the connection, choose Connection: Tunnel and enter the"
+note "same tunnel ID you copied when creating the tunnel in OpenAI Platform."
 printf '\n'
 pause "Access checked? Press Enter."
 

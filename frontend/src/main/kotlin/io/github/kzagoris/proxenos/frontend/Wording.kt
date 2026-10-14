@@ -183,15 +183,12 @@ object Wording {
       "once, so that silence is expected rather than a fault to hunt."
 
   const val CHATGPT_MCP_STEPS: String =
-    "1. Open ChatGPT → Settings → Plugins.\n" +
-      "2. Choose Add → Add MCP server (some versions show + → Add custom MCP server).\n" +
-      "3. Choose Connection: Tunnel, enter the tunnel ID, and set Authentication: No authentication. " +
-      "Review the warning, create the plugin, and review the discovered tools."
-
-  const val CHATGPT_DIRECT_MCP: String =
-    "If the form only offers STDIO and Streamable HTTP, open ChatGPT on the web at https://chatgpt.com " +
-      "and add the tunnel there. The desktop form configures direct MCP connections. " +
-      "A tunnel ID is not a server URL or a command to launch. Look for Connection: Tunnel."
+    "1. Use ChatGPT on the web at https://chatgpt.com in your browser.\n" +
+      "2. Open Plugins from the main sidebar, choose Add, then Add custom MCP server.\n" +
+      "3. Set Connection: Tunnel. Enter the ID of the tunnel you created in OpenAI Platform, " +
+      "the same tunnel ID you saved in Proxenos during tunnel setup.\n" +
+      "4. Set Authentication: No authentication. Review the warning, create the plugin, and review the discovered tools.\n" +
+      "5. Click Connect for your plugin when ChatGPT prompts you."
 
   const val CHATGPT_CONNECTION_GUIDE: String = "https://developers.openai.com/plugins/deploy/connect-chatgpt"
 
@@ -204,7 +201,6 @@ object Wording {
     "Connector Unconfirmed: this Runtime cannot verify that ChatGPT is using a connector created from this Runtime's current tool list. " +
       "ChatGPT saves that tool list when the connector is created and does not refresh it later. Create the connector again:",
     "Delete the app in ChatGPT, then follow these steps: ${CHATGPT_MCP_STEPS.replace('\n', ' ')}",
-    CHATGPT_DIRECT_MCP,
     "Use No authentication, not the OAuth default: this MCP endpoint does not implement OAuth. " +
       "The Runtime uses the runtime key saved on this machine to connect to the tunnel.",
     "Nothing on this machine can check whether these were done. $acknowledge records your word that they were; it is not a measurement.",

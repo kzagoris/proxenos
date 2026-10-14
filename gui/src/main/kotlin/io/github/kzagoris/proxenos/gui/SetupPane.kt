@@ -307,7 +307,7 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
 @Composable
 private fun SetupChatGPT(state: GuiState, send: (GuiIntent) -> Unit) {
   val tunnelId = state.setupSavedTunnelId ?: state.setupTunnelId
-  SetupTitle("Add Proxenos to ChatGPT", "Create a custom MCP plugin using your tunnel. Keep the Runtime running while you do this.")
+  SetupTitle("Add Proxenos to ChatGPT on the web", "Open chatgpt.com in your browser and use Plugins from the main sidebar. Keep the Runtime running while you do this.")
   Text(Wording.CHATGPT_MCP_STEPS)
   ValueCard(listOf("Name" to "Proxenos", "Connection" to "Tunnel",
     "Tunnel ID" to tunnelId.ifBlank { "Use the tunnel configured for this Runtime" }, "Authentication" to "No authentication"))
@@ -317,8 +317,8 @@ private fun SetupChatGPT(state: GuiState, send: (GuiIntent) -> Unit) {
     SetupLink("Open ChatGPT on the web", CHATGPT)
     SetupLink("OpenAI connection guide", Wording.CHATGPT_CONNECTION_GUIDE)
   }
-  Section("I only see STDIO and Streamable HTTP")
-  Text(Wording.CHATGPT_DIRECT_MCP)
+  Section("I opened Settings → Plugins")
+  Text("Return to the main ChatGPT page and open Plugins from its sidebar. Settings → Plugins manages installed plugins; create this connection from the main Plugins page on the web.")
   Section("My tunnel isn’t listed")
   Text("Check that it is associated with this ChatGPT workspace, and that you have Tunnels Read + Use. If available, paste the tunnel ID directly.")
   Section("I can’t find the option to add a plugin")
@@ -337,7 +337,7 @@ private fun SetupTry(state: GuiState, send: (GuiIntent) -> Unit) {
     Shaded { SelectionContainer { Text(progress.prompt(state.snapshot), fontFamily = LocalMono.current) } }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       SetupCopy("Copy prompt", progress.prompt(state.snapshot))
-    SetupLink("Open ChatGPT on the web", CHATGPT)
+      SetupLink("Open ChatGPT on the web", CHATGPT)
     }
     SetupNote("The Operation will also appear in Activity.", title = "Waiting for a successful ChatGPT Root listing",
       busy = state.snapshot?.runtime?.state == RuntimeState.Connected && progress.selected(state.snapshot) != null)
