@@ -17,7 +17,7 @@ docs/INSTALL.md            this file
 docs/THIRD-PARTY.md        generated notices from the resolved runtime classpaths
 docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
 jre/                       linux-x64 archive only: the Java runtime the launchers use
-share/icons/               linux-x64 archive only: the optional menu icon
+share/icons/               matching desktop SVG and ChatGPT plugin PNG
 ```
 
 `tunnel-client` is **not** in it, and it is not committed to this repository either. Step 4 fetches
@@ -117,6 +117,8 @@ It writes `~/.local/share/applications/proxenos.desktop` and a matching icon und
 `~/.local/share/icons/hicolor/`, or under `$XDG_DATA_HOME` when set. The entry uses the tree's
 absolute `bin/gui` path. Run the installer again after moving the tree to update that path.
 This is opt-in and does not create an autostart entry.
+The running window uses the same Proxenos icon even without the menu entry. After upgrading,
+run the installer again to refresh an existing menu icon.
 
 ## 4. Install tunnel-client, verified
 
@@ -265,6 +267,10 @@ while it is stopped.
 **Plugins** page, as described in OpenAI's
 [connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). If custom MCP
 access is unavailable there, check with your ChatGPT workspace administrator.
+
+For the plugin's icon, upload `share/icons/proxenos.png` from the installation tree
+(`~/.local/opt/proxenos/share/icons/proxenos.png` with the layout above). It is a 512 × 512 PNG
+matching the desktop icon. Its colors do not change the application's light or dark theme.
 
 From a terminal, or on the portable archive, use the TUI:
 

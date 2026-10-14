@@ -54,6 +54,10 @@ distributions {
       into("docs") {
         from(tasks.named("generateThirdPartyNotices"))
       }
+      into("share/icons") {
+        from("scripts/proxenos.svg", "gui/src/main/composeResources/drawable/proxenos.png")
+        filePermissions { unix("rw-r--r--") }
+      }
       into("docs") {
         // Under docs/ as in the repository, so its relative links hold in both places.
         from("docs/INSTALL.md")
@@ -85,10 +89,6 @@ tasks.named<Sync>("installDist") {
   into("bin") {
     from("scripts/install-desktop-entry")
     filePermissions { unix("rwxr-xr-x") }
-  }
-  into("share/icons") {
-    from("scripts/proxenos.svg")
-    filePermissions { unix("rw-r--r--") }
   }
 }
 
@@ -137,10 +137,6 @@ distributions {
       into("bin") {
         from("scripts/install-desktop-entry")
         filePermissions { unix("rwxr-xr-x") }
-      }
-      into("share/icons") {
-        from("scripts/proxenos.svg")
-        filePermissions { unix("rw-r--r--") }
       }
       filesMatching("bin/gui") { permissions { unix("rwxr-xr-x") } }
       into("jre") {

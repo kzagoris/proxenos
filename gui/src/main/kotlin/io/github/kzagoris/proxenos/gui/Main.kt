@@ -15,6 +15,9 @@ import io.github.kzagoris.proxenos.control.ControlSocket
 import io.github.kzagoris.proxenos.coreapi.ActivityEntryId
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
+import io.github.kzagoris.proxenos.gui.res.Res
+import io.github.kzagoris.proxenos.gui.res.proxenos
+import org.jetbrains.compose.resources.painterResource
 import java.awt.Toolkit
 import java.nio.file.Path
 import java.time.Instant
@@ -67,7 +70,7 @@ fun main(args: Array<String>) {
         // The native window still uses the JVM density; LocalDensity only sizes its content (§9).
         val nativeDensity = LocalDensity.current.density
         val windowRatio = (scale ?: nativeDensity) / nativeDensity
-        Window(onCloseRequest = close, title = "Proxenos",
+        Window(onCloseRequest = close, title = "Proxenos", icon = painterResource(Res.drawable.proxenos),
           state = rememberWindowState(width = (1100 * windowRatio).dp, height = (760 * windowRatio).dp),
           onPreviewKeyEvent = { event -> shortcut(event, state, owner::accept, close) },
         ) {
