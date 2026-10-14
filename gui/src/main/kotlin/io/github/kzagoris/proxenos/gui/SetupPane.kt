@@ -308,14 +308,17 @@ private fun SetupWorkspace(state: GuiState, send: (GuiIntent) -> Unit, chooser: 
 private fun SetupChatGPT(state: GuiState, send: (GuiIntent) -> Unit) {
   val tunnelId = state.setupSavedTunnelId ?: state.setupTunnelId
   SetupTitle("Add Proxenos to ChatGPT", "Create a custom MCP plugin using your tunnel. Keep the Runtime running while you do this.")
-  Text("1. Open ChatGPT → Plugins → + → Add custom MCP server.\n2. Enter these settings, review ChatGPT’s warning, then choose Create as a plugin.")
+  Text(Wording.CHATGPT_MCP_STEPS)
   ValueCard(listOf("Name" to "Proxenos", "Connection" to "Tunnel",
     "Tunnel ID" to tunnelId.ifBlank { "Use the tunnel configured for this Runtime" }, "Authentication" to "No authentication"))
   FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     SetupCopy("Copy name", "Proxenos")
     if (tunnelId.isNotBlank()) SetupCopy("Copy tunnel ID", tunnelId)
-    SetupLink("Open ChatGPT", CHATGPT)
+    SetupLink("Open ChatGPT on the web", CHATGPT)
+    SetupLink("OpenAI connection guide", Wording.CHATGPT_CONNECTION_GUIDE)
   }
+  Section("I only see STDIO and Streamable HTTP")
+  Text(Wording.CHATGPT_DIRECT_MCP)
   Section("My tunnel isn’t listed")
   Text("Check that it is associated with this ChatGPT workspace, and that you have Tunnels Read + Use. If available, paste the tunnel ID directly.")
   Section("I can’t find the option to add a plugin")
@@ -334,7 +337,7 @@ private fun SetupTry(state: GuiState, send: (GuiIntent) -> Unit) {
     Shaded { SelectionContainer { Text(progress.prompt(state.snapshot), fontFamily = LocalMono.current) } }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       SetupCopy("Copy prompt", progress.prompt(state.snapshot))
-      SetupLink("Open ChatGPT", CHATGPT)
+    SetupLink("Open ChatGPT on the web", CHATGPT)
     }
     SetupNote("The Operation will also appear in Activity.", title = "Waiting for a successful ChatGPT Root listing",
       busy = state.snapshot?.runtime?.state == RuntimeState.Connected && progress.selected(state.snapshot) != null)

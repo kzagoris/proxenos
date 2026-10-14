@@ -241,8 +241,8 @@ class ShellTest {
   fun `Unconfirmed shows the literal steps and records only the user's word`() = runComposeUiTest {
     val gui = shell(attached(RuntimeState.Connected, unconfirmed = true).after(GuiIntent.ShowStage(Stage.Connector)))
     onNodeWithText("Delete the app in ChatGPT", substring = true).assertExists()
-    onNodeWithText("Plugins → Add → Create MCP App", substring = true).assertExists()
-    onNodeWithText("Connection: Tunnel, with this tunnel's ID", substring = true).assertExists()
+    onNodeWithText("Add → Add MCP server", substring = true).assertExists()
+    onNodeWithText("Connection: Tunnel, enter the tunnel ID", substring = true).assertExists()
     onNodeWithText("Authentication: No authentication", substring = true).assertExists()
     onNodeWithText("records your word", substring = true).assertExists()
     onNodeWithText("I created the connector again").assertIsEnabled().performClick()

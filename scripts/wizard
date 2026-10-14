@@ -349,19 +349,17 @@ done
 note "Held in memory only, until it is written in stage 6."
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "Enable developer mode in ChatGPT"
-say "Developer mode is what lets ChatGPT list a tunnel and build a connector"
-say "against it. It is a ChatGPT setting, not a Platform one, and it is not"
-say "where you would look for it:"
-printf '\n'
-say "  ${BOLD}Settings → Security and login${RESET}"
-printf '\n'
+stage "Check custom MCP access in ChatGPT"
+say "Open ChatGPT on the web. Custom MCP access depends on your account and"
+say "workspace policy. If your account requires developer mode, enable it"
+say "in ChatGPT settings. Menu locations vary by version."
 open_url "https://chatgpt.com/#settings"
-step "Open Settings → Security and login, and enable developer mode."
-note "On Enterprise/Edu a workspace admin must grant developer-mode access"
-note "first; until they do, the toggle is not yours to flip."
+step "Check Settings → Plugins for Add → Add MCP server (or Add custom MCP server)."
+note "If custom MCP access is unavailable, ask your workspace administrator."
+note "A form with only STDIO and Streamable HTTP configures direct MCP"
+note "connections. For this setup, use the web form with Connection: Tunnel."
 printf '\n'
-pause "Enabled? Press Enter."
+pause "Access checked? Press Enter."
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Write the credentials file"

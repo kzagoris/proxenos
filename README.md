@@ -116,8 +116,10 @@ five steps:
    when you cannot find a setting. **Save & connect** saves the credentials and starts the Runtime.
 3. **Workspace** registers a directory at **Read**, or lets you choose a workspace you have
    already registered.
-4. **ChatGPT** lists the settings for the new plugin: **Connection · Tunnel**, your tunnel ID,
-   and **No authentication**. Create the plugin in ChatGPT, then confirm here.
+4. **ChatGPT** opens the plugin handoff: **Settings → Plugins → Add → Add MCP server**,
+   then **Connection · Tunnel**, your tunnel ID, and **No authentication**. If the desktop form
+   only offers STDIO and Streamable HTTP, use **Open ChatGPT on the web** to add the tunnel.
+   Create the plugin in ChatGPT, then confirm here.
 5. **Try it** waits until ChatGPT lists the workspace's root with `list_directory`, then shows
    the Operation it received and when. Your confirmation in step 4 does not count; only a real,
    successful request from ChatGPT does.
@@ -125,6 +127,8 @@ five steps:
 ![Welcome step: how this machine, the tunnel and ChatGPT connect, a local requirements check, and the choice between a new and an existing tunnel](docs/images/gui-setup-welcome.png)
 
 ![Tunnel step: links to Platform tunnel settings, expandable creation and tunnel ID guides, and the tunnel ID field](docs/images/gui-setup-tunnel.png)
+
+![ChatGPT step: current Add MCP server menu labels, Tunnel settings, and the web handoff when the desktop form only offers STDIO and Streamable HTTP](docs/images/gui-setup-chatgpt.png)
 
 You can leave at any point: **Finish later** returns to the main window, and **Continue setup**
 in **Connection** picks up where you left off. Closing the window keeps your completed steps and
@@ -193,17 +197,23 @@ follow after terminal setup, or when you need to create the connection again.
 
 Keep the Runtime running throughout these steps.
 
-1. In ChatGPT, open **Settings → Security and login** and enable **Developer mode**. A workspace administrator may need to grant access first.
-2. Open **Plugins**, select **Add** at the top right, and choose **Create MCP App**. The **New Plugin** dialog opens.
+1. Open ChatGPT's **Settings → Plugins**. If your account requires developer mode for custom MCP access, enable it in settings; a workspace administrator may need to grant access first.
+2. Select **Add → Add MCP server**. Some versions label this **+ → Add custom MCP server**.
 3. Give it a name such as **Proxenos** and a description such as “Read and work with my registered local workspaces.”
-4. Under **Connection**, switch from **Server URL** to **Tunnel** and enter the `tunnel_...` ID shown during setup.
+4. In the connection form, choose **Connection → Tunnel** and select your tunnel or enter the `tunnel_...` ID shown during setup. If the form only offers **Type → STDIO / Streamable HTTP**, open [ChatGPT on the web](https://chatgpt.com/) and add the tunnel there. That desktop form configures direct MCP connections; the tunnel ID is neither a server URL nor a command to launch. Look for the form with **Connection → Tunnel**.
 5. Set **Authentication** to **No authentication**. The dialog defaults to OAuth, which fails before any tool call. This application's MCP endpoint does not implement OAuth; the tunnel uses the runtime key you saved locally.
-6. Tick **I understand and want to continue**, select **Create**, and then **Connect Proxenos**.
+6. Review and accept ChatGPT's warning, create the plugin (**Create as a plugin** in the documented web flow), and review the discovered tools. Install or connect **Proxenos** if prompted.
 7. Start a new conversation, type **`@`**, and pick **Proxenos** from the **Plugins** list.
 
 With ChatGPT's default permission, **Allow low-risk tools**, read-only calls such as `git_status` run at once, while calls that change files or run commands may ask for approval first. **See details** in that prompt shows the exact arguments, including the command.
 
-These menu locations follow OpenAI's [connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt) as of September 2026. UI labels and availability can vary by account.
+The desktop menu labels were checked against screenshots on October 14, 2026. OpenAI's
+[connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt) and
+[Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+still describe a separate **Connection → Tunnel** form. Its
+[desktop MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=desktop) describes direct
+STDIO and Streamable HTTP connections. UI labels and tunnel availability can vary by account
+and surface; the desktop form shown in those screenshots has no Tunnel option.
 
 Ask ChatGPT:
 

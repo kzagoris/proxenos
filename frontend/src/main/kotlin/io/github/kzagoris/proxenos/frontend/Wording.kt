@@ -182,6 +182,19 @@ object Wording {
       "reachable with nobody present. After a reboot every call from ChatGPT fails until the Runtime is started " +
       "once, so that silence is expected rather than a fault to hunt."
 
+  const val CHATGPT_MCP_STEPS: String =
+    "1. Open ChatGPT → Settings → Plugins.\n" +
+      "2. Choose Add → Add MCP server (some versions show + → Add custom MCP server).\n" +
+      "3. Choose Connection: Tunnel, enter the tunnel ID, and set Authentication: No authentication. " +
+      "Review the warning, create the plugin, and review the discovered tools."
+
+  const val CHATGPT_DIRECT_MCP: String =
+    "If the form only offers STDIO and Streamable HTTP, open ChatGPT on the web at https://chatgpt.com " +
+      "and add the tunnel there. The desktop form configures direct MCP connections. " +
+      "A tunnel ID is not a server URL or a command to launch. Look for Connection: Tunnel."
+
+  const val CHATGPT_CONNECTION_GUIDE: String = "https://developers.openai.com/plugins/deploy/connect-chatgpt"
+
   /**
    * The Unconfirmed detail: the literal steps, and plainly that nothing here can check them — so
    * [acknowledge], the frontend's name for the act that records it, records the user's word and
@@ -190,8 +203,10 @@ object Wording {
   fun unconfirmed(acknowledge: String): List<String> = listOf(
     "Connector Unconfirmed: this Runtime cannot verify that ChatGPT is using a connector created from this Runtime's current tool list. " +
       "ChatGPT saves that tool list when the connector is created and does not refresh it later. Create the connector again:",
-    "1. Delete the app in ChatGPT.  2. Plugins → Add → Create MCP App.  3. Connection: Tunnel, with this tunnel's ID.  " +
-      "4. Authentication: No authentication, not the OAuth default: OAuth fails before any tool call.",
+    "Delete the app in ChatGPT, then follow these steps: ${CHATGPT_MCP_STEPS.replace('\n', ' ')}",
+    CHATGPT_DIRECT_MCP,
+    "Use No authentication, not the OAuth default: this MCP endpoint does not implement OAuth. " +
+      "The Runtime uses the runtime key saved on this machine to connect to the tunnel.",
     "Nothing on this machine can check whether these were done. $acknowledge records your word that they were; it is not a measurement.",
   )
 
