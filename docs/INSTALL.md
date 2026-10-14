@@ -268,9 +268,10 @@ while it is stopped.
 [connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). If custom MCP
 access is unavailable there, check with your ChatGPT workspace administrator.
 
-For the plugin's icon, upload `share/icons/proxenos.png` from the installation tree
-(`~/.local/opt/proxenos/share/icons/proxenos.png` with the layout above). It is a 512 × 512 PNG
-matching the desktop icon. Its colors do not change the application's light or dark theme.
+During plugin creation, use `share/icons/proxenos.png` from the unpacked Proxenos archive
+as the plugin's icon. With the installation layout above, upload
+`~/.local/opt/proxenos/share/icons/proxenos.png`. Both archives include this 512 × 512 PNG,
+which matches the desktop icon.
 
 From a terminal, or on the portable archive, use the TUI:
 

@@ -201,7 +201,7 @@ not the page for creating this connection. Keep the Runtime running throughout t
 
 1. Open **Plugins from the main sidebar**. If your account requires developer mode for custom MCP access, enable it in settings; a workspace administrator may need to grant access first.
 2. Select **Add → Add custom MCP server** to open the connection form.
-3. Give it a name such as **Proxenos** and a description such as “Read and work with my registered local workspaces.”
+3. Give it a name such as **Proxenos** and a description such as “Read and work with my registered local workspaces.” For the plugin's icon, upload **`share/icons/proxenos.png`** from the unpacked Proxenos archive. Both archives include this image.
 4. Set **Connection → Tunnel**. Enter the ID of the tunnel you created in OpenAI Platform: **the same `tunnel_...` ID you saved in Proxenos during tunnel setup**. Use **Copy tunnel ID** in the Proxenos setup screen to copy that value.
 5. Set **Authentication** to **No authentication**. The dialog defaults to OAuth, which fails before any tool call. This application's MCP endpoint does not implement OAuth; the tunnel uses the runtime key you saved locally.
 6. Review and accept ChatGPT's warning, create the plugin (**Create as a plugin** in the documented web flow), and review the discovered tools. When the connection dialog appears, click **Connect Proxenos** (or **Connect** followed by the name you chose).
