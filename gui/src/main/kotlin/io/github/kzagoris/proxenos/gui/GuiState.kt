@@ -64,6 +64,8 @@ data class GuiState(
   val setupError: String? = null,
   val setupBusy: Boolean = false,
   val setupChecks: List<String>? = null,
+  val setupTunnelMissing: Boolean = false,
+  val setupInstallOutput: String = "",
   val stopConfirmation: Boolean = false,
   val inFlight: ManagementAct<*>? = null,
   /** An act's outcome for the snackbar. */
@@ -185,7 +187,8 @@ data class GuiState(
     val newStart = next is Attachment.Attached && snapshot?.start?.id != next.snapshot.start?.id
     return if (newStart) GuiState(attachment = next, inFlight = inFlight, destination = destination, stage = stage,
       setup = setup, setupVisible = setupVisible, setupTunnelId = setupTunnelId, setupSavedTunnelId = setupSavedTunnelId,
-      setupCredentialRevision = setupCredentialRevision, setupError = setupError, setupBusy = setupBusy, setupChecks = setupChecks)
+      setupCredentialRevision = setupCredentialRevision, setupError = setupError, setupBusy = setupBusy, setupChecks = setupChecks,
+      setupTunnelMissing = setupTunnelMissing, setupInstallOutput = setupInstallOutput)
     else {
       val attached = next is Attachment.Attached
       val stillThere = next is Attachment.Attached && next.snapshot.workspaces.any { it.workspace.id == workspace }
@@ -212,7 +215,7 @@ data class GuiState(
   fun after(intent: GuiIntent): GuiState = when (intent) {
     GuiIntent.OpenSetup -> if (dialogOpen || setup == null) this else copy(setupVisible = true)
     GuiIntent.FinishLater -> if (dialogOpen || setupBusy) this else copy(setupVisible = false)
-    GuiIntent.CheckSetup, is GuiIntent.SetupNavigate, is GuiIntent.SetupAssociated, is GuiIntent.SetupChoose,
+    GuiIntent.CheckSetup, GuiIntent.InstallTunnelClient, is GuiIntent.SetupNavigate, is GuiIntent.SetupAssociated, is GuiIntent.SetupChoose,
     is GuiIntent.SaveCredentials, GuiIntent.SetupConfirmPlugin, GuiIntent.CompleteSetup -> this
     is GuiIntent.Show -> if (dialogOpen) this else copy(destination = intent.destination, setupVisible = false)
     is GuiIntent.ShowStage -> if (dialogOpen) this else copy(destination = Destination.Connection, stage = intent.stage, setupVisible = false)

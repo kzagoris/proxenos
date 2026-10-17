@@ -21,6 +21,31 @@ import kotlin.test.*
 @OptIn(ExperimentalTestApi::class)
 class SetupPaneTest {
   @Test
+  fun `welcome offers explicit installation with progress failure retry and installed status`() = runComposeUiTest {
+    val sent = mutableListOf<GuiIntent>()
+    val shown = mutableStateOf(GuiState(attachment = Attachment.Absent(Reason.NotAnswering),
+      setup = SetupProgress(), setupVisible = true, setupTunnelMissing = true,
+      setupChecks = listOf("The tunnel client is unavailable.")))
+    setContent { ProxenosTheme(false) { Box(Modifier.size(700.dp, 760.dp)) {
+      Shell(shown.value, sent::add)
+    } } }
+    assertTrue(sent.isEmpty())
+    onNodeWithText("Install tunnel-client").performScrollTo().assertIsEnabled().performClick()
+    assertEquals(listOf<GuiIntent>(GuiIntent.InstallTunnelClient), sent)
+    runOnIdle { shown.value = shown.value.copy(setupBusy = true, setupInstallOutput = "Downloading the pinned release…") }
+    onNodeWithText("Installing tunnel-client…").performScrollTo().assertIsNotEnabled()
+    onNodeWithText("Check local requirements").performScrollTo().assertIsNotEnabled()
+    onNodeWithText("Downloading the pinned release…").performScrollTo().assertIsDisplayed()
+    runOnIdle { shown.value = shown.value.copy(setupBusy = false, setupError = "Checksum mismatch. Try again.") }
+    onNodeWithText("Checksum mismatch. Try again.").performScrollTo().assertIsDisplayed()
+    onNodeWithText("Install tunnel-client").performScrollTo().assertIsEnabled().performClick()
+    assertEquals(2, sent.size)
+    runOnIdle { shown.value = shown.value.copy(setupTunnelMissing = false, setupChecks = emptyList(), setupError = null) }
+    onNodeWithText("Install tunnel-client").assertDoesNotExist()
+    onNodeWithText("Proxenos and the tunnel client are installed.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
   fun `saved credential action shows hover and keyboard focus in both themes`() = runComposeUiTest {
     val dark = mutableStateOf(false)
     setContent { ProxenosTheme(dark.value) { Box(Modifier.size(700.dp, 760.dp)) {

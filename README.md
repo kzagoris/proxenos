@@ -60,7 +60,7 @@ architecture. Both attach to the same Runtime, and you can use them side by side
 
 - **Linux**, with a terminal, Bash, Git, and `setsid` (usually supplied by util-linux).
 - **Java 26 or newer** to run the portable archive or to build; the linux-x64 archive bundles its own. The repository includes the Gradle wrapper; the tool versions are recorded in [mise.toml](mise.toml).
-- The official **`tunnel-client`** executable, available from [OpenAI Platform tunnel settings](https://platform.openai.com/settings/organization/tunnels) or the [official releases](https://github.com/openai/tunnel-client/releases/latest). Install it with the distribution’s `bin/install-tunnel-client`; it verifies the release checksum before placing it in the state directory’s `tools/`. See [installation instructions](docs/INSTALL.md).
+- The official **`tunnel-client`** executable, available from [OpenAI Platform tunnel settings](https://platform.openai.com/settings/organization/tunnels) or the [official releases](https://github.com/openai/tunnel-client/releases/latest). On linux-x64, choose **Install tunnel-client** in the desktop setup wizard; from a terminal, use the distribution’s `bin/install-tunnel-client`. Both use the same verified installer before placing it in the state directory’s `tools/`. See [installation instructions](docs/INSTALL.md).
 - A ChatGPT account/workspace with **developer mode** available, plus access to OpenAI Platform tunnels. Availability depends on your account and workspace policy.
 - A normal Linux login session with `XDG_RUNTIME_DIR` set, and outbound HTTPS access to OpenAI.
 - For the desktop app: x86_64, and X11 or XWayland with libGL, libX11 and fontconfig.
@@ -96,7 +96,6 @@ Download a release from [GitHub Releases](https://github.com/kzagoris/proxenos/r
 mkdir -p ~/.local/opt
 tar -xzf proxenos-<version>-linux-x64.tar.gz -C ~/.local/opt
 cd ~/.local/opt/proxenos-<version>-linux-x64
-./bin/install-tunnel-client
 ```
 
 The tree holds the launchers, the setup wizard, the verified tunnel installer, generated
@@ -126,8 +125,9 @@ Open **Proxenos** from your application menu, or run `./bin/gui`. On a new insta
 setup wizard that takes you from creating a tunnel to ChatGPT's first successful request, in
 five steps:
 
-1. **Welcome** checks that `tunnel-client` is installed and asks whether you want a new tunnel
-   or one you already have.
+1. **Welcome** checks local requirements and offers **Install tunnel-client** if it is missing.
+   Click it to download and verify the pinned release; progress and failures appear here, and a
+   successful install rechecks requirements automatically. Choose a new tunnel or one you already have.
 2. **Tunnel** walks you through creating the tunnel in OpenAI Platform, associating it with your
    ChatGPT workspace, and entering its tunnel ID and runtime key. Expand the illustrated guides
    when you cannot find a setting. **Save & connect** saves the credentials and starts the Runtime.
@@ -149,9 +149,11 @@ five steps:
 
 You can leave at any point: **Finish later** returns to the main window, and **Continue setup**
 in **Connection** picks up where you left off. Closing the window keeps your completed steps and
-leaves the Runtime running, but it discards a runtime key you have not saved yet. The wizard
-checks for `tunnel-client` but never installs it, so run `./bin/install-tunnel-client` from
-step 1 first.
+leaves the Runtime running, but it discards a runtime key you have not saved yet. Installation
+requires your explicit click, needs no root or `PATH` changes, and does not start the Runtime.
+An existing executable on `PATH` takes priority. If installation fails, review its details,
+correct the problem, and choose **Install tunnel-client** again. For the terminal flow, run
+`./bin/install-tunnel-client` before `./bin/wizard`.
 
 The credentials are saved to `${XDG_CONFIG_HOME:-~/.config}/proxenos/credentials` with mode
 `0600`, so only your user can read or write them. To replace them while the Runtime is running,

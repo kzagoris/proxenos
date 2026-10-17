@@ -149,7 +149,15 @@ private fun SetupWelcome(state: GuiState, send: (GuiIntent) -> Unit) {
     else -> if (checks.isEmpty()) Requirement("Proxenos and the tunnel client are installed.", Tone.Ok)
       else checks.forEach { Requirement(it, Tone.Warn) }
   }
-  Btn("Check local requirements", { send(GuiIntent.CheckSetup) })
+  if (state.setupTunnelMissing) {
+    Text("Install the pinned release after verifying its SHA-256 checksum. This needs no root access and does not start the Runtime.")
+    Btn(if (state.setupBusy) "Installing tunnel-client…" else "Install tunnel-client",
+      { send(GuiIntent.InstallTunnelClient) }, enabled = !state.setupBusy, primary = true)
+  }
+  if (state.setupInstallOutput.isNotBlank()) SelectionContainer {
+    Text(state.setupInstallOutput.trimEnd(), style = MaterialTheme.typography.bodySmall)
+  }
+  Btn("Check local requirements", { send(GuiIntent.CheckSetup) }, enabled = !state.setupBusy)
   Text("You’ll need access to OpenAI Platform tunnel settings and custom MCP plugins in your ChatGPT workspace. Your workspace may require an administrator to enable this.")
   SetupNote("Let ChatGPT inspect a Workspace before deciding whether it may change files or run programs.", title = "Start with Read")
   FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

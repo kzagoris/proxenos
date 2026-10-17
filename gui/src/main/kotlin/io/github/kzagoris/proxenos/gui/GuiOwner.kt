@@ -35,6 +35,7 @@ sealed interface GuiIntent {
   data object OpenSetup : GuiIntent
   data object FinishLater : GuiIntent
   data object CheckSetup : GuiIntent
+  data object InstallTunnelClient : GuiIntent
   data class SetupNavigate(val step: SetupStep, val tunnelPart: Int = 0, val tunnelId: String? = null) : GuiIntent
   data class SetupAssociated(val associated: Boolean) : GuiIntent
   data class SetupChoose(val id: WorkspaceId) : GuiIntent
@@ -140,7 +141,8 @@ class GuiOwner(
     scope.launch {
       val state = current.value
       when (intent) {
-        GuiIntent.CheckSetup -> checkSetup()
+        GuiIntent.CheckSetup -> if (!state.setupBusy) checkSetup()
+        GuiIntent.InstallTunnelClient -> installTunnelClient()
         is GuiIntent.SetupAssociated -> state.setup?.let { changeSetup(it.copy(associated = intent.associated)) }
         is GuiIntent.SetupChoose -> if (state.snapshot?.workspaces?.any { it.workspace.id == intent.id && it.usable } == true)
           state.setup?.let { changeSetup(it.copy(workspace = intent.id.value, waitingSince = null, completed = false)) }
@@ -210,10 +212,31 @@ class GuiOwner(
   private suspend fun checkSetup() {
     val files = setupFiles ?: return
     try {
-      val checks = withContext(Dispatchers.IO) { files.prerequisites() }
-      current.value = current.value.copy(setupChecks = checks)
+      val (checks, missing) = withContext(Dispatchers.IO) { files.prerequisites() to (files.tunnelClient() == null) }
+      current.value = current.value.copy(setupChecks = checks, setupTunnelMissing = missing)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
     } catch (_: Exception) {
-      current.value = current.value.copy(setupChecks = listOf("Could not check local requirements. Review config.toml and the installed launchers."))
+      current.value = current.value.copy(setupChecks = listOf("Could not check local requirements. Review config.toml and the installed launchers."), setupTunnelMissing = false)
+    }
+  }
+
+  private suspend fun installTunnelClient() {
+    val files = setupFiles ?: return
+    val state = current.value
+    if (state.setupBusy || !state.setupTunnelMissing || !state.setupVisible || state.setup?.step != SetupStep.Welcome) return
+    current.value = state.copy(setupBusy = true, setupError = null, setupInstallOutput = "")
+    try {
+      files.installTunnelClient().collect { line ->
+        current.value = current.value.copy(setupInstallOutput = (current.value.setupInstallOutput + line + "\n").takeLast(8000))
+      }
+      checkSetup()
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failed: Exception) {
+      current.value = current.value.copy(setupError = "Could not install tunnel-client: ${failed.message ?: failed::class.simpleName}")
+    } finally {
+      current.value = current.value.copy(setupBusy = false)
     }
   }
 
