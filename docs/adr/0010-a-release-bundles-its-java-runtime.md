@@ -36,3 +36,10 @@ A dependency that starts using a new JDK module must add it to the list; CI buil
 archive on every commit and the release smoke test fails when it is missing. The bundled archive
 is about 55 MB, the portable one about 17 MB. Moving the JDK pin moves the bundled runtime with
 it, since `jlink` is taken from the same toolchain.
+
+**Amended:** every launcher, the portable ones included, now uses the tree's `jre/` whenever it
+holds a `bin/java`. The bundled archive always carries one, so its launchers behave as above. A
+portable tree on a machine whose default `java` is older than 26 is given a `jre/` by linking it
+to a newer Java's home. That choice then holds however the launcher is started, a systemd unit's
+short environment included, without changing the machine's default Java or anyone's profile; an
+upgrade that replaces the tree links it again.

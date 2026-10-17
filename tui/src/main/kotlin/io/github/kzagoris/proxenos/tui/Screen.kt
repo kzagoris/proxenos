@@ -192,14 +192,16 @@ private fun stageReading(home: Home, stage: Stage): Pair<String, Tone> = when (s
   }
   Stage.Tunnel -> when (val state = home.snapshot?.runtime?.state) {
     null -> Wording.CANT_TELL to Tone.Dim
-    RuntimeState.Connected -> "Connected" to Tone.Good
-    RuntimeState.Connecting -> "Connecting" to Tone.Warn
-    is RuntimeState.Failed -> "Failed" to Tone.Bad
-    RuntimeState.Disconnected -> "Disconnected" to Tone.Dim
+    else -> Wording.tunnel(state) to when (state) {
+      RuntimeState.Connected -> Tone.Good
+      RuntimeState.Connecting -> Tone.Warn
+      is RuntimeState.Failed -> Tone.Bad
+      RuntimeState.Disconnected -> Tone.Dim
+    }
   }
   Stage.Connector -> when (val snapshot = home.snapshot) {
     null -> Wording.CANT_TELL to Tone.Dim
-    else -> if (snapshot.connectorUnconfirmed) "Unconfirmed" to Tone.Warn else "Confirmed" to Tone.Good
+    else -> Wording.connector(snapshot.connectorUnconfirmed) to if (snapshot.connectorUnconfirmed) Tone.Warn else Tone.Good
   }
 }
 

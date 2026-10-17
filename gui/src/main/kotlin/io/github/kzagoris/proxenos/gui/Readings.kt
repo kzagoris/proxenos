@@ -35,17 +35,22 @@ fun GuiState.reading(stage: Stage): Reading {
       is Attachment.Attached -> Reading("Attached", Tone.Ok, Res.drawable.check_circle)
       is Attachment.Absent -> Reading(if (stopped) "Stopped" else "Not running", Tone.Warn, Res.drawable.power_settings_new)
     }
-    Stage.Tunnel -> when (snapshot?.runtime?.state) {
+    Stage.Tunnel -> when (val state = snapshot?.runtime?.state) {
       null -> cantTell
-      RuntimeState.Connected -> Reading("Connected", Tone.Ok, Res.drawable.check_circle)
-      RuntimeState.Connecting -> Reading("Connecting", Tone.Info, Res.drawable.sync)
-      is RuntimeState.Failed -> Reading("Failed", Tone.Bad, Res.drawable.error)
-      RuntimeState.Disconnected -> Reading("Disconnected", Tone.None, Res.drawable.link_off)
+      else -> {
+        val (tone, icon) = when (state) {
+          RuntimeState.Connected -> Tone.Ok to Res.drawable.check_circle
+          RuntimeState.Connecting -> Tone.Info to Res.drawable.sync
+          is RuntimeState.Failed -> Tone.Bad to Res.drawable.error
+          RuntimeState.Disconnected -> Tone.None to Res.drawable.link_off
+        }
+        Reading(Wording.tunnel(state), tone, icon)
+      }
     }
     Stage.Connector -> when {
       snapshot == null -> cantTell
-      snapshot.connectorUnconfirmed -> Reading("Unconfirmed", Tone.Warn, Res.drawable.warning)
-      else -> Reading("Confirmed", Tone.Ok, Res.drawable.check_circle)
+      snapshot.connectorUnconfirmed -> Reading(Wording.connector(snapshot.connectorUnconfirmed), Tone.Warn, Res.drawable.warning)
+      else -> Reading(Wording.connector(snapshot.connectorUnconfirmed), Tone.Ok, Res.drawable.check_circle)
     }
   }
 }

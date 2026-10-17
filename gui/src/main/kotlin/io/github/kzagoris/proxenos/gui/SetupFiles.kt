@@ -1,6 +1,8 @@
 package io.github.kzagoris.proxenos.gui
 
 import io.github.kzagoris.proxenos.control.ConfigToml
+import io.github.kzagoris.proxenos.frontend.LocalSetup
+import io.github.kzagoris.proxenos.frontend.Requirement
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
 import java.nio.file.Files
 import java.nio.file.Path
@@ -12,16 +14,12 @@ import java.util.Properties
 /** Local setup data is separate from Runtime state; credentials never travel in saved progress. */
 class SetupFiles(private val environment: Map<String, String> = System.getenv()) {
   private val directory = ConfigToml.directory(environment)
-  val credentials: Path = directory.resolve("credentials")
+  private val local = LocalSetup(environment)
+  val credentials: Path = local.credentials
   private val progressFile = directory.resolve("setup.properties")
   private val privateFile = PosixFilePermissions.fromString("rw-------")
 
-  fun tunnelId(): String? {
-    if (!Files.isRegularFile(credentials)) return null
-    if (Files.getPosixFilePermissions(credentials).any { it !in privateFile }) return null
-    return Files.readAllLines(credentials).firstOrNull { it.trim().startsWith("TUNNEL_ID=") }
-      ?.substringAfter('=')?.trim()?.takeIf { it.isNotEmpty() }
-  }
+  fun tunnelId(): String? = local.tunnelId()
 
   fun saveCredentials(tunnelId: String, runtimeKey: String) {
     val id = token(tunnelId, "Tunnel ID")
@@ -75,21 +73,9 @@ class SetupFiles(private val environment: Map<String, String> = System.getenv())
     replace(progressFile, text)
   }
 
-  fun prerequisites(runtime: Path? = RuntimeAttachment.executable()): List<String> {
-    val words = mutableListOf<String>()
-    if (runtime == null || !Files.isExecutable(runtime)) words += "The Runtime launcher is unavailable. Install the Proxenos distribution or set PROXENOS_RUNTIME."
-    val config = ConfigToml.read(environment, ignored = "gui_scale")
-    val configured = config.path("tunnel_client", environment, "PROXENOS_TUNNEL_CLIENT")
-    val state = config.path("state_dir", environment, "PROXENOS_STATE_DIR")
-      ?: (environment["XDG_STATE_HOME"]?.let(Path::of)?.takeIf { it.isAbsolute }
-        ?: ConfigToml.home(environment).resolve(".local/state")).resolve("proxenos")
-    val candidates = if (configured != null) listOf(configured) else
-      environment["PATH"].orEmpty().split(':').filter { it.isNotEmpty() }.map { Path.of(it).resolve("tunnel-client") } +
-        listOf(state.resolve("tools/tunnel-client"))
-    if (candidates.none { Files.isRegularFile(it) && Files.isExecutable(it) })
-      words += "The tunnel client is unavailable. Run bin/install-tunnel-client from the Proxenos distribution to install it, then check again."
-    return words
-  }
+  /** The Welcome step's checks: credentials are the Tunnel step's to save, so they are not among them. */
+  fun prerequisites(runtime: Path? = RuntimeAttachment.executable()): List<String> =
+    local.requirements(runtime).filter { !it.met && it.name != Requirement.CREDENTIALS }.map { it.words }
 
   private fun replace(file: Path, text: String) {
     Files.createDirectories(directory, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))

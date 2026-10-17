@@ -3,6 +3,8 @@ package io.github.kzagoris.proxenos.runtime
 import io.github.kzagoris.proxenos.control.ConfigRefused
 import io.github.kzagoris.proxenos.control.ConfigToml
 import io.github.kzagoris.proxenos.control.ControlSocket
+import io.github.kzagoris.proxenos.control.TunnelClient
+import io.github.kzagoris.proxenos.control.stateDirectory
 import io.github.kzagoris.proxenos.core.RuntimeConfig
 import io.github.kzagoris.proxenos.core.TunnelCredentials
 import io.github.kzagoris.proxenos.mcp.LogicalHost
@@ -37,7 +39,6 @@ data class Configuration(
  * touching the one it runs on.
  */
 fun sourceConfiguration(environment: Map<String, String>): Configuration = refusingToStart {
-  val home = ConfigToml.home(environment)
   val configDirectory = ConfigToml.directory(environment)
   // Read first, and from the one place the wizard writes: nothing overrides where it lives.
   val credentials = readCredentials(configDirectory.resolve("credentials"))
@@ -49,7 +50,7 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration = refus
   fun path(tomlKey: String, environmentKey: String, default: () -> Path?): Path? =
     toml.path(tomlKey, environment, environmentKey) ?: default()
 
-  val stateDirectory = stateDirectory(environment, home, toml)
+  val stateDirectory = stateDirectory(toml, environment)
   val runtimeDirectory = environment.absolutePath("XDG_RUNTIME_DIR")?.resolve(APP)
   val mcpSocket = path("mcp_socket", "PROXENOS_MCP_SOCKET") { runtimeDirectory?.resolve("mcp.sock") } ?: throw StartRefused(
     "XDG_RUNTIME_DIR is not set, and it is where the Runtime puts its sockets by default. Start " +
@@ -60,9 +61,12 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration = refus
   if (',' in mcpSocket.toString()) throw StartRefused("The MCP socket path $mcpSocket contains a comma, which the tunnel child's --mcp.server-url flag cannot carry.")
   // Resolved as every frontend resolves it, so the socket bound here is the one they dial.
   val controlSocket = ControlSocket.resolve(toml, environment)
-  val tunnelExecutable = path("tunnel_client", "PROXENOS_TUNNEL_CLIENT") { null }
+  val tunnelExecutable = TunnelClient.configured(toml, environment)
     ?.also { if (!Files.isExecutable(it)) throw StartRefused("The tunnel executable $it does not exist or cannot be run.") }
-    ?: findTunnelClient(environment["PATH"].orEmpty(), stateDirectory.resolve("tools"))
+    ?: TunnelClient.search(environment, stateDirectory) ?: throw StartRefused(
+      "No ${TunnelClient.NAME} on PATH and none at ${TunnelClient.tools(stateDirectory)}. Install the official " +
+        "executable in either place, or name it with tunnel_client in config.toml.",
+    )
 
   val defaults = RuntimeConfig(stateDirectory, mcpSocket, controlSocket, tunnelExecutable = tunnelExecutable)
   val config = defaults.copy(
@@ -92,12 +96,8 @@ fun sourceConfiguration(environment: Map<String, String>): Configuration = refus
  * It resolves exactly as [sourceConfiguration] does, so the Runtime reads the registry written.
  */
 fun sourceStateDirectory(environment: Map<String, String>): Path = refusingToStart {
-  stateDirectory(environment, ConfigToml.home(environment), ConfigToml.read(environment, ignored = "gui_scale"))
+  stateDirectory(ConfigToml.read(environment, ignored = "gui_scale"), environment)
 }
-
-private fun stateDirectory(environment: Map<String, String>, home: Path, toml: ConfigToml): Path =
-  toml.path("state_dir", environment, "PROXENOS_STATE_DIR")
-    ?: (environment.absolutePath("XDG_STATE_HOME") ?: home.resolve(".local/state")).resolve(APP)
 
 /** A refusal of `config.toml` is, here, a refusal to start. */
 private inline fun <T> refusingToStart(block: () -> T): T = try {
@@ -108,8 +108,6 @@ private inline fun <T> refusingToStart(block: () -> T): T = try {
 
 /** The directory name under every XDG base directory. */
 private const val APP = "proxenos"
-
-private const val TUNNEL_CLIENT = "tunnel-client"
 
 /** Every key `config.toml` may carry; anything else there is refused as a likely typo. */
 private val SETTINGS = listOf(
@@ -152,17 +150,6 @@ private fun refuseUnbindable(socket: Path) {
 }
 
 private const val SUN_PATH_BYTES = 108
-
-/** `tunnel-client` on `PATH`, else the state directory's `tools/`. */
-private fun findTunnelClient(searchPath: String, tools: Path): Path {
-  // `+ listOf(...)`, not `+ path`: a Path is an Iterable of its own name segments.
-  val candidates = searchPath.split(':').filter { it.isNotEmpty() }.map { Path.of(it).resolve(TUNNEL_CLIENT) } +
-    listOf(tools.resolve(TUNNEL_CLIENT))
-  return candidates.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) } ?: throw StartRefused(
-    "No $TUNNEL_CLIENT on PATH and none at ${tools.resolve(TUNNEL_CLIENT)}. Install the official " +
-      "executable in either place, or name it with tunnel_client in config.toml.",
-  )
-}
 
 private fun Map<String, String>.absolutePath(key: String): Path? =
   this[key]?.takeIf { it.isNotEmpty() }?.let(Path::of)?.takeIf { it.isAbsolute }

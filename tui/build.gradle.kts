@@ -16,6 +16,9 @@ dependencies {
   // wording — so this one cannot drift from the others.
   implementation(project(":frontend"))
   implementation(libs.mosaic.runtime)
+  // `tui status --json` builds its JSON with this rather than by hand: one string escaped wrong
+  // is an agent reading the wrong Root.
+  implementation(libs.serialization.json)
 
   // Two TUIs attached at once are proven against a real core on a real control socket, as
   // control's own harness does. Test-only: the boundary check polices main, which still

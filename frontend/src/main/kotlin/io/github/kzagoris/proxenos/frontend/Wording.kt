@@ -6,6 +6,7 @@ import io.github.kzagoris.proxenos.coreapi.ConnectingWords
 import io.github.kzagoris.proxenos.coreapi.Operation
 import io.github.kzagoris.proxenos.coreapi.OperationSpec
 import io.github.kzagoris.proxenos.coreapi.Outcome
+import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.coreapi.StopPhase
 import io.github.kzagoris.proxenos.coreapi.TunnelComplaint
 import io.github.kzagoris.proxenos.coreapi.Workspace
@@ -264,6 +265,17 @@ object Wording {
   fun attaching(self: String): String = "Attaching: $self is dialling the Runtime's control socket."
   fun starting(self: String): String =
     "Starting: the Runtime was asked to start, and $self is waiting for it to answer."
+
+  /** The Tunnel's reading, as the status line, the GUI and `tui status --json` all say it. */
+  fun tunnel(state: RuntimeState): String = when (state) {
+    RuntimeState.Connected -> "Connected"
+    RuntimeState.Connecting -> "Connecting"
+    is RuntimeState.Failed -> "Failed"
+    RuntimeState.Disconnected -> "Disconnected"
+  }
+
+  /** The Connector's reading: the user's word on the catalog, never a measurement (ADR 0007). */
+  fun connector(unconfirmed: Boolean): String = if (unconfirmed) "Unconfirmed" else "Confirmed"
 
   /**
    * A stage below one that is not running. The link is the Runtime's to hold and the catalog is

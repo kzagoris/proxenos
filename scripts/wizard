@@ -262,7 +262,7 @@ printf '\n'
 say "  $CRED_FILE"
 printf '\n'
 note "It happens once. Re-run it only to rotate the runtime key."
-note "The connector inside ChatGPT is the other half, and Runtime Review in the TUI explains it."
+note "The connector inside ChatGPT is the other half, and Review ([i]) in the TUI explains it."
 printf '\n'
 
 if [[ -e "$CRED_FILE" ]]; then
@@ -376,8 +376,9 @@ RUNTIME_KEY=""
 printf '\n'
 say "Next: run bin/tui, which starts the Runtime. It reads this file, hands"
 say "both values to the tunnel child, and never puts them in its own"
-say "environment. Open [i] Runtime, then [r] Review for instructions to create the"
-say "connector in ChatGPT — that half recurs, and this half does not."
+say "environment. Press [i] for Review, select the Connector row and press [Enter]"
+say "for the steps to create the connector in ChatGPT — that half recurs, and this"
+say "half does not."
 note "The Runtime also needs tunnel-client: bin/install-tunnel-client, if you"
 note "have not run it yet (docs/INSTALL.md, step 4)."
 

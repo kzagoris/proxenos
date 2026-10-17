@@ -17,6 +17,28 @@ tasks.named("build") {
   dependsOn(gradle.includedBuild("build-logic").task(":check"))
 }
 
+// The start scripts fall back to JAVA_HOME, else `java` on PATH. Every launcher uses the tree's
+// own jre/ instead whenever there is one (ADR 0010): the bundled archive always carries it, so a
+// stray JAVA_HOME naming an older Java cannot fail with UnsupportedClassVersionError there; and a
+// portable tree gets one by linking jre/ to a Java 26 or newer, which then holds however the
+// launcher is started, a systemd unit's short environment included.
+// An object rather than a lambda value, so the filters capture no script the configuration cache
+// would have to serialize.
+object TreeJava {
+  fun filter(line: String): String =
+    if (line == "if [ -n \"\$JAVA_HOME\" ] ; then") "if [ -x \"\$APP_HOME/jre/bin/java\" ] ; then JAVA_HOME=\$APP_HOME/jre ; fi\n$line" else line
+}
+
+// The tree's own version, at its top: the launchers' jars are unversioned, and an upgrade has to
+// know what it is replacing.
+val versionFile = tasks.register("versionFile") {
+  val release = version.toString()
+  val file = layout.buildDirectory.file("version/VERSION")
+  inputs.property("version", release)
+  outputs.file(file)
+  doLast { file.get().asFile.writeText("$release\n") }
+}
+
 distributions {
   main {
     distributionBaseName = "proxenos"
@@ -40,6 +62,7 @@ distributions {
       filesMatching("bin/*") {
         permissions { unix("rwxr-xr-x") }
       }
+      filesMatching(listOf("bin/runtime", "bin/tui")) { filter { TreeJava.filter(it) } }
 
       into("bin") {
         filePermissions { unix("rwxr-xr-x") }
@@ -51,6 +74,7 @@ distributions {
           filter { line -> line.replace("@TUNNEL_CLIENT_VERSION@", tunnelClient) }
         }
       }
+      from(versionFile)
       into("docs") {
         from(tasks.named("generateThirdPartyNotices"))
       }
@@ -153,14 +177,8 @@ distributions {
           filePermissions { unix("rwxr-xr-x") }
         }
       }
-      // The start scripts fall back to JAVA_HOME, else `java` on PATH. Here they use the tree's
-      // own runtime unconditionally: a stray JAVA_HOME pointing at an older Java would otherwise
-      // fail with UnsupportedClassVersionError in an archive that promised to need no Java.
-      filesMatching(listOf("bin/runtime", "bin/tui", "bin/gui")) {
-        filter { line ->
-          if (line == "if [ -n \"\$JAVA_HOME\" ] ; then") "JAVA_HOME=\$APP_HOME/jre\n$line" else line
-        }
-      }
+      // bin/runtime and bin/tui take the tree's jre/ from the main distribution's filter.
+      filesMatching("bin/gui") { filter { TreeJava.filter(it) } }
     }
   }
 }
