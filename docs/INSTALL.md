@@ -21,7 +21,7 @@ share/icons/               matching desktop SVG and ChatGPT plugin PNG
 ```
 
 `tunnel-client` is **not** in it, and it is not committed to this repository either. Step 4 fetches
-the official binary and checks it before anything runs it.
+the official binary and checks it before anything runs it, from the GUI or a terminal.
 
 ## 1. What the machine needs
 
@@ -122,6 +122,20 @@ run the installer again to refresh an existing menu icon.
 
 ## 4. Install tunnel-client, verified
 
+On linux-x64, open **Proxenos** from the application menu or run `bin/gui`. In
+**Welcome → Before you start**, choose **Install tunnel-client** if the requirement is missing.
+The GUI shows installer progress and details, prevents concurrent installs, and automatically
+rechecks requirements after success. If it fails, correct the reported problem and click
+**Install tunnel-client** again. **Check local requirements** only checks; opening setup never
+installs anything. An already available executable needs no installation.
+
+This runs the distribution’s existing pinned, checksum-verified installer, with no root access,
+`PATH` changes, or Runtime startup. It honours `state_dir` from `config.toml` as well as the
+environment overrides. If you configured a missing `tunnel_client` explicitly, correct or remove
+that override first so the Runtime can discover the installed client.
+
+For the terminal flow, run the same installer directly:
+
 ```sh
 ~/.local/opt/proxenos/bin/install-tunnel-client
 ```
@@ -200,8 +214,8 @@ also needs these permissions. Reuse a saved key or create a replacement for an e
 Platform does not reveal a previously created secret again. Keep the same tunnel ID. See
 OpenAI’s [tunnel permissions and key instructions](https://github.com/openai/tunnel-client/blob/master/docs/permissions.md).
 
-Install the tunnel client first (§4). The GUI checks local requirements and offers a recheck;
-it does not download or install the client. Saving credentials requires an absent Runtime and
+Install the tunnel client from Welcome (§4), then continue in the same window. Saving
+credentials requires an absent Runtime and
 writes the same mode-0600 file as the terminal wizard. To change credentials while it runs, use
 **Stop Runtime…** explicitly first, then **Save & connect**. Stop ends running Operations as
 Uncertain; registrations and Access Levels survive.

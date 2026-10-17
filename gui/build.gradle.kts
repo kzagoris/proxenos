@@ -84,7 +84,8 @@ distributions {
 
 tasks.test {
   // First-run refusals through the owner use the real launcher, in an isolated configuration.
-  dependsOn(":runtime:installDist")
+  dependsOn(":installDist")
+  systemProperty("proxenos.testInstaller", rootProject.layout.buildDirectory.file("install/proxenos/bin/install-tunnel-client").get().asFile.absolutePath)
   systemProperty("proxenos.testRuntime", project(":runtime").layout.buildDirectory.file("install/runtime/bin/runtime").get().asFile.absolutePath)
   environment.remove("DISPLAY")
   environment.remove("WAYLAND_DISPLAY")
