@@ -126,8 +126,8 @@ class McpEndpoint(
       is ToolCall.Ready -> reply(call.operation, perform(call.operation))
       is ToolCall.Malformed -> text(call.complaint, isError = true)
       is ToolCall.Unbound -> text(
-        "'${call.tool}' is in this connector's catalog, which is fixed when the connector is " +
-          "created and cannot grow later, but the operation behind it is not in this build. " +
+        "'${call.tool}' is in this connector's saved catalog, but the operation behind it is not in this build. " +
+          "Refresh the connector's tools or recreate it, then use a new conversation. " +
           NOTHING_ATTEMPTED,
         isError = true,
       )

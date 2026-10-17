@@ -1,5 +1,9 @@
 # A command that outruns its call is promoted, not killed
 
+**Historical catalog assumption amended by [ADR 0014](0014-refresh-the-connector-catalog-explicitly.md):**
+ChatGPT's explicit Refresh tools action was subsequently verified through the tunnel; recreation
+is now the fallback. The promotion and Handle decisions below are unchanged.
+
 The transport gives one tool call roughly 61 seconds. Measured, not read: a 50-second call
 round-trips cleanly, and a 120-second call is delivered a second time at exactly +61s — a
 duplicate minted upstream, byte-identical to the original, with the same JSON-RPC id and the

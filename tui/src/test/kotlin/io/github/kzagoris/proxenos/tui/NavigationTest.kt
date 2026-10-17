@@ -50,8 +50,8 @@ class NavigationTest {
   @Test fun `setup instructions appear only after opening the Connector detail in Review`() {
     val home = home()
     assertTrue("Connector · Unconfirmed" in home.text())
-    assertFalse("Delete the app" in home.key("i").text())
-    assertTrue("Delete the app" in home.key("i").key("ArrowDown").key("ArrowDown").key("Enter").text())
+    assertFalse("Refresh tools" in home.key("i").text())
+    assertTrue("Refresh tools" in home.key("i").key("ArrowDown").key("ArrowDown").key("Enter").text())
   }
 
   @Test fun `moving selection after scrolling keeps the workspace being managed visible`() {

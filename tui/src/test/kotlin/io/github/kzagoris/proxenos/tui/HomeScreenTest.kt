@@ -241,7 +241,7 @@ class HomeScreenTest {
     assertTrue(
       "Connected means the tunnel between this machine and OpenAI is up. It does not mean ChatGPT still has a " +
         "connector pointed at it: deleting the connector in ChatGPT leaves this reading unchanged, and its catalog " +
-        "is a snapshot that never refreshes." in tunnel,
+        "is a snapshot that must be updated explicitly." in tunnel,
       "the caveat's sentence, word for word",
     )
     // It stays in every state: the caveat explains the signal, not one reading of it.
@@ -352,10 +352,10 @@ class HomeScreenTest {
   fun `a fresh install reads Unconfirmed on the Connector row, and Review carries the instructions`() {
     val fresh = Home().observed(RuntimeEvent.Snapshot(emptyList(), RuntimeStatus(RuntimeState.Connecting, now), emptyList(), start = thisStart))
     assertTrue("Connector · Unconfirmed" in fresh.prose())
-    assertFalse("Delete the app" in fresh.prose())
+    assertFalse("Refresh tools" in fresh.prose())
     assertTrue("No workspaces yet" in fresh.prose())
     val prose = fresh.keys("i", "ArrowDown", "ArrowDown", "Enter").prose()
-    for (step in listOf("Delete the app in ChatGPT", "Add custom MCP server", "Connection: Tunnel", "No authentication, not the OAuth default")) assertTrue(step in prose)
+    for (step in listOf("choose Refresh tools", "Add custom MCP server", "Connection: Tunnel", "No authentication, not the OAuth default")) assertTrue(step in prose)
   }
 
   @Test

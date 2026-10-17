@@ -1,5 +1,9 @@
 # A catalog fingerprint the user acknowledges
 
+**Amended by [ADR 0014](0014-refresh-the-connector-catalog-explicitly.md):** an explicit ChatGPT
+Refresh tools action was later verified through the tunnel. The original observations below
+explain the fingerprint decision; refresh is now the first update route, with recreation as fallback.
+
 ChatGPT snapshots a developer-mode app's tool catalog and never refreshes it, and Disconnect in
 its UI deletes the plugin definition outright rather than detaching it. Both were measured, not
 read. Nothing on this machine can see either fact: a connector deleted in ChatGPT leaves the

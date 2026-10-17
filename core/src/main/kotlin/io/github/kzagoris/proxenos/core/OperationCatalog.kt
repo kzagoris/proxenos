@@ -4,8 +4,7 @@ import io.github.kzagoris.proxenos.coreapi.*
 
 /**
  * The catalog, as data. Changes ship together because ChatGPT snapshots the
- * catalog with no refresh: adding a tool later is not a version bump, it is every user deleting
- * and re-creating their connector by hand. The entries whose Operation has not landed yet are
+ * catalog until users refresh or recreate their connector (ADR 0014). The entries whose Operation has not landed yet are
  * still catalog, and [specFor] is where an Operation is bound to one.
  */
 internal object OperationCatalog {

@@ -9,8 +9,8 @@ import kotlin.text.Charsets.UTF_8
 
 /**
  * The catalog, hashed as the data the core owns (ADR 0007). ChatGPT snapshots the
- * catalog when the connector is created and never refreshes it, so a build whose catalog hashes
- * differently from the one the user last confirmed is a build their connector does not match.
+ * catalog until it is explicitly refreshed or recreated (ADR 0014), so a different fingerprint
+ * needs the user's acknowledgement that the connector's tool list was updated.
  *
  * Only the catalog goes in, entry by entry and field by field — never a build number, a date or
  * a Runtime start — so an upgrade that changes no entry leaves the connector confirmed, and a

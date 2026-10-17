@@ -241,7 +241,7 @@ Ask ChatGPT:
 Confirm that ChatGPT receives the expected workspace and files, and that the calls appear in Activity.
 
 If the status line shows **Connector · Unconfirmed**, open **Connection**, select **Connector**,
-and select **I created the connector again** once you have created the connection. In the
+and select **I updated the connector** once you have created or refreshed the connection. In the
 dashboard, open **`i`** (Review), select the **Connector** row, press **`Enter`**, then uppercase
 **`C`**. This acknowledgement records your word; it does not test ChatGPT connectivity.
 
@@ -409,9 +409,9 @@ The Runtime also checks `tools/tunnel-client` inside its state directory. Creden
 | Runtime remains Connecting or becomes Failed | Read the tunnel's complaint under **Connection → Tunnel** or in the dashboard's Review; check the tunnel ID, runtime key, and outbound connectivity. |
 | No workspaces are listed | Register a directory and set it to Read or higher. A workspace marked Broken needs its root checked and re-confirmed. |
 | A write or command is refused | Check the selected workspace's access level. |
-| The status line shows **Connector · Unconfirmed** after an upgrade | Recreate the connection, then select **I created the connector again** under **Connection → Connector** (dashboard: `i`, the Connector row, `Enter`, `C`). |
+| The status line shows **Connector · Unconfirmed** after an upgrade | In ChatGPT, open the plugin's **Manage** page and choose **Refresh tools**. Review the tools and test in a new conversation, then select **I updated the connector** under **Connection → Connector** (dashboard: `i`, the Connector row, `Enter`, `C`). Recreate the connection if refresh fails. |
 
-The frontends currently instruct you to recreate connections when the tool catalog changes. OpenAI also documents a **Refresh** action for developer connections; review the discovered tools and test in a new conversation after updating metadata. See [OpenAI's refresh instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt#refresh-metadata).
+**Refresh tools** was verified through the Secure MCP Tunnel with a changed catalog; existing conversations may retain their previous tool list, so test in a new one. Recreating the connection remains the fallback. See [ADR 0014](docs/adr/0014-refresh-the-connector-catalog-explicitly.md) and [OpenAI's refresh instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt#refresh-metadata).
 
 ## Development
 

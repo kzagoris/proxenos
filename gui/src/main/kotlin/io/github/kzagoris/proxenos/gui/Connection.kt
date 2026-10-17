@@ -151,8 +151,8 @@ private fun StageDetail(state: GuiState, stage: Stage, send: (GuiIntent) -> Unit
       Stage.Connector -> when {
         snapshot == null -> Text(Wording.CANT_TELL_CONNECTOR, color = muted)
         snapshot.connectorUnconfirmed -> {
-          Wording.unconfirmed("I created the connector again").forEach { Text(it) }
-          Btn("I created the connector again", { send(GuiIntent.AcknowledgeConnector) }, enabled = state.canAcknowledgeConnector)
+          Wording.unconfirmed("I updated the connector").forEach { Text(it) }
+          Btn("I updated the connector", { send(GuiIntent.AcknowledgeConnector) }, enabled = state.canAcknowledgeConnector)
         }
         else -> Text(Wording.CONNECTOR_CONFIRMED)
       }

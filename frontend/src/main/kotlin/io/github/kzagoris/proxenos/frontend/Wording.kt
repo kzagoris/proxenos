@@ -199,16 +199,16 @@ object Wording {
    * says so.
    */
   fun unconfirmed(acknowledge: String): List<String> = listOf(
-    "Connector Unconfirmed: this Runtime cannot verify that ChatGPT is using a connector created from this Runtime's current tool list. " +
-      "ChatGPT saves that tool list when the connector is created and does not refresh it later. Create the connector again:",
-    "Delete the app in ChatGPT, then follow these steps: ${CHATGPT_MCP_STEPS.replace('\n', ' ')}",
+    "Connector Unconfirmed: this Runtime cannot verify that ChatGPT is using this Runtime's current tool list. " +
+      "For an existing connector, open its Manage page in ChatGPT, choose Refresh tools, review the tools, and test in a new conversation.",
+    "If no connector exists or Refresh tools fails, delete the app in ChatGPT if present, then follow these steps: ${CHATGPT_MCP_STEPS.replace('\n', ' ')}",
     "Use No authentication, not the OAuth default: this MCP endpoint does not implement OAuth. " +
       "The Runtime uses the runtime key saved on this machine to connect to the tunnel.",
     "Nothing on this machine can check whether these were done. $acknowledge records your word that they were; it is not a measurement.",
   )
 
   const val CONNECTOR_ACKNOWLEDGED: String =
-    "Recorded your word that the connector was made again. That is not a measurement: nothing here checked it."
+    "Recorded your word that the connector's tool list is current. That is not a measurement: nothing here checked it."
 
   /**
    * The first-run credential panel. The tunnel's words verbatim and the three things only the
@@ -246,7 +246,7 @@ object Wording {
   const val CONNECTED_CAVEAT: String =
     "Connected means the tunnel between this machine and OpenAI is up. It does not mean ChatGPT still has a " +
       "connector pointed at it: deleting the connector in ChatGPT leaves this reading unchanged, and its catalog " +
-      "is a snapshot that never refreshes."
+      "is a snapshot that must be updated explicitly."
 
   /** Disconnect changes only the link, never registrations or running work. */
   const val DISCONNECT: String =

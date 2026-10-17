@@ -240,20 +240,20 @@ class ShellTest {
   @Test
   fun `Unconfirmed shows the literal steps and records only the user's word`() = runComposeUiTest {
     val gui = shell(attached(RuntimeState.Connected, unconfirmed = true).after(GuiIntent.ShowStage(Stage.Connector)))
-    onNodeWithText("Delete the app in ChatGPT", substring = true).assertExists()
+    onNodeWithText("choose Refresh tools", substring = true).assertExists()
     onNodeWithText("Plugins from the main sidebar", substring = true).assertExists()
     onNodeWithText("Connection: Tunnel", substring = true).assertExists()
     onNodeWithText("Authentication: No authentication", substring = true).assertExists()
     onNodeWithText("records your word", substring = true).assertExists()
-    onNodeWithText("I created the connector again").assertIsEnabled().performClick()
+    onNodeWithText("I updated the connector").assertIsEnabled().performClick()
     assertEquals(GuiIntent.AcknowledgeConnector, gui.sent.last())
     // A reply alone does not confirm the connector; the stream does.
-    onNodeWithText("I created the connector again").assertExists()
+    onNodeWithText("I updated the connector").assertExists()
     runOnIdle {
       gui.state = gui.state.observed(Attachment.Attached(gui.state.snapshot!!.after(RuntimeEvent.Change.ConnectorChanged(false))))
     }
     onNodeWithText("Confirmed by your word", substring = true).assertExists()
-    onNodeWithText("I created the connector again").assertDoesNotExist()
+    onNodeWithText("I updated the connector").assertDoesNotExist()
     onAllNodesWithText("!").assertCountEquals(0)
   }
 
@@ -317,7 +317,7 @@ class ShellTest {
     runOnIdle {
       gui.state = attached(unconfirmed = true).after(GuiIntent.ShowStage(Stage.Connector)).performing(ManagementAct.AcknowledgeConnector)
     }
-    onNodeWithText("I created the connector again").assertIsNotEnabled()
+    onNodeWithText("I updated the connector").assertIsNotEnabled()
     onNodeWithText("Recording your word about the connector").assertExists()
     onNode(hasText("Activity") and hasClickAction()).performClick()
     assertEquals(Destination.Activity, gui.state.destination)
