@@ -212,7 +212,7 @@ def main():
             session.press("\x1b[B")
         else:
             fail("read_file is reachable in Tools", session.screen.text())
-        session.press("t", *"current.txt", "\r", "\r", "\r")
+        session.press("t", *"current.txt", "\r", "\r", "\r", "\r")  # path, offset, byte_offset, limit
         session.until("Try returns a result", lambda l: any("Tried read_file" in x and "ok." in x for x in l))
         session.press("\x1b", "\x1b", "a")
         session.until("current activity is visible", lambda l: any("read_file" in x and "current.txt" in x for x in l))
@@ -232,7 +232,7 @@ def main():
             fail("Review lists the three connection stages", session.screen.text())
         session.press("\x1b[B", "\x1b[B", "\r")
         prose = " ".join(x.strip() for x in session.screen.lines)
-        if "Delete the app" not in prose:
+        if not all(step in prose for step in ("Refresh tools", "Add custom MCP server")):
             fail("the Connector detail exposes setup instructions", session.screen.text())
         ok("Review lists Runtime, Tunnel and Connector, and the Connector detail carries the setup steps")
         session.press("\x1b", "\x1b", "q")
