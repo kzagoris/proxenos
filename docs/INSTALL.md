@@ -16,8 +16,9 @@ lib/                       the jars the launchers share
 docs/INSTALL.md            this file
 docs/THIRD-PARTY.md        generated notices from the resolved runtime classpaths
 docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
-jre/                       linux-x64 archive only: the Java runtime the launchers use
+jre/                       the Java runtime the launchers use: bundled in linux-x64, an optional link in a portable tree
 share/icons/               matching desktop SVG and ChatGPT plugin PNG
+VERSION                    the release this tree is
 ```
 
 `tunnel-client` is **not** in it, and it is not committed to this repository either. Step 4 fetches
@@ -30,12 +31,14 @@ the official binary and checks it before anything runs it.
 - **Outbound HTTPS** and a ChatGPT workspace with developer mode and access to OpenAI Platform
   tunnels. Creating a tunnel requires Tunnels Read + Manage; using it requires Read + Use.
   See the [official tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
-- **A Java 26 runtime, unless you use the linux-x64 archive**, which carries its own and ignores
+- **Java 26 or newer, unless you use the linux-x64 archive**, which carries its own and ignores
   `JAVA_HOME`. The code is compiled for Java 26 (class file version 70), so an older
-  Java refuses it with `UnsupportedClassVersionError … class file version 70.0`. Either install
-  one — [Eclipse Temurin 26](https://adoptium.net/temurin/releases/?version=26), or with mise
-  `mise use -g java@temurin-26` — and the launchers find it through `JAVA_HOME`, else `java` on
-  `PATH`. Check with `java -version`.
+  Java refuses it with `UnsupportedClassVersionError … class file version 70.0`. Java 26 is a
+  six-month release that no longer receives updates, and no long-term-support release is new
+  enough yet, so install the newest Java release your distribution or
+  [Eclipse Temurin](https://adoptium.net/temurin/releases/) offers. A headless runtime is enough.
+  The launchers use the tree's `jre/` when there is one (see step 3), else `JAVA_HOME`, else
+  `java` on `PATH`. Check with `java -version`.
 - **`curl` or `wget`, `unzip` and `sha256sum`** — only for step 4.
 - **`git`**, only if you want the three Git tools. Without it they answer as if there were no
   repository, and everything else works.
@@ -60,7 +63,7 @@ If `GDK_SCALE=2` makes the GUI too large on a scale-1 monitor, use `gui_scale = 
 Each [release](https://github.com/kzagoris/proxenos/releases/latest) publishes two archives:
 
 - `proxenos-<version>-linux-x64.tar.gz`: Runtime, TUI, GUI and their Java runtime, for x86_64.
-- `proxenos-<version>.tar.gz`: Runtime and TUI, for any architecture, on your Java 26.
+- `proxenos-<version>.tar.gz`: Runtime and TUI, for any architecture, on your Java 26 or newer.
 
 Download one together with `SHA256SUMS`, and check it before unpacking:
 
@@ -86,7 +89,7 @@ cd proxenos
 ```
 
 `./gradlew installDist` lays out a development tree with the GUI in
-`build/install/proxenos/`; it uses your installed Java 26. The linux-x64 archive adds `jre/`.
+`build/install/proxenos/`; it uses your installed Java 26 or newer. The linux-x64 archive adds `jre/`.
 
 ## 3. Unpack it
 
@@ -97,6 +100,17 @@ mv ~/.local/opt/proxenos-<version>-linux-x64 ~/.local/opt/proxenos
 ```
 
 The checkout is not needed to run the installed application.
+
+On the portable archive, if your default `java` is older than 26 but a newer one is installed
+beside it, link that Java's home into the tree as `jre/` rather than changing the machine's
+default or exporting `JAVA_HOME` in a profile:
+
+```sh
+ln -s /usr/lib/jvm/java-27-openjdk ~/.local/opt/proxenos/jre   # the home that holds bin/java
+```
+
+Every launcher uses `jre/bin/java` when it is there, however it is started, a systemd unit
+included. Replacing the tree on upgrade removes the link, so make it again.
 
 The tree must stay together: `bin/tui` starts the Runtime it finds at `bin/runtime` beside it. To
 type `tui` from anywhere, link the launcher rather than copying it — the launcher follows the
@@ -316,13 +330,47 @@ If you have read that and disagree, `docs/systemd/proxenos.service` is a ready
 systemd `--user` unit, with the reason and the steps in its header. The product never installs it
 and never offers to.
 
+## Checking from a terminal, or from a coding agent
+
+`bin/tui` has commands that look and exit, for a script or a coding agent setting Proxenos up
+on your behalf. None of them starts the Runtime, raises an Access Level, confirms the connector
+or prints the runtime key:
+
+```sh
+bin/tui check                                  # launcher, tunnel-client, credentials; fails unless all are there
+bin/tui status --json                          # Runtime, Tunnel, Connector, Workspaces and the checks, as JSON
+bin/tui register ~/code/some-project --name some-project   # at Read, while the Runtime runs
+bin/tui await-listing some-project --timeout 300           # waits for ChatGPT to list that Root
+```
+
+`status --json` is a versioned contract (`"version": 1`); fields are added, never renamed.
+`await-listing` prints the request to give ChatGPT, then succeeds only on a successful
+ChatGPT `list_directory` of that Root made after it began — the same evidence desktop setup's
+**Try it** step waits for. A **Try…** from a frontend does not count. It exits 0 on that
+listing, 2 when the time runs out (wait again), and 1 with the reason when waiting cannot
+succeed. `bin/tui start` and `bin/tui stop` start and stop the Runtime itself.
+
 ## Upgrading and removing
 
 Stop the Runtime before upgrading; there is no version handshake between a frontend and a
-Runtime from different trees. Then replace the tree in `~/.local/opt/proxenos/` with a new one; your
-Workspaces, Activity and credentials live outside it and stay. If the new version's tool catalog
-differs, the setup confirmation notice comes back, because the connector in ChatGPT is still serving
-the old one.
+Runtime from different trees. Stopping ends running Operations as Uncertain, so let them finish
+first. Keep the old tree until the new one works:
+
+```sh
+~/.local/opt/proxenos/bin/tui stop
+rm -rf ~/.local/opt/proxenos.previous
+mv ~/.local/opt/proxenos ~/.local/opt/proxenos.previous
+tar -xzf proxenos-<version>-linux-x64.tar.gz -C ~/.local/opt     # after checking SHA256SUMS
+mv ~/.local/opt/proxenos-<version>-linux-x64 ~/.local/opt/proxenos
+~/.local/opt/proxenos/bin/install-tunnel-client   # a new release may pin a newer tunnel-client
+~/.local/opt/proxenos/bin/install-desktop-entry   # if you use the menu entry
+```
+
+On the portable archive, link `jre/` again if you had one (step 3). Your Workspaces, Activity
+and credentials live outside the tree and stay. If the new version's tool catalog differs, the
+setup confirmation notice comes back, because the connector in ChatGPT is still serving the old
+one. Once the new version works, delete `~/.local/opt/proxenos.previous`; to go back instead,
+stop the Runtime and move it back into place.
 
 To remove everything: stop the Runtime, run `bin/install-desktop-entry --remove` from the
 linux-x64 tree if you installed the menu entry, then delete `~/.local/opt/proxenos/`,

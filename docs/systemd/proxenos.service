@@ -10,7 +10,8 @@
 #   mkdir -p ~/.config/systemd/user
 #   cp docs/systemd/proxenos.service ~/.config/systemd/user/
 #   # edit ExecStart below if you unpacked the distribution anywhere but docs/INSTALL.md's place
-#   # set JAVA_HOME below if your Java 26 is not the `java` on the user manager's PATH
+#   # on the portable archive, link jre/ in the tree to a Java 26 or newer (docs/INSTALL.md §3)
+#   # if that is not the `java` on the user manager's PATH
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now proxenos.service
 #
@@ -29,7 +30,8 @@ Type=simple
 # Where docs/INSTALL.md unpacks the distribution (`./gradlew distTar`).
 ExecStart=%h/.local/opt/proxenos/bin/runtime
 # The user manager does not read your shell profile, so a JAVA_HOME set there is not set here.
-#Environment=JAVA_HOME=/path/to/your/jdk-26
+# A jre/ link in the tree needs neither; it wins over JAVA_HOME when present.
+#Environment=JAVA_HOME=/path/to/your/java-26-or-newer
 # The user manager's PATH is short and rarely includes ~/.local/bin. bin/install-tunnel-client
 # puts tunnel-client in ~/.local/state/proxenos/tools/, which needs no PATH; name it here
 # only if you keep it somewhere else (or set tunnel_client in config.toml).

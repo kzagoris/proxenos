@@ -59,7 +59,7 @@ architecture. Both attach to the same Runtime, and you can use them side by side
 ## Requirements
 
 - **Linux**, with a terminal, Bash, Git, and `setsid` (usually supplied by util-linux).
-- **JDK 26** to build and run the application. The repository includes the Gradle wrapper; the tool versions are recorded in [mise.toml](mise.toml).
+- **Java 26 or newer** to run the portable archive or to build; the linux-x64 archive bundles its own. The repository includes the Gradle wrapper; the tool versions are recorded in [mise.toml](mise.toml).
 - The official **`tunnel-client`** executable, available from [OpenAI Platform tunnel settings](https://platform.openai.com/settings/organization/tunnels) or the [official releases](https://github.com/openai/tunnel-client/releases/latest). Install it with the distribution’s `bin/install-tunnel-client`; it verifies the release checksum before placing it in the state directory’s `tools/`. See [installation instructions](docs/INSTALL.md).
 - A ChatGPT account/workspace with **developer mode** available, plus access to OpenAI Platform tunnels. Availability depends on your account and workspace policy.
 - A normal Linux login session with `XDG_RUNTIME_DIR` set, and outbound HTTPS access to OpenAI.
@@ -67,13 +67,30 @@ architecture. Both attach to the same Runtime, and you can use them side by side
 
 Creating tunnels requires **Tunnels Read + Manage**; using them requires **Tunnels Read + Use**. Your tunnel must be associated with the ChatGPT workspace you will use. See the [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) for access requirements and downloads.
 
+## Set it up with a coding agent
+
+If you use Claude Code, Codex or another agent that reads skills, add the Proxenos skill and ask
+it to set Proxenos up:
+
+```bash
+npx skills add kzagoris/proxenos
+```
+
+The agent downloads and checks the release, installs `tunnel-client` and, on the portable
+archive, a suitable Java. It checks progress with `bin/tui check` and `bin/tui status --json`.
+It hands you the steps only you can do: creating the tunnel and runtime key in OpenAI Platform,
+typing the key into the desktop setup or `bin/wizard`, and creating the plugin in ChatGPT. Then
+it waits with `bin/tui await-listing` for ChatGPT's first real request. It never sees your
+runtime key and never raises a Workspace above Read. The same skill covers upgrading,
+troubleshooting and removing Proxenos.
+
 ## 1. Get the application
 
 Download a release from [GitHub Releases](https://github.com/kzagoris/proxenos/releases/latest):
 
 - **`proxenos-<version>-linux-x64.tar.gz`** carries the Runtime, TUI, GUI and Java runtime.
 - **`proxenos-<version>.tar.gz`** carries the Runtime and TUI on any Linux architecture and
-  needs a Java 26 runtime.
+  needs Java 26 or newer.
 
 ```bash
 mkdir -p ~/.local/opt
@@ -89,7 +106,7 @@ Run the commands below from this directory. Each release publishes `SHA256SUMS` 
 provenance attestation; [the installation guide](docs/INSTALL.md) shows how to check both.
 
 To build from source instead, `./gradlew installDist` lays out a development tree with the GUI
-in `build/install/proxenos/`. It uses your installed Java 26; the linux-x64 archive adds `jre/`.
+in `build/install/proxenos/`. It uses your installed Java 26 or newer; the linux-x64 archive adds `jre/`.
 
 To put the desktop app in your application menu, run the optional installer from the linux-x64
 tree:
@@ -335,6 +352,10 @@ In the desktop app, **Connection → Runtime** has **Stop Runtime…** and, whil
 ./bin/tui stop
 ```
 
+For scripts and coding agents, `./bin/tui check`, `./bin/tui status --json`,
+`./bin/tui register <directory> --name <name>` and `./bin/tui await-listing <workspace>` never
+start the Runtime; see [the installation guide](docs/INSTALL.md#checking-from-a-terminal-or-from-a-coding-agent).
+
 There is **no automatic startup after reboot**. Open the desktop app or the dashboard, or run `tui start` again. Stopping the Runtime preserves workspace registrations and ends running operations; their effects may be uncertain and are not rolled back.
 
 Default locations:
@@ -362,6 +383,7 @@ The Runtime also checks `tools/tunnel-client` inside its state directory. Creden
 | --- | --- |
 | Runtime cannot find its launcher | Keep `bin/` and `lib/` together in the distribution; for a custom layout, set `PROXENOS_RUNTIME` to the Runtime launcher. |
 | Missing credentials or unsafe permissions | Run `./bin/wizard`; the credentials file must be owner-only (`chmod 600` on that file). |
+| `UnsupportedClassVersionError … class file version 70.0` | The portable archive found a Java older than 26. Install a newer one, or link it into the tree as `jre/` ([installation guide](docs/INSTALL.md#3-unpack-it)). |
 | `tunnel-client` cannot be found | Install the executable on `PATH`, in the state directory's `tools/`, or set `tunnel_client` in TOML. |
 | The desktop app does not open | Read `$XDG_RUNTIME_DIR/proxenos/gui.log`. It needs X11 or XWayland (`DISPLAY` set), libGL, libX11 and fontconfig, and ships only in the linux-x64 archive. |
 | The desktop app is too large or too small | Set `gui_scale` in `config.toml`, for example `gui_scale = 1`, and reopen it. See [the installation guide](docs/INSTALL.md). |
