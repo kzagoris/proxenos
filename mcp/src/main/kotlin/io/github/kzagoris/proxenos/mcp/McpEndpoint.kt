@@ -104,7 +104,8 @@ class McpEndpoint(
     // Rendered from the catalog as data, entry by entry. A catalog entry added in the core
     // arrives here with nothing edited, which is the whole point of the core owning it.
     operations.catalog.forEach { spec ->
-      server.addTool(name = spec.name, description = spec.description, inputSchema = spec.inputSchema()) { request ->
+      server.addTool(name = spec.name, description = spec.description, inputSchema = spec.inputSchema(),
+        outputSchema = spec.outputSchema(), toolAnnotations = spec.toolAnnotations()) { request ->
         answer(spec, request.arguments)
       }
     }

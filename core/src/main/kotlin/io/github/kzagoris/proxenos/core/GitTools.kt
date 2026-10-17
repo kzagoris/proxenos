@@ -4,11 +4,14 @@ import io.github.kzagoris.proxenos.coreapi.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.text.Charsets.UTF_8
 import kotlin.time.Duration
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 private const val GIT_PROGRAM = "git"
 
@@ -31,6 +34,8 @@ private val CONFIG = listOf(
 
 /** What of Git's complaint is kept to put in front of the model. */
 private const val COMPLAINT_CAP_BYTES = 4 * 1024
+private const val DIFF_BYTES = 12 * 1024
+private val diffJson = Json { encodeDefaults = true }
 
 /**
  * The three read-only Git tools: `git_status`, `git_diff` and `git_log`, at Read, so a
@@ -178,14 +183,56 @@ internal fun gitStatus(workspace: Workspace, root: Path, git: GitTools): Outcome
  * way to run one.
  */
 internal fun gitDiff(op: Operation.GitDiff, workspace: Workspace, root: Path, git: GitTools): Outcome<GitDiffReport> {
+  val format = when (op.mode) {
+    "patch" -> emptyList()
+    "stat" -> listOf("--stat")
+    "name_only" -> listOf("--name-only")
+    else -> return Outcome.Failed(Failure.InvalidArgument("mode"), "mode must be patch, stat or name_only.")
+  }
+  val selections = mutableListOf<String>()
+  for (selection in op.paths) {
+    val path = try {
+      Path.of(selection)
+    } catch (_: InvalidPathException) {
+      return Outcome.Failed(Failure.InvalidArgument("paths"), "Each selection must be a valid Root-relative path.")
+    }
+    // These selections address the index too, so deleted paths must not be resolved through
+    // the filesystem. Literal, lexical paths keep Git magic and parent traversal out.
+    if (selection.isEmpty() || path.isAbsolute || path.any { it.toString() == ".." }) return Outcome.Failed(
+      Failure.InvalidArgument("paths"), "Selections must be Root-relative paths without '..'.",
+    )
+    selections += path.normalize().toString().ifEmpty { "." }
+  }
   val scope = scopeOf(workspace, root).valueOr { return it }
+  val pathspec = if (selections.isEmpty()) scope.pathspec() else listOf("--") + selections.map { selection ->
+    LITERAL + (scope.scopedTo?.let { "$it/$selection" } ?: selection)
+  }
   val arguments = listOf("diff", "--no-color", "--no-ext-diff", "--no-textconv") +
-    (if (op.staged) listOf("--staged") else listOf("HEAD")) + scope.pathspec()
-  val patch = git.run(Path.of(scope.repository), arguments) { input ->
-    HeadAndTailBytes(Operation.OUTPUT_HEAD_BYTES, Operation.OUTPUT_TAIL_BYTES).drain(input)
+    format + (if (op.staged) listOf("--staged") else listOf("HEAD")) + pathspec
+  val metadata = GitDiffReport(scope, op.staged, "", Int.MAX_VALUE, op.mode)
+  val metadataBytes = diffJson.encodeToString(metadata).utf8Size()
+  if (metadataBytes > DIFF_BYTES) return Outcome.Failed(
+    Failure.InvalidArgument("workspace"), "The repository path exceeds the response budget.",
+  )
+  var patch = git.run(Path.of(scope.repository), arguments) { input ->
+    HeadAndTailBytes(DIFF_BYTES / 2, DIFF_BYTES / 2).drain(input)
   }.valueOr { return gitFailed(workspace, scope, it) }
-
-  return Outcome.Ok(GitDiffReport(scope, op.staged, patch.text, patch.droppedBytes))
+  var report = GitDiffReport(scope, op.staged, patch.text, patch.droppedBytes, op.mode)
+  // A JSON string can expand control bytes sixfold. Bound the complete report after encoding,
+  // preserving the existing head-and-tail disclosure, rather than trusting raw patch bytes.
+  while (true) {
+    val encodedBytes = diffJson.encodeToString(report).utf8Size()
+    if (encodedBytes <= DIFF_BYTES) return Outcome.Ok(report)
+    val rawBytes = patch.text.utf8Size()
+    val cap = (rawBytes.toLong() * (DIFF_BYTES - metadataBytes) / (encodedBytes - metadataBytes))
+      .toInt().coerceAtMost(rawBytes - 1)
+    val shorter = if (cap < 2) BoundedText("", patch.text.utf8Size()) else {
+      HeadAndTailBytes(cap / 2, cap - cap / 2).drain(patch.text.byteInputStream())
+    }
+    patch = BoundedText(shorter.text, (patch.droppedBytes.toLong() + shorter.droppedBytes)
+      .coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+    report = GitDiffReport(scope, op.staged, patch.text, patch.droppedBytes, op.mode)
+  }
 }
 
 /**

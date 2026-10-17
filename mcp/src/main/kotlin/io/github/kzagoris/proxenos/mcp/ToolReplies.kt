@@ -1,5 +1,7 @@
 package io.github.kzagoris.proxenos.mcp
 
+import io.github.kzagoris.proxenos.coreapi.*
+import kotlinx.serialization.json.*
 import io.github.kzagoris.proxenos.coreapi.ActivityOutcome
 import io.github.kzagoris.proxenos.coreapi.Collected
 import io.github.kzagoris.proxenos.coreapi.CommandReply
@@ -35,10 +37,14 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextContent
  * acts on rather than in a status field; claiming a non-error for an Operation whose effects
  * are unknown would be the worse of the two lies.
  */
-internal fun reply(operation: Operation<*>, outcome: Outcome<*>): CallToolResult = when (outcome) {
-  is Outcome.Ok -> text(render(operation, outcome.value).withRecordedNote(outcome), isError = outcome.carriesAnError())
-  is Outcome.Failed -> text(outcome.message.withRecordedNote(outcome), isError = true)
-  is Outcome.Uncertain -> text(outcome.message.withRecordedNote(outcome), isError = true)
+internal fun reply(operation: Operation<*>, outcome: Outcome<*>): CallToolResult {
+  val body = when (outcome) {
+    is Outcome.Ok -> render(operation, outcome.value).withRecordedNote(outcome)
+    is Outcome.Failed -> outcome.message.withRecordedNote(outcome)
+    is Outcome.Uncertain -> outcome.message.withRecordedNote(outcome)
+  }
+  val isError = outcome !is Outcome.Ok || outcome.carriesAnError()
+  return boundedReply(body, isError, structured(operation, outcome))
 }
 
 /**
@@ -65,7 +71,9 @@ private fun Collected.carriesAnError(): Boolean = when (this) {
 }
 
 internal fun text(body: String, isError: Boolean): CallToolResult =
-  CallToolResult(content = listOf(TextContent(body)), isError = isError)
+  boundedReply(body, isError, buildJsonObject {
+    put("status", "malformed"); put("recorded", false); put("message", body); put("incomplete", false)
+  })
 
 /**
  * What an `ok` reads as. Keyed on the Operation rather than on the value's type so that it is
@@ -77,16 +85,25 @@ internal fun text(body: String, isError: Boolean): CallToolResult =
  */
 private fun render(operation: Operation<*>, value: Any?): String = when (operation) {
   Operation.ListWorkspaces -> renderWorkspaces(value.asList())
+  is Operation.ReadFiles -> (value as BatchRead).items.mapIndexed { index, item ->
+    "[$index] ${item.status}: " + (item.content?.let(::renderFile) ?: item.message.orEmpty())
+  }.joinToString("\n\n")
+  is Operation.CreateDirectory -> (value as DirectoryCreated).let {
+    "${it.path}: ${if (it.noOp) "already a directory; no change" else "created ${it.createdPaths.joinToString()}"}."
+  }
   is Operation.ReadFile -> renderFile(value as FileContent)
   is Operation.ListDirectory -> renderListing(value as DirectoryListing)
-  is Operation.Search -> renderSearch(value as SearchResults)
+  is Operation.Search -> renderSearch(value as SearchResults, operation.limit)
   is Operation.GitStatus -> renderStatus(value as GitStatusReport)
   is Operation.GitDiff -> renderDiff(value as GitDiffReport)
   is Operation.GitLog -> renderLog(value as GitLogReport)
   is Operation.WriteFile -> (value as FileWritten).let {
     "${it.path}: ${if (it.created) "created" else "replaced"}, ${it.bytes} bytes."
   }
-  is Operation.EditFile -> (value as FileWritten).let { "${it.path}: edited, ${it.bytes} bytes." }
+  is Operation.EditFile -> (value as FileWritten).let {
+    "${it.path}: ${if (it.preview) "preview; no replacement" else "edited"}, ${it.bytes} bytes." +
+      (if (it.diffTruncated) " Diff truncated." else "") + if (it.diff.isEmpty()) "" else "\n\n${it.diff}"
+  }
   is Operation.RunCommand -> when (val reply = value as CommandReply) {
     is CommandReply.Finished -> renderCommand(reply.result)
     is CommandReply.Promoted -> renderPromoted(operation.workspace, reply.handle, reply.running)
@@ -124,8 +141,10 @@ private fun renderFile(file: FileContent): String = buildString {
     else "${file.path}: lines ${file.firstLine}-$last of ${file.totalLines}.",
   )
   if (file.cappedByBytes) {
-    append(" The byte cap ended this read before the line limit did; continue with offset ${last + 1}.")
+    append(" The byte cap ended this read before the line limit did.")
   }
+  file.nextOffset?.let { append(" Continue with offset $it and byte_offset ${file.nextByteOffset ?: 0}. Changed files can invalidate this cursor; it is not a snapshot.") }
+  if (!file.lastLineComplete) append(" The last line is cut.")
   if (file.lineCount > 0) body(file.text)
 }
 
@@ -134,8 +153,9 @@ private fun renderListing(listing: DirectoryListing): String = buildString {
   // There is no offset to page a listing by, so what the cap dropped is dropped for good.
   tally(
     listing.entries.size, listing.totalEntries, "entry", "entries",
-    listing.dropped("of names dropped from the middle"),
+    listing.dropped("omitted by the byte budget"),
   )
+  if (listing.incomplete) append(" Incomplete; continue with after '${listing.nextAfter}'. Pages are not a snapshot: newly added earlier names may be missed.")
   each(listing.entries) {
     "${it.name}${if (it.kind == EntryKind.Directory) "/" else ""}  ${it.kind.said}" +
       (it.sizeBytes?.let { size -> ", $size bytes" } ?: "")
@@ -151,14 +171,14 @@ private val EntryKind.said: String
     EntryKind.Other -> "neither file nor directory"
   }
 
-private fun renderSearch(results: SearchResults): String = buildString {
+private fun renderSearch(results: SearchResults, limit: Int): String = buildString {
   append("${results.hits.size} ${plural(results.hits.size, "hit", "hits")} in ")
   append("${results.filesSearched} ${plural(results.filesSearched, "file", "files")} under ")
   append("'${results.path}', enumerated by ${results.enumeration.said}.")
   // Each bound names itself: "12 hits" that was really "12 hits and then time ran out" reads
   // as a finished search of the whole project, which is a different fact about this machine.
   with(results.bounds) {
-    if (cappedByResults) append(" Capped at ${Operation.SEARCH_RESULT_CAP} results, so there may be more.")
+    if (cappedByResults) append(" Capped at $limit results, so there may be more.")
     if (cappedByTime) append(" Truncated by time, so there may be more.")
     if (droppedHits > 0) append(" $droppedHits hits ($droppedBytes bytes) were dropped from the middle.")
     if (linesNotFullySearched > 0) {
@@ -168,11 +188,18 @@ private fun renderSearch(results: SearchResults): String = buildString {
       )
     }
   }
+  if (results.bounds.contextTruncated) append(" Context was truncated by the output budget.")
+  if (!results.bounds.complete) append(" Incomplete; narrow the subtree, filters or query. No search continuation is provided.")
+  append(" Enumeration order is retained; concurrent changes may affect results.")
   each(results.hits) {
     when (it) {
       is SearchHit.Name -> "${it.path}  (the name matched)"
       is SearchHit.Content -> "${it.path}:${it.line}: ${it.text}" + if (it.lineCut) "  (line cut)" else ""
     }
+  }
+  results.windows.forEach { window ->
+    appendLine("\n${window.path}:")
+    window.lines.forEach { line -> appendLine("${line.line}${if (line.matched) ":" else "-"} ${line.text}${if (line.lineCut) " (line cut)" else ""}") }
   }
 }
 
@@ -201,7 +228,8 @@ private fun renderStatus(report: GitStatusReport): String = buildString {
 private fun renderDiff(report: GitDiffReport): String = buildString {
   appendLine(report.scope.said())
   append(if (report.staged) "Staged changes only." else "Working tree against HEAD, staged and unstaged together.")
-  if (report.cappedByBytes) append(" ${report.droppedBytes} bytes were cut from the middle of the patch.")
+  append(" Mode ${report.mode}.")
+  if (report.cappedByBytes) append(" ${report.droppedBytes} bytes were cut from the middle of the output; narrow paths for omitted changes.")
   if (report.patch.isEmpty()) append(" No changes.") else body(report.patch)
 }
 

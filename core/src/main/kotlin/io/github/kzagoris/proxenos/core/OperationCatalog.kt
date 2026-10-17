@@ -3,7 +3,7 @@ package io.github.kzagoris.proxenos.core
 import io.github.kzagoris.proxenos.coreapi.*
 
 /**
- * The eleven, as data. All eleven ship at once because ChatGPT snapshots the
+ * The catalog, as data. Changes ship together because ChatGPT snapshots the
  * catalog with no refresh: adding a tool later is not a version bump, it is every user deleting
  * and re-creating their connector by hand. The entries whose Operation has not landed yet are
  * still catalog, and [specFor] is where an Operation is bound to one.
@@ -29,11 +29,13 @@ internal object OperationCatalog {
       emptyList(),
     ),
     OperationSpec(
-      "list_directory", "List the entries of a directory inside the Workspace's Root.",
+      "list_directory", "List consecutive sorted directory entries. Pages are not a snapshot: new earlier names may be missed.",
       AccessLevel.Read,
       listOf(
         workspace(),
         ArgumentSpec("path", ArgumentType.Text, false, "Directory relative to the Root; the Root itself by default."),
+        ArgumentSpec("after", ArgumentType.Text, false, "Exclusive entry-name cursor from the previous page; not a Handle."),
+        ArgumentSpec("limit", ArgumentType.Integer, false, "Entries per page; default 1000.", minimum = 1, maximum = 1000),
       ),
     ),
     OperationSpec(
@@ -44,13 +46,25 @@ internal object OperationCatalog {
       listOf(
         workspace(),
         ArgumentSpec("path", ArgumentType.Text, true, "File relative to the Root."),
-        ArgumentSpec("offset", ArgumentType.Integer, false, "1-based line to start at; the first line by default."),
+        ArgumentSpec("offset", ArgumentType.Integer, false, "1-based line to start at; the first line by default.", minimum = 1),
+        ArgumentSpec("byte_offset", ArgumentType.Integer, false, "Bytes to skip in the starting line; default zero. Continuation is not a snapshot and changed files can invalidate it.", minimum = 0),
         ArgumentSpec(
           "limit", ArgumentType.Integer, false,
           "Lines to return, at most ${Operation.DEFAULT_LINE_CEILING} by default. " +
             "A ${Operation.OUTPUT_CAP_BYTES / 1024} KiB cap may bind first.",
         ),
       ),
+    ),
+    OperationSpec(
+      "read_files", "Read 1-20 text file ranges in input order with independent failures and a shared 64 KiB reply cap. No cross-file snapshot.",
+      AccessLevel.Read,
+      listOf(workspace(), ArgumentSpec("files", ArgumentType.Array, true, "Ordered ranges; duplicates stay separate.",
+        minItems = 1, maxItems = 20, items = ArgumentSpec("", ArgumentType.Object, true, "File range.", properties = listOf(
+          ArgumentSpec("path", ArgumentType.Text, true, "File relative to the Root."),
+          ArgumentSpec("offset", ArgumentType.Integer, false, "1-based starting line.", minimum = 1),
+          ArgumentSpec("limit", ArgumentType.Integer, false, "Lines to return.", minimum = 1),
+          ArgumentSpec("byte_offset", ArgumentType.Integer, false, "Bytes to skip in starting line; changed files can invalidate continuation.", minimum = 0),
+        )))),
     ),
     OperationSpec(
       "search", "Search the Workspace for a filename or file contents.",
@@ -61,6 +75,12 @@ internal object OperationCatalog {
         ArgumentSpec("path", ArgumentType.Text, false, "Subtree relative to the Root; the whole Root by default."),
         ArgumentSpec("regex", ArgumentType.Flag, false, "Read the query as a regular expression."),
         ArgumentSpec("case_sensitive", ArgumentType.Flag, false, "Match case."),
+        ArgumentSpec("mode", ArgumentType.Text, false, "Default all; filename never opens contents.", enumValues = listOf("all", "filename", "content")),
+        globs("include_globs", "Any include admits a Root-relative path; empty includes all."),
+        globs("exclude_globs", "Any exclude wins. Filters never override Git ignore rules."),
+        ArgumentSpec("context_before", ArgumentType.Integer, false, "Lines before each content hit; default zero.", minimum = 0, maximum = 10),
+        ArgumentSpec("context_after", ArgumentType.Integer, false, "Lines after each content hit; default zero.", minimum = 0, maximum = 10),
+        ArgumentSpec("limit", ArgumentType.Integer, false, "Matching hits, excluding context; default 200. Enumeration order, concurrent changes may affect results. Narrow search when incomplete; no continuation.", minimum = 1, maximum = 200),
       ),
     ),
     OperationSpec(
@@ -74,7 +94,9 @@ internal object OperationCatalog {
       "Working-tree diff against HEAD, staged and unstaged together by default. Scoped to the " +
         "Root, and the reply says so, when the Root sits inside a larger repository.",
       AccessLevel.Read,
-      listOf(workspace(), ArgumentSpec("staged", ArgumentType.Flag, false, "Show staged changes only.")),
+      listOf(workspace(), ArgumentSpec("staged", ArgumentType.Flag, false, "Show staged changes only."),
+        ArgumentSpec("paths", ArgumentType.Array, false, "Literal Root-relative selections, including deleted paths.", items = ArgumentSpec("", ArgumentType.Text, true, "Literal path, never a Git pathspec expression.")),
+        ArgumentSpec("mode", ArgumentType.Text, false, "Default patch.", enumValues = listOf("patch", "stat", "name_only"))),
     ),
     OperationSpec(
       "git_log",
@@ -107,10 +129,20 @@ internal object OperationCatalog {
       listOf(
         workspace(),
         ArgumentSpec("path", ArgumentType.Text, true, "File relative to the Root."),
-        ArgumentSpec("old_text", ArgumentType.Text, true, "Byte-exact text that must occur exactly once."),
-        ArgumentSpec("new_text", ArgumentType.Text, true, "What replaces it."),
+        ArgumentSpec("old_text", ArgumentType.Text, false, "Byte-exact text that must occur exactly once. Use this pair or edits, exclusively."),
+        ArgumentSpec("new_text", ArgumentType.Text, false, "What replaces old_text."),
+        ArgumentSpec("edits", ArgumentType.Array, false, "All matches must be unique and non-overlapping in the original version.", minItems = 1, maxItems = 100,
+          items = ArgumentSpec("", ArgumentType.Object, true, "Replacement.", properties = listOf(
+            ArgumentSpec("old_text", ArgumentType.Text, true, "Nonempty byte-exact match."),
+            ArgumentSpec("new_text", ArgumentType.Text, true, "Replacement text.")))),
+        ArgumentSpec("preview", ArgumentType.Flag, false, "Preflight and diff without replacement. Reserves nothing; apply revalidates current bytes. Unrelated programs are not locked."),
         requestId(),
       ),
+    ),
+    OperationSpec(
+      "create_directory", "Create a directory at Write. Parent creation is explicit; overly deep paths are refused before effects when their component report cannot fit. An error after effects reports Uncertain with known created components, without rollback.",
+      AccessLevel.Write, listOf(workspace(), ArgumentSpec("path", ArgumentType.Text, true, "Directory relative to the Root."),
+        ArgumentSpec("parents", ArgumentType.Flag, false, "Create missing parents; default false."), requestId()),
     ),
     OperationSpec(
       "run_command",
@@ -131,16 +163,29 @@ internal object OperationCatalog {
       AccessLevel.Command,
       listOf(workspace(), ArgumentSpec("handle", ArgumentType.Text, true, "The Handle that call answered with.")),
     ),
-  )
+  ).map { spec -> spec.copy(
+    annotations = OperationAnnotations(
+      readOnly = spec.name !in setOf("write_file", "edit_file", "create_directory", "run_command", "get_result"),
+      destructive = spec.name in setOf("write_file", "edit_file", "run_command"),
+      openWorld = spec.name == "run_command",
+    ),
+    output = outputContract(spec.name),
+  ) }
+
+  private fun globs(name: String, description: String) = ArgumentSpec(name, ArgumentType.Array, false,
+    "$description Globs use /, * within a component, ** across components, ? for one non-separator.",
+    items = ArgumentSpec("", ArgumentType.Text, true, "Root-relative glob."))
 
   /**
    * The Operation's entry, and with it the Access Level admission checks. The `when` is
    * exhaustive, so a new Operation does not compile until it has a catalog entry — which is
-   * how "the required level" stops being something eleven call sites each decide for themselves.
+   * how "the required level" stops being something individual call sites each decide for themselves.
    */
   fun specFor(op: Operation<*>): OperationSpec = when (op) {
     Operation.ListWorkspaces -> entry("list_workspaces")
     is Operation.ReadFile -> entry("read_file")
+    is Operation.ReadFiles -> entry("read_files")
+    is Operation.CreateDirectory -> entry("create_directory")
     is Operation.ListDirectory -> entry("list_directory")
     is Operation.Search -> entry("search")
     is Operation.GitStatus -> entry("git_status")
@@ -159,25 +204,31 @@ internal object OperationCatalog {
    */
   fun argumentsOf(op: Operation<*>): String = when (op) {
     Operation.ListWorkspaces -> ""
+    is Operation.ReadFiles -> "files=${op.files.joinToString()}"
+    is Operation.CreateDirectory -> "path=${op.path} parents=${op.parents} request_id=${op.deliveryKey}"
     is Operation.ReadFile -> listOfNotNull(
       "path=${op.path}",
       op.offset?.let { "offset=$it" },
       op.limit?.let { "limit=$it" },
     ).joinToString(" ")
-    is Operation.ListDirectory -> "path=${op.label}"
+    is Operation.ListDirectory -> listOfNotNull(
+      "path=${op.label}", op.after?.let { "after=$it" },
+      op.limit.takeIf { it != 1000 }?.let { "limit=$it" },
+    ).joinToString(" ")
     is Operation.Search -> listOfNotNull(
       "query=${op.query}",
       op.path?.let { "path=$it" },
       "regex".takeIf { op.regex },
       "case_sensitive".takeIf { op.caseSensitive },
+      "mode=${op.mode} includes=${op.includeGlobs} excludes=${op.excludeGlobs} context=${op.contextBefore},${op.contextAfter} limit=${op.limit}",
     ).joinToString(" ")
     is Operation.GitStatus -> ""
-    is Operation.GitDiff -> if (op.staged) "staged" else ""
+    is Operation.GitDiff -> "staged=${op.staged} mode=${op.mode} paths=${op.paths}"
     is Operation.GitLog -> op.limit?.let { "limit=$it" } ?: ""
     // The Delivery key is in the account because it is what tells one arrival of a mutation
     // from a repeat of it, and a user reading an unattended afternoon has no other way to.
     is Operation.WriteFile -> "path=${op.path} content_bytes=${op.content.utf8Size()} request_id=${op.deliveryKey}"
-    is Operation.EditFile -> "path=${op.path} request_id=${op.deliveryKey}"
+    is Operation.EditFile -> "path=${op.path} edits=${op.edits?.size ?: 1} preview=${op.preview} request_id=${op.deliveryKey}"
     // The command itself, whole: this line is the whole of what an unattended Command Workspace
     // can be reviewed by, and a command summarised into its first few words is not reviewable.
     is Operation.RunCommand -> "command=${op.command} cwd=${op.label} request_id=${op.deliveryKey}"
@@ -195,6 +246,8 @@ internal object OperationCatalog {
    */
   fun outputOf(op: Operation<*>, value: Any?): String = when (op) {
     Operation.ListWorkspaces -> "${(value as List<*>).size} Workspaces"
+    is Operation.ReadFiles -> (value as BatchRead).let { "${it.items.size} file ranges, incomplete=${it.incomplete}" }
+    is Operation.CreateDirectory -> (value as DirectoryCreated).let { "created=${it.createdPaths} no_op=${it.noOp}" }
     is Operation.ReadFile -> (value as FileContent).let {
       "lines ${it.firstLine}-${it.firstLine + it.lineCount - 1} of ${it.totalLines}" +
         if (it.cappedByBytes) ", capped at the byte limit" else ""
@@ -209,9 +262,10 @@ internal object OperationCatalog {
     is Operation.Search -> (value as SearchResults).let {
       "${it.hits.size} ${plural(it.hits.size, "hit", "hits")} in " +
         "${it.filesSearched} ${plural(it.filesSearched, "file", "files")}" +
-        (if (it.bounds.cappedByResults) ", capped at ${Operation.SEARCH_RESULT_CAP} results" else "") +
+        (if (it.bounds.cappedByResults) ", capped at ${op.limit} results" else "") +
         (if (it.bounds.cappedByTime) ", truncated by time" else "") +
         (if (it.bounds.droppedHits > 0) ", ${it.bounds.droppedBytes} bytes dropped" else "") +
+        (if (it.bounds.contextTruncated) ", context truncated" else "") +
         (if (it.bounds.linesNotFullySearched > 0) ", ${it.bounds.linesNotFullySearched} long lines cut" else "")
     }
     // The scope is in the account for the reason it is in the reply: "0 changes" against a
@@ -231,7 +285,7 @@ internal object OperationCatalog {
     is Operation.WriteFile -> (value as FileWritten).let {
       "${if (it.created) "created" else "replaced"}, ${it.bytes} bytes"
     }
-    is Operation.EditFile -> "edited, ${(value as FileWritten).bytes} bytes"
+    is Operation.EditFile -> (value as FileWritten).let { "${if (it.preview) "preview" else "edited"}, ${it.bytes} bytes" }
     // A command's output arrives whole — capped where it was produced, and with no
     // overflow-to-file, Activity is where the whole of an unattended afternoon lives.
     //

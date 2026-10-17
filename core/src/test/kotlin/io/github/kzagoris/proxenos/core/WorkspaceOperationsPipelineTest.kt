@@ -83,8 +83,8 @@ class WorkspaceOperationsPipelineTest {
     val catalog = pipeline().second.catalog
     assertEquals(
       listOf(
-        "list_workspaces", "list_directory", "read_file", "search", "git_status", "git_diff",
-        "git_log", "write_file", "edit_file", "run_command", "get_result",
+        "list_workspaces", "list_directory", "read_file", "read_files", "search", "git_status", "git_diff",
+        "git_log", "write_file", "edit_file", "create_directory", "run_command", "get_result",
       ),
       catalog.map { it.name },
     )
@@ -93,6 +93,8 @@ class WorkspaceOperationsPipelineTest {
         "list_workspaces" to null,
         "list_directory" to AccessLevel.Read,
         "read_file" to AccessLevel.Read,
+        "read_files" to AccessLevel.Read,
+        "create_directory" to AccessLevel.Write,
         "search" to AccessLevel.Read,
         "git_status" to AccessLevel.Read,
         "git_diff" to AccessLevel.Read,
@@ -114,7 +116,7 @@ class WorkspaceOperationsPipelineTest {
       assertEquals(ArgumentSpec("workspace", ArgumentType.Text, true, first.description), first)
     }
     assertEquals(
-      listOf("write_file", "edit_file", "run_command"),
+      listOf("write_file", "edit_file", "create_directory", "run_command"),
       catalog.filter { spec -> spec.arguments.any { it.name == "request_id" } }.map { it.name },
     )
     // Promotion is automatic and never requested, and the model cannot buy time the
@@ -126,7 +128,7 @@ class WorkspaceOperationsPipelineTest {
   }
 
   @Test
-  fun `scenario 6 exercises all eleven Operations through one transport-free surface`() = runBlocking<Unit> {
+  fun `scenario 6 exercises the catalog Operations through one transport-free surface`() = runBlocking<Unit> {
     val (registry, activity, pipeline, operations) = commandWiring(budget = 20.milliseconds)
     val root = root()
     val file = root.resolve("notes.md")
@@ -147,6 +149,8 @@ class WorkspaceOperationsPipelineTest {
     assertEquals(listOf("api"), operations.ok(Operation.ListWorkspaces).map { it.name })
     assertTrue(operations.ok(Operation.ListDirectory("api")).entries.any { it.name == "notes.md" })
     assertContains(operations.ok(Operation.ReadFile("api", "notes.md")).text, "original needle")
+    assertEquals("original needle\n", operations.ok(Operation.ReadFiles("api", listOf(FileRead("notes.md")))).items.single().content?.text)
+    assertEquals(listOf("new"), operations.ok(Operation.CreateDirectory("api", "new", deliveryKey = "mkdir-6")).createdPaths)
     assertTrue(operations.ok(Operation.Search("api", "needle")).hits.any { it.path == "notes.md" })
 
     assertEquals("notes.md", operations.ok(Operation.WriteFile("api", "notes.md", "changed needle\n", "write-6")).path)
@@ -167,7 +171,7 @@ class WorkspaceOperationsPipelineTest {
     assertContains(assertIs<Outcome.Ok<CommandResult>>(reached.outcome).value.output, "scenario-6")
 
     val recorded = activity.entries()
-    assertEquals(11, recorded.size)
+    assertEquals(13, recorded.size)
     assertEquals(operations.catalog.map { it.name }.toSet(), recorded.map { it.tool }.toSet())
     assertTrue(recorded.all { it.origin == Origin.ChatGpt && it.outcome is ActivityOutcome.Ok })
     registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Read))
@@ -316,7 +320,7 @@ class WorkspaceOperationsPipelineTest {
     assertEquals(lines.take(content.lineCount).joinToString("\n", postfix = "\n"), content.text)
     assertTrue(content.lineCount < 400, "the cap, not the file, should have ended this read")
     assertTrue(bytes <= Operation.OUTPUT_CAP_BYTES, "returned $bytes bytes")
-    assertTrue(bytes + 201 > Operation.OUTPUT_CAP_BYTES, "one more line would still have fitted")
+    assertEquals(content.lineCount + 1, content.nextOffset, "continuation must include the first omitted line")
     assertEquals(400, content.totalLines)
     assertTrue(content.cappedByBytes, "a read the cap ended must say so")
   }
@@ -347,7 +351,9 @@ class WorkspaceOperationsPipelineTest {
     assertEquals(1, minified.lineCount)
     assertEquals(1, minified.totalLines)
     assertTrue(minified.cappedByBytes)
-    assertEquals(Operation.OUTPUT_CAP_BYTES, minified.text.toByteArray().size)
+    assertTrue(minified.text.isNotEmpty())
+    assertEquals(1, minified.nextOffset)
+    assertEquals(minified.text.toByteArray().size, minified.nextByteOffset)
   }
 
   @Test

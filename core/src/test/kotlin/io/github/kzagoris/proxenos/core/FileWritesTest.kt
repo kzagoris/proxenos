@@ -178,7 +178,11 @@ class FileWritesTest {
     writable(registry, root)
 
     val edited = assertIs<Outcome.Ok<FileWritten>>(operations.perform(edit("notes.md", "beta", "delta"))).value
-    assertEquals(FileWritten("notes.md", 18, created = false), edited)
+    assertEquals("notes.md", edited.path)
+    assertEquals(18, edited.bytes)
+    assertFalse(edited.created)
+    assertContains(edited.diff, "-beta")
+    assertContains(edited.diff, "+delta")
     assertEquals("alpha\ndelta\ngamma\n", Files.readString(root.resolve("notes.md")))
   }
 
@@ -302,11 +306,6 @@ class FileWritesTest {
         "$name carries a precondition token: ${entry.arguments.map { it.name }}",
       )
     }
-    // One edit per call: the arguments are one old_text and one new_text, never a list of them.
-    assertEquals(
-      listOf("workspace", "path", "old_text", "new_text", "request_id"),
-      operations.catalog.single { it.name == "edit_file" }.arguments.map { it.name },
-    )
     assertEquals(
       listOf("workspace", "path", "content", "request_id"),
       operations.catalog.single { it.name == "write_file" }.arguments.map { it.name },

@@ -23,6 +23,9 @@ class CatalogFingerprintTest {
     val argument = entry.arguments.first()
     val variants = listOf(
       entry.copy(description = entry.description + " "),
+      entry.copy(annotations = entry.annotations.copy(openWorld = !entry.annotations.openWorld)),
+      entry.copy(output = entry.output?.copy(properties = entry.output!!.properties.drop(1))),
+      entry.copy(arguments = listOf(argument.copy(items = argument.copy(minimum = 2, maximum = 4))) + entry.arguments.drop(1)),
       entry.copy(name = entry.name + "_v2"),
       entry.copy(requiredLevel = null),
       entry.copy(arguments = entry.arguments.drop(1)),

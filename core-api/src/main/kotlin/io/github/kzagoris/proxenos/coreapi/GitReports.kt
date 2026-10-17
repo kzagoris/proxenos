@@ -64,6 +64,7 @@ data class GitDiffReport(
   val patch: String,
   /** Bytes cut from the middle by the 32 KiB head-and-tail bound; 0 when none were. */
   val droppedBytes: Int,
+  val mode: String = "patch",
 ) {
   val cappedByBytes: Boolean get() = droppedBytes > 0
 }

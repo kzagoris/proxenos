@@ -1,8 +1,11 @@
 package io.github.kzagoris.proxenos.mcp
 
+import kotlinx.serialization.json.*
+
 import io.github.kzagoris.proxenos.core.Activity
 import io.github.kzagoris.proxenos.core.WorkspaceOperationsPipeline
 import io.github.kzagoris.proxenos.core.WorkspaceRegistry
+import io.github.kzagoris.proxenos.coreapi.*
 import io.github.kzagoris.proxenos.coreapi.AccessLevel
 import io.github.kzagoris.proxenos.coreapi.ArgumentSpec
 import io.github.kzagoris.proxenos.coreapi.ArgumentType
@@ -30,6 +33,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertNotNull
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -135,7 +139,7 @@ class McpEndpointTest {
       }
       assertFalse("workspace" in tools.getValue("list_workspaces").inputSchema.required.orEmpty())
 
-      val mutating = listOf("write_file", "edit_file", "run_command")
+      val mutating = listOf("write_file", "edit_file", "create_directory", "run_command")
       mutating.forEach { name ->
         val declared = tools.getValue(name).describes("request_id")
         assertContains(tools.getValue(name).inputSchema.required.orEmpty(), "request_id")
@@ -375,6 +379,121 @@ class McpEndpointTest {
     val registry = WorkspaceRegistry(temporary.resolve("registry.properties"))
     val activity = Activity(temporary.resolve("activity"))
     return registry to WorkspaceOperationsPipeline(registry, activity).operationsFor(Origin.ChatGpt)
+  }
+
+  @Test
+  fun `batch ranges reach the core with independent failures and a complete bounded wire reply`() = runBlocking {
+    val root = Files.createDirectory(temporary.resolve("batch-root"))
+    Files.writeString(root.resolve("escaped"), "\u0001\"\\".repeat(30000))
+    Files.writeString(root.resolve("small"), "first\nsecond\n")
+    val (registry, operations) = pipeline()
+    registry.perform(ManagementAct.Register(root.toString(), "api"))
+    served(operations) { client ->
+      val result = client.callTool("read_files", mapOf("workspace" to "api", "files" to listOf(
+        mapOf("path" to "escaped"), mapOf("path" to "../escape"),
+        mapOf("path" to "small", "offset" to 2, "limit" to 1),
+      )))
+      val structured = assertNotNull(result.structuredContent)
+      assertEquals("ok", structured["status"]?.jsonPrimitive?.content)
+      val items = structured.getValue("result").jsonObject.getValue("items").jsonArray
+      assertEquals(listOf("ok", "failed", "ok"), items.map { it.jsonObject.getValue("status").jsonPrimitive.content })
+      assertEquals("second\n", items[2].jsonObject.getValue("content").jsonObject.getValue("text").jsonPrimitive.content)
+      assertTrue(kotlinx.serialization.json.Json.encodeToString(CallToolResult.serializer(), result).toByteArray().size < 64 * 1024)
+      val file = items[0].jsonObject.getValue("content").jsonObject
+      assertEquals(false, file.getValue("lastLineComplete").jsonPrimitive.boolean)
+      assertTrue(file.getValue("nextByteOffset").jsonPrimitive.int > 0)
+    }
+  }
+
+  @Test
+  fun `published nested schema and annotations accompany typed malformed and refused replies`() = runBlocking {
+    served(pipeline().second) { client ->
+      val tools = client.listTools().tools.associateBy { it.name }
+      val files = tools.getValue("read_files").inputSchema.properties!!.getValue("files").jsonObject
+      assertEquals(20, files.getValue("maxItems").jsonPrimitive.int)
+      assertEquals("object", files.getValue("items").jsonObject.getValue("type").jsonPrimitive.content)
+      assertEquals(false, tools.getValue("write_file").annotations?.readOnlyHint)
+      assertEquals(true, tools.getValue("write_file").annotations?.destructiveHint)
+      assertEquals(true, tools.getValue("run_command").annotations?.openWorldHint)
+      assertEquals(false, tools.getValue("get_result").annotations?.readOnlyHint)
+      assertNotNull(tools.getValue("read_files").outputSchema)
+      val malformed = client.callTool("read_files", mapOf("workspace" to "api", "files" to "wrong"))
+      assertEquals("malformed", malformed.structuredContent?.getValue("status")?.jsonPrimitive?.content)
+      val refused = client.callTool("read_files", mapOf("workspace" to "absent", "files" to listOf(mapOf("path" to "x"))))
+      assertEquals("failed", refused.structuredContent?.getValue("status")?.jsonPrimitive?.content)
+    }
+  }
+
+  @Test
+  fun `oversized Uncertain metadata stays bounded and retains the safety instruction`() = runBlocking {
+    val paths = (1..200).map { (1..it).joinToString("/") { "abcdefghij" } }
+    val message = "Creation interrupted; ${Outcome.Uncertain.EFFECTS_UNCERTAIN}. Known paths: ${paths.joinToString()}"
+    served(stub { Outcome.Uncertain(Uncertainty.Interrupted, message, createdPaths = paths) }) { client ->
+      val result = client.callTool("create_directory", mapOf("workspace" to "api", "path" to "a", "request_id" to "r"))
+      assertContains(result.said(), Outcome.Uncertain.EFFECTS_UNCERTAIN)
+      assertTrue(kotlinx.serialization.json.Json.encodeToString(CallToolResult.serializer(), result).toByteArray().size < 64 * 1024)
+    }
+  }
+
+  @Test
+  fun `recorded Lost output retains safety when oversized command metadata is omitted`() = runBlocking {
+    val entry = ActivityEntry(ActivityEntryId("entry"), java.time.Instant.EPOCH, RuntimeStartId("previous"),
+      Origin.ChatGpt, "api", "run_command", "sleep 60 #" + "x".repeat(70000), null, ActivityOutcome.Lost, 0, null)
+    served(stub { Outcome.Ok(Collected.Recorded(Handle.of("entry"), entry)) }) { client ->
+      val result = client.callTool("get_result", mapOf("workspace" to "api", "handle" to "entry"))
+      assertContains(result.said(), Outcome.Uncertain.EFFECTS_UNCERTAIN)
+      assertEquals(true, result.isError)
+    }
+  }
+
+  @Test
+  fun `large repeated command reply keeps its first answer and the recorded Delivery note`() = runBlocking {
+    val root = Files.createDirectory(temporary.resolve("command-output"))
+    val (registry, operations) = pipeline()
+    val workspace = registry.perform(ManagementAct.Register(root.toString(), "api"))
+    registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Command))
+    served(operations) { client ->
+      val args = mapOf("workspace" to "api", "command" to "head -c 65536 /dev/zero | tr '\\0' 'x'", "request_id" to "large")
+      val first = client.callTool("run_command", args)
+      val repeated = client.callTool("run_command", args)
+      assertTrue(repeated.said().startsWith(first.said()))
+      assertContains(repeated.said(), Outcome.RECORDED_RESULT)
+      assertTrue(kotlinx.serialization.json.Json.encodeToString(CallToolResult.serializer(), repeated).toByteArray().size < 64 * 1024)
+    }
+  }
+
+  @Test
+  fun `complete endpoint replies bound escaped listing search read diff and preview output`() = runBlocking {
+    val root = Files.createDirectory(temporary.resolve("bounded-root"))
+    val contents = (0..199).joinToString("\n", postfix = "\n") { "needle $it " + "\u0001\"\\".repeat(500) }
+    Files.writeString(root.resolve("quoted"), contents)
+    repeat(1000) { Files.createFile(root.resolve("${it.toString().padStart(4, '0')}-" + "\"\\\n".repeat(30))) }
+    for (args in listOf(listOf("git", "init", "--quiet"), listOf("git", "add", "quoted"))) {
+      val process = ProcessBuilder(args).directory(root.toFile()).redirectErrorStream(true).start()
+      val output = process.inputStream.bufferedReader().readText()
+      assertEquals(0, process.waitFor(), output)
+    }
+    val (registry, operations) = pipeline()
+    val workspace = registry.perform(ManagementAct.Register(root.toString(), "api"))
+    registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    served(operations) { client ->
+      val selections = listOf(
+        "list_directory" to mapOf<String, Any>("workspace" to "api"),
+        "read_file" to mapOf("workspace" to "api", "path" to "quoted"),
+        "search" to mapOf("workspace" to "api", "query" to "needle", "context_before" to 10, "context_after" to 10),
+        "git_diff" to mapOf("workspace" to "api", "staged" to true),
+        "edit_file" to mapOf("workspace" to "api", "path" to "quoted", "old_text" to "needle 0 ",
+          "new_text" to "\u0001".repeat(20000), "preview" to true, "request_id" to "preview"),
+      )
+      for ((tool, args) in selections) {
+        val result = client.callTool(tool, args)
+        assertEquals(false, result.isError, tool)
+        assertNotNull(result.structuredContent?.get("result"), "$tool lost its typed result")
+        assertTrue(kotlinx.serialization.json.Json.encodeToString(CallToolResult.serializer(), result).toByteArray().size < 64 * 1024, tool)
+      }
+      val limited = client.callTool("search", mapOf("workspace" to "api", "query" to "needle", "mode" to "content", "limit" to 1))
+      assertContains(limited.said(), "Capped at 1 results")
+    }
   }
 
   private fun catalog(): List<OperationSpec> = pipeline().second.catalog

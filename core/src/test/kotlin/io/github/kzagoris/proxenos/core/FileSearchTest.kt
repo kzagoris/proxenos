@@ -6,6 +6,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit.SECONDS
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
@@ -207,21 +209,6 @@ class FileSearchTest {
   }
 
   @Test
-  fun `a listing too long for the cap keeps both ends`() = runBlocking<Unit> {
-    val (root, operations) = workspace("wide-dir")
-    val padding = "e".repeat(100)
-    repeat(2000) { Files.writeString(root.resolve("$padding-${it.toString().padStart(4, '0')}.txt"), "x") }
-
-    val listing = assertIs<Outcome.Ok<DirectoryListing>>(
-      operations.perform(Operation.ListDirectory("wide-dir")),
-    ).value
-    assertEquals(2000, listing.totalEntries)
-    assertTrue(listing.droppedBytes > 0, "the marker must name how many bytes were dropped")
-    assertEquals("$padding-0000.txt", listing.entries.first().name)
-    assertEquals("$padding-1999.txt", listing.entries.last().name, "the tail is kept, not only the head")
-  }
-
-  @Test
   fun `a filename match and a content match are both hits`() = runBlocking<Unit> {
     val (root, operations) = workspace()
     Files.writeString(root.resolve("needle.txt"), "nothing of interest\n")
@@ -303,10 +290,10 @@ class FileSearchTest {
   @Test
   fun `exceeding the result cap is an ok with an explicit marker`() = runBlocking<Unit> {
     val (root, operations) = workspace()
-    Files.writeString(root.resolve("many.txt"), "needle\n".repeat(Operation.SEARCH_RESULT_CAP + 50))
+    Files.writeString(root.resolve("many.txt"), "needle\n".repeat(70))
 
-    val found = searched(operations, Operation.Search("api", "needle"))
-    assertEquals(Operation.SEARCH_RESULT_CAP, found.hits.size)
+    val found = searched(operations, Operation.Search("api", "needle", limit = 20))
+    assertEquals(20, found.hits.size)
     assertTrue(found.bounds.cappedByResults, "a search the cap ended must say so")
     assertFalse(found.bounds.complete)
     assertFalse(found.bounds.cappedByTime)
@@ -358,6 +345,107 @@ class FileSearchTest {
   }
 
   @Test
+  fun `filename mode avoids content scanning and content mode omits filename hits`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.writeString(root.resolve("needle.txt"), "x".repeat(100_000) + "\n")
+    Files.writeString(root.resolve("other.txt"), "needle\n")
+
+    val filenames = searched(operations, Operation.Search("api", "needle", mode = "filename"))
+    assertEquals(listOf(SearchHit.Name("needle.txt")), filenames.hits)
+    assertEquals(0, filenames.bounds.linesNotFullySearched)
+    assertTrue(filenames.bounds.complete)
+    val content = searched(operations, Operation.Search("api", "needle", mode = "content"))
+    assertEquals(setOf("other.txt"), content.paths())
+    assertTrue(content.hits.all { it is SearchHit.Content })
+  }
+
+  @Test
+  fun `glob filters use Root relative paths across subtrees and exclusion wins`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.createDirectories(root.resolve("src/nested"))
+    Files.writeString(root.resolve("src/a.kt"), "needle\n")
+    Files.writeString(root.resolve("src/nested/b.kt"), "needle\n")
+    Files.writeString(root.resolve("src/nested/c.txt"), "needle\n")
+
+    val direct = searched(operations, Operation.Search("api", "needle", "src", includeGlobs = listOf("src/?.kt")))
+    assertEquals(setOf("src/a.kt"), direct.paths())
+    val deep = searched(operations, Operation.Search("api", "needle", "src", includeGlobs = listOf("src/**/*.kt")))
+    assertEquals(setOf("src/a.kt", "src/nested/b.kt"), deep.paths())
+    val excluded = searched(operations, Operation.Search("api", "needle", includeGlobs = listOf("**"), excludeGlobs = listOf("**/*.kt")))
+    assertEquals(setOf("src/nested/c.txt"), excluded.paths())
+  }
+
+  @Test
+  fun `invalid search options refuse before scanning`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.writeString(root.resolve("file.txt"), "needle\n")
+    val invalid = listOf(
+      Operation.Search("api", "needle", mode = "unknown") to "mode",
+      Operation.Search("api", "needle", contextBefore = -1) to "context_before",
+      Operation.Search("api", "needle", contextAfter = 11) to "context_after",
+      Operation.Search("api", "needle", limit = 0) to "limit",
+      Operation.Search("api", "needle", limit = 201) to "limit",
+      Operation.Search("api", "needle", includeGlobs = listOf("[ab]*")) to "include_globs",
+      Operation.Search("api", "needle", excludeGlobs = listOf("{a,b}")) to "exclude_globs",
+      Operation.Search("api", "needle", includeGlobs = listOf("src/../*")) to "include_globs",
+    )
+    for ((operation, field) in invalid) {
+      assertEquals(Failure.InvalidArgument(field), assertIs<Outcome.Failed>(operations.perform(operation)).reason)
+    }
+  }
+
+  @Test
+  fun `overlapping and adjacent context windows merge without counting context as hits`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.writeString(root.resolve("lines.txt"), "start\nneedle one\nbetween\nneedle two\nafter\nend\n")
+    val result = searched(operations, Operation.Search("api", "needle", mode = "content", contextBefore = 1, contextAfter = 1, limit = 2))
+    assertEquals(listOf(2, 4), result.hits.filterIsInstance<SearchHit.Content>().map { it.line })
+    assertEquals(listOf(SearchWindow("lines.txt", listOf(
+      SearchLine(1, "start", false, false), SearchLine(2, "needle one", true, false),
+      SearchLine(3, "between", false, false), SearchLine(4, "needle two", true, false),
+      SearchLine(5, "after", false, false),
+    ))), result.windows)
+    assertTrue(result.bounds.complete)
+  }
+
+  @Test
+  fun `a rejected matching context line marks context and results incomplete`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.writeString(root.resolve("lines.txt"), "needle one\nneedle two\nend\n")
+    val result = searched(operations, Operation.Search("api", "needle", mode = "content", contextAfter = 2, limit = 1))
+    assertEquals(listOf(SearchHit.Content("lines.txt", 1, "needle one", false)), result.hits)
+    assertTrue(result.bounds.cappedByResults)
+    assertTrue(result.bounds.contextTruncated)
+    assertEquals(listOf(1), result.windows.single().lines.map { it.line })
+  }
+
+  @Test
+  fun `quoted context and escaped output remain bounded with explicit truncation`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    val wide = "\"\t".repeat(2000)
+    Files.writeString(root.resolve("lines.txt"), (1..100).joinToString("\n") { "needle $wide" })
+    val result = searched(operations, Operation.Search("api", "needle", mode = "content", contextBefore = 10, contextAfter = 10))
+    assertTrue(Json.encodeToString(result).toByteArray().size <= Operation.OUTPUT_CAP_BYTES)
+    assertTrue(result.bounds.contextTruncated)
+    assertTrue(result.bounds.droppedHits > 0)
+    assertEquals(1, result.hits.filterIsInstance<SearchHit.Content>().first().line)
+    assertEquals(100, result.hits.filterIsInstance<SearchHit.Content>().last().line)
+  }
+
+  @Test
+  fun `a late binary marker discards context and releases the hit allowance`() = runBlocking<Unit> {
+    val (root, operations) = workspace()
+    Files.write(root.resolve("binary.txt"), "before\nneedle\nafter\nneedle\n".toByteArray() + byteArrayOf(0))
+    Files.writeString(root.resolve("text.txt"), "before\nneedle\nafter\n")
+    val result = searched(operations, Operation.Search("api", "needle", mode = "content", contextBefore = 1, contextAfter = 1, limit = 1))
+    assertEquals(listOf(SearchHit.Content("text.txt", 2, "needle", false)), result.hits)
+    assertEquals(listOf(SearchWindow("text.txt", listOf(
+      SearchLine(1, "before", false, false), SearchLine(2, "needle", true, false), SearchLine(3, "after", false, false),
+    ))), result.windows)
+    assertTrue(result.bounds.complete)
+  }
+
+  @Test
   fun `search is confined to the Root and to the subtree it is given`() = runBlocking<Unit> {
     val (root, operations) = workspace()
     Files.createDirectory(root.resolve("src"))
@@ -385,8 +473,9 @@ class FileSearchTest {
 
     val entries = activity.entries()
     assertEquals(listOf("list_directory", "search"), entries.map { it.tool })
-    assertEquals("path=.", entries.first().arguments)
-    assertEquals("query=needle regex", entries.last().arguments)
+    assertContains(entries.first().arguments, "path=.")
+    assertContains(entries.last().arguments, "query=needle")
+    assertContains(entries.last().arguments, "regex")
     assertEquals(ActivityOutcome.Ok("1 of 1 entries"), entries.first().outcome)
     assertEquals(ActivityOutcome.Ok("2 hits in 1 file"), entries.last().outcome)
   }

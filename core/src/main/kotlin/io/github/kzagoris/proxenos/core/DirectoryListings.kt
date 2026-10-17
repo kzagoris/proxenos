@@ -6,9 +6,14 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private const val LISTING_BYTES = 12 * 1024
+private val listingJson = Json { encodeDefaults = true }
 
 /**
- * One directory, sorted, bounded by the byte cap. The confinement is the pipeline's
+ * One consecutive page of a sorted directory. The confinement is the pipeline's
  * — a directory reached through a symlink out of the Root never arrives here — so what is left
  * is the listing itself and the promise that what it left out is counted rather than silent.
  */
@@ -17,19 +22,48 @@ internal fun listDirectory(
   workspace: Workspace,
   directory: Path,
 ): Outcome<DirectoryListing> {
+  if (op.limit !in 1..1000) return Outcome.Failed(
+    Failure.InvalidArgument("limit"), "limit must be between 1 and 1000.",
+  )
+  if (op.after?.any { it == '/' || it == '\u0000' } == true) return Outcome.Failed(
+    Failure.InvalidArgument("after"), "after must be an entry name, without '/' or NUL.",
+  )
   notADirectory(workspace, op.label, directory)?.let { return it }
+  val metadata = DirectoryListing(op.label, emptyList(), Int.MAX_VALUE, Int.MAX_VALUE, true)
+  if (listingJson.encodeToString(metadata).utf8Size() > LISTING_BYTES) return Outcome.Failed(
+    Failure.InvalidArgument("path"), "The directory path exceeds the response budget.",
+  )
 
   val names = Files.newDirectoryStream(directory).use { stream ->
     stream.map { it.fileName.toString() }
   }.sorted()
 
-  // Measured on the names, which is what varies: a kind and a size are a fixed handful of bytes
-  // each, and a directory overflows the cap with filenames or not at all.
-  val bounded = headAndTail(names, Operation.OUTPUT_HEAD_BYTES, Operation.OUTPUT_TAIL_BYTES) {
-    it.utf8Size()
+  val after = op.after
+  val remaining = names.filter { after == null || it > after }
+  val entries = mutableListOf<DirectoryEntry>()
+  var cappedByBytes = false
+  for (name in remaining.take(op.limit)) {
+    entries += describe(directory.resolve(name), name)
+    // Reserve the full metadata as well as JSON escaping: filenames containing control
+    // characters can cost six times their on-disk bytes. The adapter also carries readable
+    // compatibility text, so leave most of its complete-response budget available.
+    val candidate = DirectoryListing(op.label, entries, names.size, Int.MAX_VALUE, true, name)
+    if (listingJson.encodeToString(candidate).utf8Size() > LISTING_BYTES) {
+      entries.removeAt(entries.lastIndex)
+      cappedByBytes = true
+      break
+    }
   }
-  val entries = bounded.kept.map { describe(directory.resolve(it), it) }
-  return Outcome.Ok(DirectoryListing(op.label, entries, names.size, bounded.droppedBytes))
+  val incomplete = entries.size < remaining.size
+  if (cappedByBytes && entries.isEmpty()) return Outcome.Failed(
+    Failure.InvalidArgument("path"), "The directory path leaves no room for an entry within the response budget.",
+  )
+  val droppedBytes = if (cappedByBytes) remaining.drop(entries.size)
+    .sumOf { it.utf8Size().toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0
+  return Outcome.Ok(DirectoryListing(
+    op.label, entries, names.size, droppedBytes, incomplete,
+    if (incomplete) entries.lastOrNull()?.name else null,
+  ))
 }
 
 /**

@@ -306,6 +306,8 @@ class WorkspaceOperationsPipeline internal constructor(
   ): Outcome<R> = when (op) {
     Operation.ListWorkspaces -> Outcome.Ok(registry.listings())
     // A Scoped Operation reaches here only through admission, which cannot yield a null.
+    is Operation.ReadFiles -> readFiles(op, workspace!!)
+    is Operation.CreateDirectory -> createDirectory(op, workspace!!, paths.single())
     is Operation.ReadFile -> readFile(op, workspace!!, paths.single())
     is Operation.ListDirectory -> listDirectory(op, workspace!!, paths.single())
     is Operation.Search -> search(op, workspace!!, paths.single(), searchBudget)

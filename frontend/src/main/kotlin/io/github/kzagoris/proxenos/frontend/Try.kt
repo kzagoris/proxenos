@@ -1,8 +1,7 @@
 package io.github.kzagoris.proxenos.frontend
 
-import io.github.kzagoris.proxenos.coreapi.ArgumentSpec
-import io.github.kzagoris.proxenos.coreapi.Operation
-import io.github.kzagoris.proxenos.coreapi.OperationSpec
+import io.github.kzagoris.proxenos.coreapi.*
+import kotlinx.serialization.json.*
 import java.util.UUID
 
 /**
@@ -10,7 +9,9 @@ import java.util.UUID
  * against, and the `request_id`, which is minted.
  */
 fun askedOf(spec: OperationSpec): List<ArgumentSpec> =
-  spec.arguments.filter { it.name != Operation.WORKSPACE_ARGUMENT && it.name != Operation.KEY_ARGUMENT }
+  spec.arguments.filter { it.name != Operation.WORKSPACE_ARGUMENT && it.name != Operation.KEY_ARGUMENT }.map {
+    if (it.type == ArgumentType.Array) it.copy(description = it.description + " Enter a JSON array.") else it
+  }
 
 /**
  * A TryOperation's Operation, from the text typed for each argument. A frontend is an adapter
@@ -32,17 +33,49 @@ fun operationFrom(caller: String, tool: String, workspace: String, given: Map<St
     "y", "yes", "true" -> true
     else -> throw IllegalArgumentException("'$name' is yes or no, not '${text(name)}'.")
   }
+  fun array(name: String): JsonArray? = text(name)?.let {
+    Json.parseToJsonElement(it) as? JsonArray ?: throw IllegalArgumentException("'$name' must be a JSON array.")
+  }
+  fun strings(name: String): List<String> = array(name)?.map { item ->
+    require(item is JsonPrimitive && item.isString) { "'$name' must contain text values." }
+    item.content
+  }.orEmpty()
+  fun objects(name: String): List<JsonObject>? = array(name)?.map { item ->
+    item as? JsonObject ?: throw IllegalArgumentException("'$name' must contain objects.")
+  }
+  fun field(item: JsonObject, name: String): String? = when (val value = item[name]) {
+    null, JsonNull -> null
+    is JsonPrimitive -> {
+      require(value.isString) { "'$name' must be text." }
+      value.content
+    }
+    else -> throw IllegalArgumentException("'$name' must be text.")
+  }
+  fun requiredField(item: JsonObject, name: String): String = field(item, name)
+    ?: throw IllegalArgumentException("'$name' is required in each item.")
+  fun integer(item: JsonObject, name: String): Int? = when (val value = item[name]) {
+    null, JsonNull -> null
+    is JsonPrimitive -> value.content.toIntOrNull() ?: throw IllegalArgumentException("'$name' must be a whole number.")
+    else -> throw IllegalArgumentException("'$name' must be a whole number.")
+  }
   val key = "$caller-${UUID.randomUUID()}"
   return when (tool) {
     "list_workspaces" -> Operation.ListWorkspaces
-    "list_directory" -> Operation.ListDirectory(workspace, text("path"))
-    "read_file" -> Operation.ReadFile(workspace, required("path"), number("offset"), number("limit"))
-    "search" -> Operation.Search(workspace, required("query"), text("path"), flag("regex"), flag("case_sensitive"))
+    "list_directory" -> Operation.ListDirectory(workspace, text("path"), text("after"), number("limit") ?: 1000)
+    "read_file" -> Operation.ReadFile(workspace, required("path"), number("offset"), number("limit"), number("byte_offset") ?: 0)
+    "read_files" -> Operation.ReadFiles(workspace, (objects("files") ?: throw IllegalArgumentException("'files' is required.")).map {
+      FileRead(requiredField(it, "path"), integer(it, "offset"), integer(it, "limit"), integer(it, "byte_offset") ?: 0)
+    })
+    "create_directory" -> Operation.CreateDirectory(workspace, required("path"), flag("parents"), key)
+    "search" -> Operation.Search(workspace, required("query"), text("path"), flag("regex"), flag("case_sensitive"),
+      text("mode") ?: "all", strings("include_globs"), strings("exclude_globs"),
+      number("context_before") ?: 0, number("context_after") ?: 0, number("limit") ?: 200)
     "git_status" -> Operation.GitStatus(workspace)
-    "git_diff" -> Operation.GitDiff(workspace, flag("staged"))
+    "git_diff" -> Operation.GitDiff(workspace, flag("staged"), strings("paths"), text("mode") ?: "patch")
     "git_log" -> Operation.GitLog(workspace, number("limit"))
     "write_file" -> Operation.WriteFile(workspace, required("path"), required("content"), key)
-    "edit_file" -> Operation.EditFile(workspace, required("path"), required("old_text"), required("new_text"), key)
+    "edit_file" -> Operation.EditFile(workspace, required("path"), text("old_text"), text("new_text"), key,
+      objects("edits")?.map { TextEdit(requiredField(it, "old_text"), requiredField(it, "new_text")) }, flag("preview"))
     RUN_COMMAND -> Operation.RunCommand(workspace, required("command"), text("cwd"), key)
     GET_RESULT -> Operation.GetResult(workspace, required("handle"))
     else -> throw IllegalArgumentException("'$tool' is in the catalog but this frontend cannot build it.")

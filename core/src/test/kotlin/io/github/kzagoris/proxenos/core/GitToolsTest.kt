@@ -6,6 +6,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit.SECONDS
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
@@ -176,6 +178,91 @@ class GitToolsTest {
     assertTrue(staged.staged)
     assertTrue("staged.txt" in staged.patch)
     assertFalse("unstaged" in staged.patch, "staged asked for the staged changes alone")
+  }
+
+  @Test
+  fun `git_diff selections are literal Root-relative names even for deleted files in a nested Root`() = runBlocking<Unit> {
+    val repository = directory("monorepo")
+    repository(repository)
+    val root = Files.createDirectory(repository.resolve("service[*]"))
+    for (name in listOf("*.txt", "other.txt", ":(exclude)other.txt", "deleted.txt")) {
+      Files.writeString(root.resolve(name), "original\n")
+    }
+    git(repository, "add", "-A")
+    git(repository, "commit", "--quiet", "-m", "service")
+    Files.writeString(root.resolve("*.txt"), "literal selection\n")
+    Files.writeString(root.resolve("other.txt"), "not selected\n")
+    Files.writeString(root.resolve(":(exclude)other.txt"), "magic is a filename\n")
+    Files.delete(root.resolve("deleted.txt"))
+    Files.writeString(repository.resolve("README.md"), "outside Root\n")
+    val (_, operations) = workspace(root)
+
+    val diff = ok(operations, Operation.GitDiff("api", paths = listOf("*.txt", ":(exclude)other.txt", "deleted.txt")))
+    assertEquals("service[*]", diff.scope.scopedTo)
+    assertContains(diff.patch, "+literal selection")
+    assertContains(diff.patch, "+magic is a filename")
+    assertContains(diff.patch, "deleted file mode")
+    assertFalse("not selected" in diff.patch)
+    assertFalse("outside Root" in diff.patch)
+  }
+
+  @Test
+  fun `git_diff offers targeted statistics and names without running configured diff programs`() = runBlocking<Unit> {
+    val root = directory("project")
+    repository(root)
+    Files.writeString(root.resolve("README.md"), "one\ntwo\n")
+    Files.writeString(root.resolve("staged.txt"), "staged\n")
+    git(root, "add", "staged.txt")
+    Files.writeString(root.resolve(".gitattributes"), "*.md diff=unsafe\n")
+    val marker = temporary.resolve("diff-program-ran")
+    val program = temporary.resolve("unsafe-diff")
+    Files.writeString(program, "#!/bin/sh\nprintf unsafe > '$marker'\n")
+    program.toFile().setExecutable(true)
+    git(root, "config", "diff.external", program.toString())
+    git(root, "config", "diff.unsafe.textconv", program.toString())
+    val (_, operations) = workspace(root)
+
+    for (mode in listOf("patch", "stat", "name_only")) {
+      val diff = ok(operations, Operation.GitDiff("api", paths = listOf("README.md"), mode = mode))
+      assertEquals(mode, diff.mode)
+      assertContains(diff.patch, "README.md")
+      assertFalse("staged.txt" in diff.patch)
+      assertFalse(Files.exists(marker), "$mode must not execute configured diff programs")
+      when (mode) {
+        "patch" -> assertContains(diff.patch, "+two")
+        "stat" -> assertContains(diff.patch, "1 insertion(+)")
+        "name_only" -> assertEquals("README.md\n", diff.patch)
+      }
+    }
+    val staged = ok(operations, Operation.GitDiff("api", staged = true, mode = "name_only"))
+    assertEquals("staged.txt\n", staged.patch)
+  }
+
+  @Test
+  fun `git_diff refuses escaping selections and unsupported modes`() = runBlocking<Unit> {
+    val root = directory("project")
+    repository(root)
+    val (_, operations) = workspace(root)
+    for (path in listOf("../README.md", "sub/../README.md", root.resolve("README.md").toString(), "bad\u0000path", "")) {
+      val refused = assertIs<Outcome.Failed>(operations.perform(Operation.GitDiff("api", paths = listOf(path))))
+      assertEquals(Failure.InvalidArgument("paths"), refused.reason)
+    }
+    val refused = assertIs<Outcome.Failed>(operations.perform(Operation.GitDiff("api", mode = "raw")))
+    assertEquals(Failure.InvalidArgument("mode"), refused.reason)
+  }
+
+  @Test
+  fun `a diff with many JSON escapes fits the complete report byte bound`() = runBlocking<Unit> {
+    val root = directory("project")
+    repository(root)
+    Files.writeString(root.resolve("quoted.txt"), (0..2000).joinToString("\n") { "\"\\\u0001".repeat(30) } + "\n")
+    git(root, "add", "quoted.txt")
+    val (_, operations) = workspace(root)
+
+    val diff = ok(operations, Operation.GitDiff("api"))
+    assertTrue(diff.cappedByBytes)
+    assertTrue(Json { encodeDefaults = true }.encodeToString(diff).toByteArray().size <= Operation.OUTPUT_CAP_BYTES)
+    assertContains(diff.patch, "diff --git")
   }
 
   @Test

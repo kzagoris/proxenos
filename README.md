@@ -338,9 +338,23 @@ At **Write** or higher:
 | Access required | Tools |
 | --- | --- |
 | Discovery | `list_workspaces` |
-| Read | `list_directory`, `read_file`, `search`, `git_status`, `git_diff`, `git_log` |
-| Write | `write_file`, `edit_file` |
+| Read | `list_directory`, `read_file`, `read_files`, `search`, `git_status`, `git_diff`, `git_log` |
+| Write | `write_file`, `edit_file`, `create_directory` |
 | Command | `run_command`, `get_result` |
+
+`read_files` reads up to 20 ranges in one bounded reply, with independent results in input order.
+`search` supports filename/content modes, include/exclude globs, small context windows, and a hit limit.
+Directory listings return consecutive pages using `after`; `git_diff` accepts literal paths and patch,
+stat, or name-only output. Incomplete replies say how to continue or narrow the selection.
+
+At Write, `create_directory` creates missing parents only with `parents=true`. `edit_file` accepts
+either one exact replacement or up to 100 non-overlapping replacements matched against one original
+version; `preview=true` returns a bounded diff without replacement. Apply checks the current bytes
+again. Mutations and preview require `request_id` so repeated Deliveries return the original answer.
+Reads and directory pages are not snapshots; concurrent changes can affect continuation.
+In the frontends' Try forms, enter array arguments as JSON, for example
+`files=[{"path":"README.md","offset":1,"limit":20}]` or
+`edits=[{"old_text":"before","new_text":"after"}]` (enter the array value in the named field).
 
 Workspace operations name their target workspace explicitly. Adding a workspace or changing its level takes effect in the Runtime without adding new tool names.
 

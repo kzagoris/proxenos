@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.regex.PatternSyntaxException
 import kotlin.text.Charsets.UTF_8
 import kotlin.time.Duration
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 private const val GIT_DIRECTORY = ".git"
 
@@ -41,6 +43,21 @@ internal fun search(
     Failure.InvalidArgument("query"),
     "A search needs something to look for, and the query is empty.",
   )
+  val invalidField = when {
+    op.mode !in setOf("all", "filename", "content") -> "mode"
+    op.contextBefore !in 0..10 -> "context_before"
+    op.contextAfter !in 0..10 -> "context_after"
+    op.limit !in 1..Operation.SEARCH_RESULT_CAP -> "limit"
+    else -> null
+  }
+  if (invalidField != null) return Outcome.Failed(
+    Failure.InvalidArgument(invalidField), "Invalid search option '$invalidField'.",
+  )
+  val filters = try {
+    Filters(op.includeGlobs, op.excludeGlobs)
+  } catch (invalid: InvalidGlob) {
+    return Outcome.Failed(Failure.InvalidArgument(invalid.field), "Invalid search glob in '${invalid.field}'.")
+  }
   notADirectory(workspace, op.label, subtree)?.let { return it }
   val matcher = try {
     Matcher(op)
@@ -62,25 +79,9 @@ internal fun search(
     )
   }
   val deadline = Deadline(budget)
-  val scan = Scan(matcher, rootReal, deadline)
+  val scan = Scan(op, matcher, filters, rootReal, deadline)
   val enumeration = enumerate(subtree, deadline, scan) ?: return gitUnavailable(workspace, op.label, subtree)
-
-  val bounded = headAndTail(scan.hits, Operation.OUTPUT_HEAD_BYTES, Operation.OUTPUT_TAIL_BYTES) { it.weight() }
-  return Outcome.Ok(
-    SearchResults(
-      op.label,
-      enumeration,
-      bounded.kept,
-      scan.filesSearched,
-      SearchBounds(
-        scan.cappedByResults,
-        scan.cappedByTime,
-        bounded.droppedBytes,
-        bounded.droppedItems,
-        scan.linesNotFullySearched,
-      ),
-    ),
-  )
+  return Outcome.Ok(boundedResults(op, enumeration, scan))
 }
 
 /**
@@ -306,13 +307,50 @@ private class Deadline(budget: Duration) {
   fun remainingMillis(): Long = maxOf(0L, (at - System.nanoTime()) / 1_000_000)
 }
 
+private class InvalidGlob(val field: String) : RuntimeException()
+
+private class Filters(includes: List<String>, excludes: List<String>) {
+  private val includes = includes.map { compile(it, "include_globs") }
+  private val excludes = excludes.map { compile(it, "exclude_globs") }
+
+  fun accepts(path: String, deadline: Deadline): Boolean =
+    (includes.isEmpty() || includes.any { it.matches(Deadlined(path, deadline)) }) &&
+      excludes.none { it.matches(Deadlined(path, deadline)) }
+
+  private fun compile(glob: String, field: String): Regex {
+    if (glob.isEmpty() || glob.startsWith('/') || glob.any { it in "[]{}\\\u0000" } ||
+      glob.split('/').any { it == "." || it == ".." } || "***" in glob
+    ) throw InvalidGlob(field)
+    val pattern = StringBuilder("^")
+    var index = 0
+    while (index < glob.length) {
+      when (val character = glob[index]) {
+        '*' -> if (index + 1 < glob.length && glob[index + 1] == '*') {
+          index++
+          if (index + 1 < glob.length && glob[index + 1] == '/') {
+            pattern.append("(?:.*/)?")
+            index++
+          } else pattern.append(".*")
+        } else pattern.append("[^/]*")
+        '?' -> pattern.append("[^/]")
+        else -> pattern.append(Regex.escape(character.toString()))
+      }
+      index++
+    }
+    return Regex(pattern.append('$').toString(), RegexOption.DOT_MATCHES_ALL)
+  }
+}
+
 /** The scan itself: what was enumerated, what matched, and every bound that bit while it ran. */
 private class Scan(
+  private val op: Operation.Search,
   private val matcher: Matcher,
+  private val filters: Filters,
   private val rootReal: Path,
   private val deadline: Deadline,
 ) {
   val hits = mutableListOf<SearchHit>()
+  val windows = mutableListOf<SearchWindow>()
   var filesSearched = 0
     private set
   var cappedByResults = false
@@ -321,8 +359,10 @@ private class Scan(
     private set
   var linesNotFullySearched = 0
     private set
+  var contextTruncated = false
+    private set
+  private val wantsContext = op.contextBefore > 0 || op.contextAfter > 0
 
-  /** False once nothing more will be recorded, which is what stops the enumeration. */
   fun visit(file: Path): Boolean {
     if (deadline.spent()) {
       cappedByTime = true
@@ -331,39 +371,42 @@ private class Scan(
     val real = try {
       file.toRealPath()
     } catch (_: IOException) {
-      return true // A dangling link, or a file deleted while the search was running.
+      return true
     }
-    // Symlinks leaving the Root are skipped rather than followed. The path reported is the
-    // one that was enumerated, not the target's: that is the path the caller can read back.
-    if (!real.startsWith(rootReal)) return true
-    if (!Files.isRegularFile(real)) return true
-
-    val relative = rootReal.relativize(file).toString()
+    if (!real.startsWith(rootReal) || !Files.isRegularFile(real)) return true
+    val relative = rootReal.relativize(file).toString().replace(file.fileSystem.separator, "/")
+    try {
+      if (!filters.accepts(relative, deadline)) return true
+    } catch (_: BudgetSpent) {
+      cappedByTime = true
+      return false
+    }
     filesSearched++
-    // Held aside and only then kept, because a file is binary the moment a NUL appears anywhere
-    // in it — including after lines that already matched.
-    val cappedBefore = cappedByResults
+    val contextBefore = contextTruncated
     val found = mutableListOf<SearchHit>()
-    if (matches(relative)) record(found, SearchHit.Name(relative))
-    if (scanContents(file, relative, found)) {
+    if (op.mode != "content" && matches(relative)) record(found, SearchHit.Name(relative))
+    val nameCapped = cappedByResults
+    if (op.mode == "filename") {
       hits += found
     } else {
-      // The contents go; the name stays, because it matched on its own terms — a
-      // binary file's *contents* are skipped, and `vendor/needle.png` is still where the model asked to be
-      // pointed. The cap the dropped lines spent is given back with them, so that a binary
-      // file is never what ends a search early.
-      cappedByResults = cappedBefore
-      hits += found.filterIsInstance<SearchHit.Name>()
+      val context = scanContents(file, relative, found)
+      if (context != null) {
+        hits += found
+        windows += context
+      } else {
+        // A NUL anywhere makes the whole content binary, even after a matching prefix.
+        cappedByResults = nameCapped
+        if (!cappedByTime) contextTruncated = contextBefore
+        hits += found.filterIsInstance<SearchHit.Name>()
+      }
     }
     return !cappedByResults && !cappedByTime
   }
 
-  /** The budget ran out somewhere the scan itself could not see it, such as inside Git. */
   fun markTimeSpent() {
     cappedByTime = true
   }
 
-  /** Matching, with a regex that outran the budget turned into the marker it deserves. */
   private fun matches(text: String): Boolean = try {
     matcher.matches(text, deadline)
   } catch (_: BudgetSpent) {
@@ -371,58 +414,75 @@ private class Scan(
     false
   }
 
-  /** Into [pending], which is held apart from [hits] until the file it came from is kept. */
-  private fun record(pending: MutableList<SearchHit>, hit: SearchHit) {
-    // Set only when a hit is actually turned away: a search that found exactly the cap and no
-    // more is complete, and saying otherwise would send the caller looking for nothing.
-    if (hits.size + pending.size >= Operation.SEARCH_RESULT_CAP) {
+  private fun record(pending: MutableList<SearchHit>, hit: SearchHit): Boolean {
+    if (hits.size + pending.size >= op.limit) {
       cappedByResults = true
-      return
+      return false
     }
     pending += hit
+    return true
   }
 
-  /** False when this file's hits are to be dropped with it: it is binary, or time ran out. */
-  private fun scanContents(file: Path, relative: String, into: MutableList<SearchHit>): Boolean {
+  private fun scanContents(file: Path, relative: String, into: MutableList<SearchHit>): List<SearchWindow>? {
     var lineNumber = 0
     val line = ByteArrayOutputStream()
     var overflowed = false
+    var afterUntil = 0
+    var contextStopped = false
+    val before = ArrayDeque<SearchLine>()
+    val groups = mutableListOf<MutableList<SearchLine>>()
+
+    fun append(target: MutableList<SearchLine>, value: SearchLine) {
+      if (target.lastOrNull()?.line != value.line) {
+        target += value
+        if (value.lineCut) contextTruncated = true
+      }
+    }
 
     fun endLine() {
       lineNumber++
-      if (line.size() == 0 && !overflowed) return
-      // A line past the cap was matched on only as much of it as was held, so a miss here is
-      // not proof the query is absent from it — counted, never silent, because a minified
-      // bundle is exactly the file a model would otherwise conclude nothing about.
       if (overflowed) linesNotFullySearched++
       val decoded = String(line.toByteArray(), UTF_8).removeSuffix("\r")
-      if (matches(decoded)) {
-        val quoted = decoded.takeUtf8(Operation.SEARCH_LINE_CAP_BYTES)
-        record(into, SearchHit.Content(relative, lineNumber, quoted, quoted.length < decoded.length))
+      val text = decoded.takeUtf8(Operation.SEARCH_LINE_CAP_BYTES)
+      val matched = !cappedByResults && matches(decoded)
+      val accepted = matched && record(into, SearchHit.Content(relative, lineNumber, text, text.length < decoded.length))
+      val value = SearchLine(lineNumber, text, accepted, text.length < decoded.length)
+      if (wantsContext && !contextStopped) {
+        if (matched && !accepted) {
+          if (lineNumber <= afterUntil) contextTruncated = true
+          contextStopped = true
+        } else if (accepted) {
+          val previous = groups.lastOrNull()
+          val target = if (previous != null && previous.last().line >= lineNumber - op.contextBefore - 1) previous
+          else mutableListOf<SearchLine>().also { groups += it }
+          for (earlier in before) if (earlier.line > (target.lastOrNull()?.line ?: 0)) append(target, earlier)
+          append(target, value)
+          afterUntil = lineNumber + op.contextAfter
+        } else if (lineNumber <= afterUntil) append(groups.last(), value)
+        before += value
+        if (before.size > op.contextBefore) before.removeFirst()
       }
       line.reset()
       overflowed = false
     }
 
-    // Byte-oriented like a read: 0x0A never appears inside a multi-byte UTF-8 sequence,
-    // so lines are cut without first decoding a file that may not decode.
     Files.newInputStream(file).use { input ->
       val chunk = ByteArray(1 shl 16)
       while (true) {
-        if (deadline.spent()) {
+        if (deadline.spent() || cappedByTime) {
           cappedByTime = true
-          return false
+          if (wantsContext && groups.isNotEmpty()) contextTruncated = true
+          return null
         }
         val read = input.read(chunk)
         if (read < 0) break
         for (index in 0 until read) {
           val byte = chunk[index]
-          if (byte == ZERO) return false
+          if (byte == ZERO) return null
+          // Keep draining after the limit: a later NUL still invalidates all content hits.
+          if (cappedByResults && (contextStopped || lineNumber >= afterUntil)) continue
           when {
             byte == NEWLINE -> endLine()
-            // Past the cap nothing more is recorded, but the file is still read to the end:
-            // a NUL after the two hundredth hit makes it binary just the same.
-            cappedByResults -> Unit
             line.size() < Operation.OUTPUT_CAP_BYTES -> line.write(byte.toInt())
             else -> overflowed = true
           }
@@ -430,14 +490,68 @@ private class Scan(
       }
     }
     if (line.size() > 0 || overflowed) endLine()
-    return true
+    return groups.map { SearchWindow(relative, it) }
   }
 }
 
-/**
- * What this hit costs the reply: every string it carries that varies. Head and tail rather than
- * head alone because a search is enumeration-ordered — the two ends are two places in the
- * project, and one end of them would be an answer about one directory.
- */
-private fun SearchHit.weight(): Int = path.utf8Size() +
-  if (this is SearchHit.Content) text.utf8Size() + line.toString().length else 0
+private const val SEARCH_REPLY_BYTES = 12 * 1024
+
+/** Include JSON escaping and both hit/context representations in the bound. */
+private fun boundedResults(op: Operation.Search, enumeration: Enumeration, scan: Scan): SearchResults {
+  fun windowsFor(hits: List<SearchHit>, context: Set<Pair<String, Int>>? = null): List<SearchWindow> {
+    val content = hits.filterIsInstance<SearchHit.Content>().groupBy { it.path }
+    return scan.windows.flatMap { window ->
+      val selected = content[window.path].orEmpty()
+      val groups = mutableListOf<MutableList<SearchLine>>()
+      for (line in window.lines) {
+        val matched = selected.any { it.line == line.line }
+        if (!matched && (line.matched || context != null && window.path to line.line !in context)) continue
+        if (selected.none { line.line in (it.line - op.contextBefore)..(it.line + op.contextAfter) }) continue
+        val previous = groups.lastOrNull()
+        val target = if (previous != null && previous.last().line == line.line - 1) previous
+        else mutableListOf<SearchLine>().also { groups += it }
+        target += line
+      }
+      groups.map { SearchWindow(window.path, it) }
+    }
+  }
+
+  val wantsContext = op.contextBefore > 0 || op.contextAfter > 0
+  fun weight(hit: SearchHit): Int {
+    val matchingLine = if (wantsContext && hit is SearchHit.Content) {
+      Json.encodeToString(SearchLine(hit.line, hit.text, true, hit.lineCut)).utf8Size() +
+        Json.encodeToString(hit.path).utf8Size() + 64
+    } else 0
+    return Json.encodeToString(SearchHit.serializer(), hit).utf8Size() + matchingLine + 2
+  }
+
+  val available = maxOf(0, SEARCH_REPLY_BYTES - Json.encodeToString(op.label).utf8Size() - 1024)
+  val bounded = headAndTail(scan.hits, available / 2, available - available / 2, ::weight)
+  fun result(windows: List<SearchWindow>, droppedBytes: Int, truncated: Boolean) = SearchResults(
+    op.label, enumeration, bounded.kept, scan.filesSearched,
+    SearchBounds(
+      scan.cappedByResults, scan.cappedByTime, droppedBytes, bounded.droppedItems,
+      scan.linesNotFullySearched, scan.contextTruncated || truncated,
+    ),
+    windows,
+  )
+
+  var windows = windowsFor(bounded.kept)
+  if (Json.encodeToString(result(windows, 0, false)).utf8Size() > SEARCH_REPLY_BYTES - 128) {
+    // Matching lines earn space first. Context is bounded separately, so broad context never
+    // removes every otherwise useful hit merely because one window is too wide.
+    val matchingOnly = windowsFor(bounded.kept, emptySet())
+    val remaining = maxOf(0, SEARCH_REPLY_BYTES - 128 - Json.encodeToString(result(matchingOnly, 0, true)).utf8Size())
+    val context = windows.flatMap { window -> window.lines.filterNot { it.matched }.map { window.path to it } }
+    val retained = headAndTail(context, remaining / 2, remaining - remaining / 2) { (path, line) ->
+      Json.encodeToString(line).utf8Size() + Json.encodeToString(path).utf8Size() + 64
+    }.kept.map { (path, line) -> path to line.line }.toSet()
+    windows = windowsFor(bounded.kept, retained)
+  }
+  val droppedBytes = Json.encodeToString(scan.hits).utf8Size() + Json.encodeToString(scan.windows).utf8Size() -
+    Json.encodeToString(bounded.kept).utf8Size() - Json.encodeToString(windows).utf8Size()
+  return result(
+    windows, maxOf(0, droppedBytes),
+    windows.sumOf { it.lines.size } < scan.windows.sumOf { it.lines.size },
+  )
+}

@@ -35,23 +35,18 @@ class ToolCallsTest {
    * default here, and each expectation below is a value no default could produce.
    */
   @Test
-  fun `each entry's declared arguments arrive on its Operation`() {
-    assertEquals(
-      listOf(
-        Operation.ListWorkspaces,
-        Operation.ListDirectory("api", "src/Main.kt"),
-        Operation.ReadFile("api", "src/Main.kt", 12, 30),
-        Operation.Search("api", "needle", "src/Main.kt", regex = true, caseSensitive = true),
-        Operation.GitStatus("api"),
-        Operation.GitDiff("api", staged = true),
-        Operation.GitLog("api", 30),
-        Operation.WriteFile("api", "src/Main.kt", "the new contents", "r-1"),
-        Operation.EditFile("api", "src/Main.kt", "before", "after", "r-1"),
-        Operation.RunCommand("api", "make build", "src", "r-1"),
-        Operation.GetResult("api", "h-1"),
-      ),
-      catalog().map { spec -> assertIs<ToolCall.Ready>(decode(spec, fullyPopulated(spec))).operation },
-    )
+  fun `extended arguments arrive on their Operations without falling back to defaults`() {
+    fun operation(tool: String, json: String) = assertIs<ToolCall.Ready>(decode(entry(tool),
+      kotlinx.serialization.json.Json.parseToJsonElement(json).let { it as JsonObject })).operation
+    assertEquals(Operation.ReadFiles("api", listOf(io.github.kzagoris.proxenos.coreapi.FileRead("a", 2, 3, 4))),
+      operation("read_files", """{"workspace":"api","files":[{"path":"a","offset":2,"limit":3,"byte_offset":4}]}"""))
+    assertEquals(Operation.Search("api", "x", mode = "content", includeGlobs = listOf("**/*.kt"), excludeGlobs = listOf("test/**"), contextBefore = 2, contextAfter = 3, limit = 4),
+      operation("search", """{"workspace":"api","query":"x","mode":"content","include_globs":["**/*.kt"],"exclude_globs":["test/**"],"context_before":2,"context_after":3,"limit":4}"""))
+    assertEquals(Operation.ListDirectory("api", "src", "a", 20), operation("list_directory", """{"workspace":"api","path":"src","after":"a","limit":20}"""))
+    assertEquals(Operation.GitDiff("api", true, listOf("a*"), "stat"), operation("git_diff", """{"workspace":"api","staged":true,"paths":["a*"],"mode":"stat"}"""))
+    assertEquals(Operation.CreateDirectory("api", "a/b", true, "key"), operation("create_directory", """{"workspace":"api","path":"a/b","parents":true,"request_id":"key"}"""))
+    assertEquals(Operation.EditFile("api", "a", deliveryKey = "key", edits = listOf(io.github.kzagoris.proxenos.coreapi.TextEdit("old", "new")), preview = true),
+      operation("edit_file", """{"workspace":"api","path":"a","edits":[{"old_text":"old","new_text":"new"}],"preview":true,"request_id":"key"}"""))
   }
 
   @Test
@@ -59,7 +54,7 @@ class ToolCallsTest {
     // The catalog is flat and static, and an entry is published whether or not its
     // Operation has landed — so a call to one is answered rather than quietly dropped.
     val unbound = OperationSpec("some_later_tool", "Not in this build.", AccessLevel.Read, emptyList())
-    assertEquals(ToolCall.Unbound("some_later_tool"), decode(unbound, fullyPopulated(unbound)))
+    assertEquals(ToolCall.Unbound("some_later_tool"), decode(unbound, buildJsonObject { }))
   }
 
   /**
@@ -129,20 +124,6 @@ class ToolCallsTest {
     assertContains(structured.complaint, "'path'")
   }
 
-  /** A sample for every argument the entry declares, keyed by the name the entry declares. */
-  private fun fullyPopulated(spec: OperationSpec): JsonObject = buildJsonObject {
-    spec.arguments.forEach { argument ->
-      put(
-        argument.name,
-        when (argument.type) {
-          ArgumentType.Flag -> JsonPrimitive(true)
-          ArgumentType.Integer -> JsonPrimitive(sampleNumbers.getValue(argument.name))
-          ArgumentType.Text -> JsonPrimitive(sampleText.getValue(argument.name))
-        },
-      )
-    }
-  }
-
   private fun entry(name: String): OperationSpec = catalog().single { it.name == name }
 
   private fun catalog(): List<OperationSpec> = WorkspaceOperationsPipeline(
@@ -150,20 +131,4 @@ class ToolCallsTest {
     Activity(temporary.resolve("activity")),
   ).catalog
 
-  private companion object {
-    /** Values chosen so no default could produce them, keyed by the catalog's own names. */
-    val sampleText = mapOf(
-      "workspace" to "api",
-      "path" to "src/Main.kt",
-      "content" to "the new contents",
-      "old_text" to "before",
-      "new_text" to "after",
-      "query" to "needle",
-      "command" to "make build",
-      "cwd" to "src",
-      "handle" to "h-1",
-      "request_id" to "r-1",
-    )
-    val sampleNumbers = mapOf("offset" to 12, "limit" to 30)
-  }
 }

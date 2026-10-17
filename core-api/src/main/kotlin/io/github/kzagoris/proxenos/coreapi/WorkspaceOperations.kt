@@ -27,6 +27,8 @@ data class OperationSpec(
    */
   val requiredLevel: AccessLevel?,
   val arguments: List<ArgumentSpec>,
+  val annotations: OperationAnnotations = OperationAnnotations(),
+  val output: ArgumentSpec? = null,
 )
 
 @Serializable
@@ -35,10 +37,28 @@ data class ArgumentSpec(
   val type: ArgumentType,
   val required: Boolean,
   val description: String,
+  val items: ArgumentSpec? = null,
+  val properties: List<ArgumentSpec> = emptyList(),
+  val enumValues: List<String> = emptyList(),
+  val minimum: Int? = null,
+  val maximum: Int? = null,
+  val minItems: Int? = null,
+  val maxItems: Int? = null,
+  val alternatives: List<ArgumentSpec> = emptyList(),
+  val nullable: Boolean = false,
+  val reference: String? = null,
+  val definitions: List<ArgumentSpec> = emptyList(),
 )
 
 @Serializable
-enum class ArgumentType { Text, Integer, Flag }
+data class OperationAnnotations(
+  val readOnly: Boolean = true,
+  val destructive: Boolean = false,
+  val openWorld: Boolean = false,
+)
+
+@Serializable
+enum class ArgumentType { Text, Integer, Flag, Array, Object, Number }
 
 @Serializable
 sealed interface Operation<R> {
@@ -92,8 +112,17 @@ sealed interface Operation<R> {
     val offset: Int? = null,
     /** Lines to return; null is [DEFAULT_LINE_CEILING]. The byte cap may bind first. */
     val limit: Int? = null,
+    val byteOffset: Int = 0,
   ) : Scoped<FileContent> {
     override val confinedPaths: List<String> get() = listOf(path)
+    override val mutatedPath: String? get() = null
+    override val deliveryKey: String? get() = null
+  }
+
+  @Serializable
+  data class ReadFiles(override val workspace: String?, val files: List<FileRead>) : Scoped<BatchRead> {
+    // Items are confined independently by the pipeline after Workspace admission.
+    override val confinedPaths: List<String> get() = emptyList()
     override val mutatedPath: String? get() = null
     override val deliveryKey: String? get() = null
   }
@@ -107,6 +136,8 @@ sealed interface Operation<R> {
     override val workspace: String?,
     /** Directory relative to the Root; null is the Root itself. */
     val path: String? = null,
+    val after: String? = null,
+    val limit: Int = 1000,
   ) : Scoped<DirectoryListing> {
     /** The path as it is spoken of: the argument, or the Root itself when it was left out. */
     val label: String get() = path ?: THIS_DIRECTORY
@@ -131,6 +162,12 @@ sealed interface Operation<R> {
     val regex: Boolean = false,
     /** Match case. Off by default, which is what a model half-remembering a name needs. */
     val caseSensitive: Boolean = false,
+    val mode: String = "all",
+    val includeGlobs: List<String> = emptyList(),
+    val excludeGlobs: List<String> = emptyList(),
+    val contextBefore: Int = 0,
+    val contextAfter: Int = 0,
+    val limit: Int = 200,
   ) : Scoped<SearchResults> {
     /** The path as it is spoken of: the argument, or the Root itself when it was left out. */
     val label: String get() = path ?: THIS_DIRECTORY
@@ -144,8 +181,8 @@ sealed interface Operation<R> {
    * what changed without granting command execution; Git *mutation* is not in the first release,
    * and `run_command` reaches it once commands are enabled.
    *
-   * None of them takes a path argument, so the path they confine is the Root itself — which is
-   * what makes a Root that has moved report as Broken here exactly as it does everywhere else.
+   * Admission confines the Root itself. Diff selections address the index too, so they are
+   * checked lexically and passed to Git as literal Root-relative selections, including deleted paths.
    *
    * There is **no snapshot guarantee**: each is one invocation giving a point-in-time view, and
    * a concurrent `run_command` rewriting the repository can make two of them disagree. That is
@@ -171,6 +208,8 @@ sealed interface Operation<R> {
   data class GitDiff(
     override val workspace: String?,
     val staged: Boolean = false,
+    val paths: List<String> = emptyList(),
+    val mode: String = "patch",
   ) : Git<GitDiffReport>
 
   /** The most recent commits, [GIT_LOG_COMMITS] of them when [limit] is absent. */
@@ -205,19 +244,32 @@ sealed interface Operation<R> {
    * are both refused, and several names the count rather than taking the first: the uniqueness
    * requirement *is* the concurrency check — if another process changed that region the match
    * no longer hits — which is why there is no mtime or hash precondition argument here, and
-   * why there is one edit per call rather than a batch whose half could land.
+   * why every edit in a batch matches that same original before one replacement lands.
    */
   @Serializable
   data class EditFile(
     override val workspace: String?,
     val path: String,
     /** Byte-exact text that must occur exactly once; never empty, which occurs everywhere. */
-    val oldText: String,
-    val newText: String,
+    val oldText: String? = null,
+    val newText: String? = null,
     /** Required, and `request_id` on the wire: a repeat Delivery of it is answered with
      * the first's reply rather than doing the work again. */
     override val deliveryKey: String,
+    val edits: List<TextEdit>? = null,
+    val preview: Boolean = false,
   ) : Scoped<FileWritten> {
+    override val confinedPaths: List<String> get() = listOf(path)
+    override val mutatedPath: String? get() = if (preview) null else path
+  }
+
+  @Serializable
+  data class CreateDirectory(
+    override val workspace: String?,
+    val path: String,
+    val parents: Boolean = false,
+    override val deliveryKey: String,
+  ) : Scoped<DirectoryCreated> {
     override val confinedPaths: List<String> get() = listOf(path)
     override val mutatedPath: String get() = path
   }
@@ -387,6 +439,9 @@ data class FileContent(
    * pages with, and a hole in the middle of a file is not something to page past.
    */
   val cappedByBytes: Boolean,
+  val lastLineComplete: Boolean = true,
+  val nextOffset: Int? = null,
+  val nextByteOffset: Int? = null,
 )
 
 /**
@@ -400,6 +455,9 @@ data class FileWritten(
   val bytes: Int,
   /** The file did not exist before this write. Always false for an edit, which needs one that does. */
   val created: Boolean,
+  val preview: Boolean = false,
+  val diff: String = "",
+  val diffTruncated: Boolean = false,
 )
 
 /**
@@ -521,8 +579,7 @@ data class Survivor(val pid: Long, val signalled: Boolean)
 
 /**
  * One directory's entries, sorted by name. [totalEntries] against `entries.size` is how the
- * model knows what it has not seen — there is no paging here, so the count is the whole of the
- * promise the marker makes.
+ * model knows what it has not seen. Pages use exclusive entry names and are not snapshots.
  */
 @Serializable
 data class DirectoryListing(
@@ -533,11 +590,11 @@ data class DirectoryListing(
    * Bytes of names the cap left out; 0 when the listing is whole. Truncation is never
    * silent, and the marker names a byte count like every other.
    *
-   * Cut 32 KiB head and 32 KiB tail, like a command's output: a listing has no offset to page
-   * by, so what is dropped is dropped for good, and both ends of a sorted listing say more
-   * about what a directory holds than one end and a count would.
+   * Entries are consecutive; nextAfter names the last one on an incomplete page.
    */
   val droppedBytes: Int,
+  val incomplete: Boolean = false,
+  val nextAfter: String? = null,
 ) {
   val cappedByBytes: Boolean get() = droppedBytes > 0
 }
@@ -562,6 +619,7 @@ data class SearchResults(
   val hits: List<SearchHit>,
   val filesSearched: Int,
   val bounds: SearchBounds,
+  val windows: List<SearchWindow> = emptyList(),
 )
 
 /** How the files to search were enumerated. */
@@ -614,9 +672,10 @@ data class SearchBounds(
    * point this search read to, so a miss in such a file is not proof the query is absent.
    */
   val linesNotFullySearched: Int,
+  val contextTruncated: Boolean = false,
 ) {
   val complete: Boolean
-    get() = !cappedByResults && !cappedByTime && droppedHits == 0 && linesNotFullySearched == 0
+    get() = !cappedByResults && !cappedByTime && droppedHits == 0 && linesNotFullySearched == 0 && !contextTruncated
 }
 
 @Serializable
@@ -638,6 +697,7 @@ sealed interface Outcome<out R> {
     val reason: Failure,
     val message: String,
     override val recorded: Boolean = false,
+    val conflicts: List<EditConflict> = emptyList(),
   ) : Outcome<Nothing>
 
   /**
@@ -650,6 +710,7 @@ sealed interface Outcome<out R> {
     val reason: Uncertainty,
     val message: String,
     override val recorded: Boolean = false,
+    val createdPaths: List<String> = emptyList(),
   ) : Outcome<Nothing> {
     init {
       require(EFFECTS_UNCERTAIN in message) {
@@ -829,6 +890,9 @@ sealed interface Uncertainty {
   @Serializable
   data class RootBrokeMidOperation(val workspace: String) : Uncertainty
 
+  @Serializable
+  data class DirectoryCreationIncomplete(val detail: String) : Uncertainty
+
   /**
    * The call carrying the Operation ended before the Operation did — it was cancelled, or the
    * Runtime hit a defect partway. Only a repeat Delivery of the same key ever reads this, since
@@ -845,3 +909,27 @@ sealed interface Uncertainty {
   @Serializable
   data class FirstDeliveryInFlight(val key: String) : Uncertainty
 }
+
+@Serializable
+data class FileRead(val path: String, val offset: Int? = null, val limit: Int? = null, val byteOffset: Int = 0)
+
+@Serializable
+data class BatchRead(val items: List<FileReadResult>, val incomplete: Boolean)
+
+@Serializable
+data class FileReadResult(val status: String, val content: FileContent? = null, val message: String? = null)
+
+@Serializable
+data class TextEdit(val oldText: String, val newText: String)
+
+@Serializable
+data class EditConflict(val index: Int, val matches: Int, val overlapsWith: Int? = null)
+
+@Serializable
+data class DirectoryCreated(val path: String, val createdPaths: List<String>, val noOp: Boolean)
+
+@Serializable
+data class SearchWindow(val path: String, val lines: List<SearchLine>)
+
+@Serializable
+data class SearchLine(val line: Int, val text: String, val matched: Boolean, val lineCut: Boolean)

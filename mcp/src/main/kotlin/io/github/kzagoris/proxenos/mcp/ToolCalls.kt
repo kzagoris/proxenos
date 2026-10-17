@@ -1,8 +1,11 @@
 package io.github.kzagoris.proxenos.mcp
 
+import io.github.kzagoris.proxenos.coreapi.FileRead
+import io.github.kzagoris.proxenos.coreapi.TextEdit
 import io.github.kzagoris.proxenos.coreapi.Operation
 import io.github.kzagoris.proxenos.coreapi.OperationSpec
 import io.github.kzagoris.proxenos.coreapi.Outcome
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -39,23 +42,30 @@ internal fun decode(spec: OperationSpec, arguments: JsonObject?): ToolCall = try
   val read = Arguments(spec.name, arguments)
   val operation: Operation<*> = when (spec.name) {
     "list_workspaces" -> Operation.ListWorkspaces
-    "list_directory" -> Operation.ListDirectory(read.workspace(), read.text("path"))
+    "list_directory" -> Operation.ListDirectory(read.workspace(), read.text("path"), read.text("after"), read.number("limit") ?: 1000)
     "read_file" -> Operation.ReadFile(
-      read.workspace(), read.requiredText("path"), read.number("offset"), read.number("limit"),
+      read.workspace(), read.requiredText("path"), read.number("offset"), read.number("limit"), read.number("byte_offset") ?: 0,
     )
+    "read_files" -> Operation.ReadFiles(read.workspace(), read.objects("files", required = true)!!.map { item ->
+      FileRead(item.requiredText("path"), item.number("offset"), item.number("limit"), item.number("byte_offset") ?: 0)
+    })
+    "create_directory" -> Operation.CreateDirectory(read.workspace(), read.requiredText("path"), read.flag("parents"), read.key())
     "search" -> Operation.Search(
       read.workspace(), read.requiredText("query"), read.text("path"),
       read.flag("regex"), read.flag("case_sensitive"),
+      read.text("mode") ?: "all", read.texts("include_globs"), read.texts("exclude_globs"),
+      read.number("context_before") ?: 0, read.number("context_after") ?: 0, read.number("limit") ?: 200,
     )
     "git_status" -> Operation.GitStatus(read.workspace())
-    "git_diff" -> Operation.GitDiff(read.workspace(), read.flag("staged"))
+    "git_diff" -> Operation.GitDiff(read.workspace(), read.flag("staged"), read.texts("paths"), read.text("mode") ?: "patch")
     "git_log" -> Operation.GitLog(read.workspace(), read.number("limit"))
     "write_file" -> Operation.WriteFile(
       read.workspace(), read.requiredText("path"), read.requiredText("content"), read.key(),
     )
     "edit_file" -> Operation.EditFile(
-      read.workspace(), read.requiredText("path"), read.requiredText("old_text"),
-      read.requiredText("new_text"), read.key(),
+      read.workspace(), read.requiredText("path"), read.text("old_text"),
+      read.text("new_text"), read.key(),
+      read.objects("edits")?.map { TextEdit(it.requiredText("old_text"), it.requiredText("new_text")) }, read.flag("preview"),
     )
     "run_command" -> Operation.RunCommand(
       read.workspace(), read.requiredText("command"), read.text("cwd"), read.key(),
@@ -110,6 +120,24 @@ private class Arguments(private val tool: String, private val arguments: JsonObj
   fun flag(name: String): Boolean = primitive(name)?.let {
     it.content.toBooleanStrictOrNull() ?: throw MalformedCall(mistyped(name, "true or false", it))
   } ?: false
+
+  fun texts(name: String): List<String> = array(name)?.map { item ->
+    if (item is JsonPrimitive && item.isString) item.content else throw MalformedCall(mistyped(name, "an array of text", item))
+  }.orEmpty()
+
+  fun objects(name: String, required: Boolean = false): List<Arguments>? {
+    val value = array(name) ?: if (required) throw MalformedCall(missing(name)) else return null
+    return value.mapIndexed { index, item ->
+      if (item is JsonObject) Arguments("$tool.$name[$index]", item)
+      else throw MalformedCall(mistyped(name, "an array of objects", item))
+    }
+  }
+
+  private fun array(name: String): JsonArray? = when (val value = arguments?.get(name)) {
+    null, JsonNull -> null
+    is JsonArray -> value
+    else -> throw MalformedCall(mistyped(name, "an array", value))
+  }
 
   private fun primitive(name: String): JsonPrimitive? = when (val value = arguments?.get(name)) {
     null, JsonNull -> null

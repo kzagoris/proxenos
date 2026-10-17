@@ -11,6 +11,8 @@ dependencies {
   // The management client and the control socket's transport failures. Not the core: attaching
   // is dialling a Runtime, never constructing one.
   implementation(project(":control"))
+  // Shared Try forms accept composite arguments as JSON text in both frontends.
+  implementation(libs.serialization.json)
 
   // Attaching is proven against a real core on a real control socket, as control's own harness
   // does. Test-only: the boundary check polices main, which still cannot reach the core.

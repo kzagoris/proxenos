@@ -1,6 +1,7 @@
 package io.github.kzagoris.proxenos.core
 
 import io.github.kzagoris.proxenos.coreapi.*
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.FileAlreadyExistsException
@@ -45,55 +46,186 @@ internal fun writeFile(op: Operation.WriteFile, workspace: Workspace, file: Path
   return target.land(text.toByteArray(UTF_8), created = existing == null)
 }
 
-/**
- * One byte-exact replacement that must match exactly once. Zero matches and several are
- * both a `failed` that changed nothing — several names the count rather than taking the first,
- * because a model that meant one of them is better told than guessed at.
- *
- * The uniqueness requirement *is* the concurrency check: another process that changed the
- * region takes the match with it. That is why nothing here carries an mtime or a hash
- * precondition, which would be ambient state carried between calls.
- */
+/** Every match is checked against one original version before one replacement is staged. */
 internal fun editFile(op: Operation.EditFile, workspace: Workspace, file: Path): Outcome<FileWritten> {
   val target = Target(workspace, op.path, file)
-  if (op.oldText.isEmpty()) return Outcome.Failed(
-    Failure.InvalidArgument("old_text"),
-    "This Operation failed and changed nothing: old_text is empty, and an empty string occurs " +
-      "everywhere in every file. Quote the text to replace.",
+  val single = op.oldText != null && op.newText != null
+  if ((op.edits != null && (op.oldText != null || op.newText != null)) ||
+    (op.edits == null && !single)
+  ) return Outcome.Failed(
+    Failure.InvalidArgument("edits"),
+    "This Operation failed and changed nothing: supply exactly one of edits or the old_text/new_text pair.",
+  )
+  val edits = op.edits ?: listOf(TextEdit(op.oldText!!, op.newText!!))
+  if (edits.size !in 1..100) return Outcome.Failed(
+    Failure.InvalidArgument("edits"),
+    "This Operation failed and changed nothing: edits must contain 1–100 replacements.",
+  )
+  val empty = edits.indexOfFirst { it.oldText.isEmpty() }
+  if (empty >= 0) return Outcome.Failed(
+    Failure.InvalidArgument(if (op.edits == null) "old_text" else "edits[$empty].old_text"),
+    "This Operation failed and changed nothing: old_text in edit $empty is empty. Quote the text to replace.",
+    conflicts = listOf(EditConflict(empty, 0)),
   )
   val existing = target.readExisting().valueOr { problem -> return problem } ?: return target.notAFile()
-  // A byte match inside a file that is not text is a coincidence, not an edit, and writing the
-  // result back would be a rewrite of something nobody read.
   if (existing.contains(ZERO)) return Outcome.Failed(
     Failure.Binary(workspace.name, op.path),
-    "This Operation failed and changed nothing: '${op.path}' is a binary file, so there is no " +
-      "text to edit.",
+    "This Operation failed and changed nothing: '${op.path}' is a binary file, so there is no text to edit.",
   )
 
-  // Byte for byte, with nothing normalised on the way in: text quoted back from
-  // `read_file` already carries the file's own line endings and matches as it stands, and a
-  // quote that does not match is a `failed` that changed nothing rather than a near-enough
-  // edit. What the file's convention governs is the replacement, below.
   val convention = Convention.of(existing)
-  val old = op.oldText.toByteArray(UTF_8)
-  val occurrences = occurrencesOf(existing, old)
-  if (occurrences.isEmpty()) return Outcome.Failed(
-    Failure.NoMatch(workspace.name, op.path),
-    "This Operation failed and changed nothing: old_text does not occur in '${op.path}'. It is " +
-      "matched byte for byte, line endings included, and if another process has changed that " +
-      "region it no longer matches — read the file again and edit what is there now.",
-  )
-  if (occurrences.size > 1) return Outcome.Failed(
-    Failure.SeveralMatches(workspace.name, op.path, occurrences.size),
-    "This Operation failed and changed nothing: old_text occurs ${occurrences.size} times in " +
-      "'${op.path}', and an edit must match exactly once. Quote enough surrounding text to name " +
-      "the one you mean.",
+  val matches = edits.map { occurrencesOf(existing, it.oldText.toByteArray(UTF_8)) }
+  val conflicts = matches.mapIndexedNotNull { index, places ->
+    if (places.size == 1) null else EditConflict(index, places.size)
+  }
+  if (conflicts.isNotEmpty()) {
+    val first = conflicts.first()
+    return Outcome.Failed(
+      if (first.matches == 0) Failure.NoMatch(workspace.name, op.path)
+      else Failure.SeveralMatches(workspace.name, op.path, first.matches),
+      "This Operation failed and changed nothing: " + conflicts.joinToString("; ") {
+        "edit ${it.index} old_text occurs ${it.matches} times in '${op.path}' (exactly one is required)"
+      } + ". Match byte for byte, line endings included; read the file again and quote enough surrounding text.",
+      conflicts = conflicts,
+    )
+  }
+  val replacements = edits.mapIndexed { index, edit ->
+    Replacement(index, matches[index].single(), edit.oldText.toByteArray(UTF_8).size,
+      convention.render(edit.newText).toByteArray(UTF_8))
+  }.sortedBy { it.at }
+  val overlaps = mutableListOf<EditConflict>()
+  for (index in replacements.indices) {
+    val current = replacements[index]
+    for (previousIndex in 0 until index) {
+      val previous = replacements[previousIndex]
+      if (current.at < previous.end) {
+        overlaps += EditConflict(current.index, 1, previous.index)
+        break
+      }
+    }
+  }
+  if (overlaps.isNotEmpty()) return Outcome.Failed(
+    Failure.InvalidArgument("edits"),
+    "This Operation failed and changed nothing: " + overlaps.joinToString("; ") {
+      "edit ${it.index} overlaps edit ${it.overlapsWith}"
+    } + ". Quote non-overlapping regions of the original file.",
+    conflicts = overlaps,
   )
 
-  val at = occurrences.single()
-  val new = convention.render(op.newText).toByteArray(UTF_8)
-  val bytes = existing.copyOfRange(0, at) + new + existing.copyOfRange(at + old.size, existing.size)
-  return target.land(bytes, created = false)
+  val bytes = replaceRegions(existing, 0, existing.size, replacements)
+  val diff = editDiff(op.path, existing, replacements)
+  if (op.preview) return Outcome.Ok(FileWritten(op.path, bytes.size, created = false,
+    preview = true, diff = diff.text.toString(), diffTruncated = diff.truncated))
+  return when (val landed = target.land(bytes, created = false)) {
+    is Outcome.Ok -> Outcome.Ok(landed.value.copy(diff = diff.text.toString(), diffTruncated = diff.truncated))
+    is Outcome.Failed -> landed
+    is Outcome.Uncertain -> landed
+  }
+}
+
+private data class Replacement(val index: Int, val at: Int, val size: Int, val bytes: ByteArray) {
+  val end: Int get() = at + size
+}
+
+private fun replaceRegions(original: ByteArray, start: Int, end: Int, replacements: List<Replacement>): ByteArray {
+  val output = ByteArrayOutputStream()
+  var cursor = start
+  for (replacement in replacements) {
+    output.write(original, cursor, replacement.at - cursor)
+    output.write(replacement.bytes)
+    cursor = replacement.end
+  }
+  output.write(original, cursor, end - cursor)
+  return output.toByteArray()
+}
+
+/** Whole-line hunks include the following line so removing a newline still describes a full line. */
+private fun editDiff(path: String, original: ByteArray, replacements: List<Replacement>): BoundedDiff {
+  val diff = BoundedDiff()
+  diff.append("--- a/$path\n+++ b/$path\n")
+  var next = 0
+  var lineDelta = 0
+  while (next < replacements.size && !diff.truncated) {
+    val first = replacements[next]
+    var start = first.at
+    while (start > 0 && original[start - 1] != NEWLINE) start--
+    fun lineEnd(at: Int): Int {
+      var end = at
+      while (end < original.size && original[end - 1] != NEWLINE) end++
+      if (end < original.size) {
+        end++
+        while (end < original.size && original[end - 1] != NEWLINE) end++
+      }
+      return end
+    }
+    var end = lineEnd(first.end)
+    val group = mutableListOf(first)
+    next++
+    while (next < replacements.size && replacements[next].at <= end) {
+      val following = replacements[next]
+      // At a line boundary this is the next line; including it gives one coherent hunk.
+      group += following
+      end = lineEnd(following.end)
+      next++
+    }
+    val before = original.copyOfRange(start, end)
+    val after = replaceRegions(original, start, end, group)
+    val oldLines = lineCount(before)
+    val newLines = lineCount(after)
+    var oldStart = 1
+    for (index in 0 until start) if (original[index] == NEWLINE) oldStart++
+    val newStart = oldStart + lineDelta
+    diff.append("@@ -${if (oldLines == 0) oldStart - 1 else oldStart},$oldLines +${if (newLines == 0) newStart - 1 else newStart},$newLines @@\n")
+    diff.lines('-', before)
+    diff.lines('+', after)
+    lineDelta += newLines - oldLines
+  }
+  return diff
+}
+
+private fun lineCount(bytes: ByteArray): Int =
+  bytes.count { it == NEWLINE } + if (bytes.isNotEmpty() && bytes.last() != NEWLINE) 1 else 0
+
+private class BoundedDiff {
+  val text = StringBuilder()
+  var truncated = false
+    private set
+  private var bytes = 0
+
+  fun append(value: String) {
+    if (truncated) return
+    var index = 0
+    while (index < value.length) {
+      val point = value.codePointAt(index)
+      val size = when {
+        point <= 0x7f -> 1
+        point <= 0x7ff -> 2
+        point <= 0xffff -> 3
+        else -> 4
+      }
+      if (bytes + size > 8 * 1024) {
+        truncated = true
+        return
+      }
+      text.appendCodePoint(point)
+      bytes += size
+      index += Character.charCount(point)
+    }
+  }
+
+  fun lines(prefix: Char, content: ByteArray) {
+    if (content.isEmpty() || truncated) return
+    val value = String(content, UTF_8)
+    var start = 0
+    while (start < value.length && !truncated) {
+      val newline = value.indexOf('\n', start)
+      val end = if (newline < 0) value.length else newline + 1
+      append(prefix.toString())
+      append(value.substring(start, end))
+      if (newline < 0) append("\n\\ No newline at end of file\n")
+      start = end
+    }
+  }
 }
 
 /**

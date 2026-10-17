@@ -223,6 +223,8 @@ class ManagementClientTest {
     val operations = listOf(
       Operation.ListWorkspaces,
       Operation.ReadFile("api", "README"),
+      Operation.ReadFiles("api", listOf(FileRead("README", 1, 1))),
+      Operation.CreateDirectory("api", "new", deliveryKey = "directory"),
       Operation.ListDirectory("api"),
       Operation.Search("api", "hello"),
       Operation.GitStatus("api"),
