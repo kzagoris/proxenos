@@ -70,9 +70,8 @@ Give the user the click-path from `docs/INSTALL.md` §7, with these values:
 - Icon: `~/.local/opt/proxenos/share/icons/proxenos.png`.
 
 Ask them to confirm in a frontend once the plugin is created and connected. The GUI's label is
-**I created the connector again**, under Connection → Connector. In the TUI it is `i`, the
-Connector row, `Enter`, `C`. The word "again" reads oddly on a first install, but it is the right
-button. This turns `connector` to `Confirmed`. It records their word, and you leave it to them.
+**I updated the connector**, under Connection → Connector. In the TUI it is `i`, the
+Connector row, `Enter`, `C`. This turns `connector` to `Confirmed`. It records their word, and you leave it to them.
 
 ## 5. The first request
 

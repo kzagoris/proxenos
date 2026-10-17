@@ -2,7 +2,7 @@
 
 **Done when** the new tree's `bin/tui status --json` shows the Runtime running and the tunnel
 `Connected`, and the user's Workspaces are listed as before. If `connector` reads
-`Unconfirmed`, the plugin must also be recreated and `await-listing` must exit 0 again.
+`Unconfirmed`, the plugin's tools must also be refreshed and `await-listing` must exit 0 again.
 `~/.local/opt/proxenos.previous` stays until the user says the new version works.
 
 1. `cat ~/.local/opt/proxenos/VERSION` gives the installed version; a tree without the file is
@@ -28,9 +28,11 @@
 7. Run `bin/tui start`, then `bin/tui status --json`. Workspaces, Activity and credentials live
    outside the tree and carry over.
 8. If `connector` is `Unconfirmed`, this version serves a different tool catalog, and the
-   ChatGPT plugin still holds the old one. Hand the user the plugin steps in
-   [connect.md](connect.md) §4. They delete the old plugin and create it again, then confirm it
-   in a frontend. Run §5 again.
+   ChatGPT plugin still holds the old one. The user opens the plugin's **Manage** page in
+   ChatGPT, chooses **Refresh tools** and reviews the tools, then confirms in a frontend
+   ([connect.md](connect.md) §4). Only if refresh fails do they delete the plugin and create it
+   again with the §4 steps. Run §5 again; its request goes in a new conversation, since an open
+   one keeps the old tools.
 
 To roll back, stop the Runtime, move `proxenos.previous` back to `proxenos`, and start it. Once
 the user confirms the new version works, delete `~/.local/opt/proxenos.previous`.

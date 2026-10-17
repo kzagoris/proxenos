@@ -56,8 +56,10 @@ Nothing on this machine can see the ChatGPT side, so ask the user what ChatGPT s
 - **A write or command refused**: the refusal names the level needed. The user raises it in a
   frontend if they mean to.
 - **Tools missing or stale after an upgrade**: `connector` reads `Unconfirmed`. ChatGPT keeps the
-  catalog it saw when the plugin was created, so the user deletes and recreates the plugin, then
-  confirms in a frontend. Then run `await-listing` again ([connect.md](connect.md) §4–5).
+  catalog it last saw until the user chooses **Refresh tools** on the plugin's **Manage** page, so
+  they refresh, review the tools and confirm in a frontend; they recreate the plugin only if
+  refresh fails. An open conversation keeps the old tools. Then run `await-listing` again
+  ([connect.md](connect.md) §4–5).
 
 ## The desktop app
 

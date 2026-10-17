@@ -286,8 +286,8 @@ Connector** are the instructions: **use ChatGPT on the web at [chatgpt.com](http
 open **Plugins from the main sidebar → Add → Add custom MCP server**, set **Connection** to
 **Tunnel**, enter **the same tunnel ID from the tunnel you created in OpenAI Platform and saved
 in Proxenos**, and choose **No authentication**. Create the plugin, review its tools, and click
-**Connect** for the plugin when prompted. Select **I created the
-connector again** once you have completed setup; this records your confirmation, not a
+**Connect** for the plugin when prompted. Select **I updated the
+connector** once you have completed setup; this records your confirmation, not a
 connectivity measurement. **Connection → Runtime** has **Stop Runtime…**, and **Start Runtime**
 while it is stopped.
 
@@ -382,8 +382,10 @@ mv ~/.local/opt/proxenos-<version>-linux-x64 ~/.local/opt/proxenos
 
 On the portable archive, link `jre/` again if you had one (step 3). Your Workspaces, Activity
 and credentials live outside the tree and stay. If the new version's tool catalog differs, the
-setup confirmation notice comes back, because the connector in ChatGPT is still serving the old
-one. Once the new version works, delete `~/.local/opt/proxenos.previous`; to go back instead,
+status line shows **Connector · Unconfirmed**, because the connector in ChatGPT still holds the
+old tool list. Open the plugin's **Manage** page in ChatGPT, choose **Refresh tools**, review the
+tools and test in a new conversation, then select **I updated the connector** (TUI: `[C]` in the
+Connector detail). Create the plugin again only if refresh fails. Once the new version works, delete `~/.local/opt/proxenos.previous`; to go back instead,
 stop the Runtime and move it back into place.
 
 To remove everything: stop the Runtime, run `bin/install-desktop-entry --remove` from the
