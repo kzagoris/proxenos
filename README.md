@@ -344,6 +344,14 @@ At **Write** or higher:
 | Command | `run_command`, `get_result` |
 
 `read_files` reads up to 20 ranges in one bounded reply, with independent results in input order.
+Use it for several small files or explicit review ranges. For one large complete file, prefer
+`read_file`, which has more room per file. With either tool, follow `nextOffset` and
+`nextByteOffset` as the next call's `offset` and `byte_offset` until no continuation remains.
+For a batch, retry `not_processed` ranges unchanged and continue each `ok` item independently;
+keep the original ending line when calculating the next limit for an explicit range. The 64 KiB cap
+includes both readable text and structured data, so source bytes alone do not predict reply size.
+See [complete-file measurements](docs/batch-read-efficiency.md) for the tradeoffs.
+
 `search` supports filename/content modes, include/exclude globs, small context windows, and a hit limit.
 Directory listings return consecutive pages using `after`; `git_diff` accepts literal paths and patch,
 stat, or name-only output. Incomplete replies say how to continue or narrow the selection.

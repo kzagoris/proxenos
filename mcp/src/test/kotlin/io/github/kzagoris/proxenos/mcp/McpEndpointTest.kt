@@ -406,6 +406,68 @@ class McpEndpointTest {
   }
 
   @Test
+  fun `every batch item can be reconstructed through bounded wire continuations`() = runBlocking {
+    val root = Files.createDirectory(temporary.resolve("continuation-root"))
+    val names = (0..18).map { "$it-" + "🙂\"\\".repeat(25) }
+    val expected = names.mapIndexed { index, _ ->
+      when (index) {
+        0 -> "\u0001\"\\".repeat(10000) + "\nlast\n"
+        1 -> "🙂世界".repeat(10000) + "\n"
+        2 -> "x".repeat(70000)
+        else -> "first\nsecond\n"
+      }
+    }
+    names.zip(expected).forEach { (name, text) -> Files.writeString(root.resolve(name), text) }
+    val paths = names.take(3) + "../escape" + names.drop(3)
+    val reconstructed = paths.map { StringBuilder() }
+    val (registry, operations) = pipeline()
+    registry.perform(ManagementAct.Register(root.toString(), "api"))
+    served(operations) { client ->
+      var pending = paths.mapIndexed { index, path -> index to mapOf<String, Any>("path" to path) }
+      var rounds = 0
+      while (pending.isNotEmpty()) {
+        assertTrue(++rounds < 100, "continuation did not finish")
+        val result = client.callTool("read_files", mapOf("workspace" to "api", "files" to pending.map { it.second }))
+        assertEquals(false, result.isError)
+        assertTrue(Json.encodeToString(CallToolResult.serializer(), result).toByteArray().size < 63 * 1024)
+        val data = assertNotNull(result.structuredContent)
+        assertEquals(false, data.getValue("incomplete").jsonPrimitive.boolean, "wire trimming lost batch data")
+        val batch = data.getValue("result").jsonObject
+        val items = batch.getValue("items").jsonArray
+        assertEquals(pending.size, items.size)
+        val next = mutableListOf<Pair<Int, Map<String, Any>>>()
+        pending.zip(items).forEach { (request, element) ->
+          val (index, args) = request
+          val item = element.jsonObject
+          when (item.getValue("status").jsonPrimitive.content) {
+            "not_processed" -> next += request
+            "failed" -> assertEquals(3, index, "only the escaping path should fail")
+            "ok" -> {
+              assertTrue(index != 3)
+              val file = item.getValue("content").jsonObject
+              assertEquals(paths[index], file.getValue("path").jsonPrimitive.content)
+              val text = file.getValue("text").jsonPrimitive.content
+              reconstructed[index].append(text)
+              file["nextOffset"]?.takeUnless { it is JsonNull }?.let { offset ->
+                val line = offset.jsonPrimitive.int
+                val bytes = file.getValue("nextByteOffset").jsonPrimitive.int
+                assertTrue(line > (args["offset"] as? Int ?: 1) || bytes > (args["byte_offset"] as? Int ?: 0), "cursor did not advance")
+                next += index to mapOf("path" to paths[index], "offset" to line, "byte_offset" to bytes)
+              }
+            }
+            else -> error("unexpected item: $item")
+          }
+        }
+        assertEquals(next.isNotEmpty(), batch.getValue("incomplete").jsonPrimitive.boolean)
+        pending = next
+      }
+    }
+    paths.indices.filter { it != 3 }.forEach { index ->
+      assertEquals(expected[names.indexOf(paths[index])], reconstructed[index].toString(), paths[index])
+    }
+  }
+
+  @Test
   fun `published nested schema and annotations accompany typed malformed and refused replies`() = runBlocking {
     served(pipeline().second) { client ->
       val tools = client.listTools().tools.associateBy { it.name }
