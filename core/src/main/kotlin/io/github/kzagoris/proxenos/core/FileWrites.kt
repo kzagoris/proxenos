@@ -234,7 +234,7 @@ private class BoundedDiff {
  * and every failure needs all three — the reason names the Workspace, the message quotes the
  * path the caller can act on, and only the resolved one may be touched.
  */
-private class Target(val workspace: Workspace, val path: String, val file: Path) {
+internal class Target(val workspace: Workspace, val path: String, val file: Path) {
   /** The parent as the caller named it, which is the path they can act on; the Root when there is none. */
   val parentLabel: String get() = Path.of(path).parent?.toString() ?: Operation.THIS_DIRECTORY
 
@@ -338,10 +338,11 @@ private fun Convention.withTrailingNewlineOf(existing: ByteArray?, text: String)
  * retry. The rename itself is where that guarantee ends: an [IOException] from it goes up to
  * the pipeline, which shapes a mutation's broken I/O as **Uncertain**.
  */
-private fun Target.land(bytes: ByteArray, created: Boolean): Outcome<FileWritten> {
+internal fun Target.land(bytes: ByteArray, created: Boolean): Outcome<FileWritten> {
   val temporary = try {
     stage(file, bytes)
   } catch (failure: IOException) {
+    if (failure is UnremovedStagingFile) throw failure
     val detail = failure.message ?: failure.toString()
     return Outcome.Failed(
       Failure.IoError(workspace.name, detail),
@@ -351,7 +352,7 @@ private fun Target.land(bytes: ByteArray, created: Boolean): Outcome<FileWritten
   try {
     Files.move(temporary, file, ATOMIC_MOVE, REPLACE_EXISTING)
   } catch (failure: Throwable) {
-    Files.deleteIfExists(temporary)
+    removeStaging(temporary)
     throw failure
   }
   // The rename is a change to the directory, and an atomic rename is not by itself a durable
@@ -391,8 +392,17 @@ private fun stage(target: Path, bytes: ByteArray): Path {
       // Not a POSIX filesystem, so there are no bits of the target's to keep.
     }
   } catch (failure: Throwable) {
-    Files.deleteIfExists(temporary)
+    removeStaging(temporary)
     throw failure
   }
   return temporary
+}
+
+/** A leftover staging file is a known effect, so it cannot be reported as Failed. */
+private class UnremovedStagingFile(file: Path, cause: IOException) : IOException(
+  "The staging file '$file' could not be removed; it may remain on disk.", cause,
+)
+
+private fun removeStaging(file: Path) {
+  try { Files.deleteIfExists(file) } catch (failure: IOException) { throw UnremovedStagingFile(file, failure) }
 }

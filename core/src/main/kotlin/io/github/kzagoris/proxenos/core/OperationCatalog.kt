@@ -120,6 +120,30 @@ internal object OperationCatalog {
       ),
     ),
     OperationSpec(
+      "import_attachment",
+      "Save a genuine ChatGPT PNG/PDF attachment (up to 1 MiB) at an explicit Root-relative path. " +
+        "Never invent file references or sandbox paths. HTTPS exact trusted attachment hosts only; no redirects. " +
+        "Missing parents are not created. Atomic replacement preserves mode bits and breaks hardlinks. " +
+        "Expired references change nothing: reattach the file, then use its fresh host reference and a fresh request_id.",
+      AccessLevel.Write,
+      listOf(workspace(), ArgumentSpec("path", ArgumentType.Text, true, "Destination relative to the Root."),
+        ArgumentSpec("file", ArgumentType.Object, true, "Host-supplied attachment reference, never a model-invented URL.", properties = listOf(
+          ArgumentSpec("download_url", ArgumentType.Text, true, "Temporary host-supplied HTTPS download URL; never log or print it."),
+          ArgumentSpec("file_id", ArgumentType.Text, true, "Nonempty host-supplied file id."),
+          ArgumentSpec("mime_type", ArgumentType.Text, false, "image/png or application/pdf; checked against downloaded bytes."),
+          ArgumentSpec("file_name", ArgumentType.Text, false, "Optional original name; never used as the destination."),
+        )), requestId()),
+      fileArguments = listOf("file"),
+    ),
+    OperationSpec(
+      "export_file",
+      "Export exact PNG/PDF bytes (up to 1 MiB) from the Root as an embedded binary resource with MIME, " +
+        "actual size and SHA-256. ChatGPT may ask for file-materialization approval. No resource-link support is promised.",
+      AccessLevel.Read,
+      listOf(workspace(), ArgumentSpec("path", ArgumentType.Text, true, "File relative to the Root."),
+        ArgumentSpec("vision", ArgumentType.Flag, false, "Also include PNG image content for model vision; the embedded resource remains the exact downloadable file.")),
+    ),
+    OperationSpec(
       "edit_file",
       "Replace an exact string that must occur exactly once in the file. Zero matches and " +
         "several are both refused and change nothing; the file is replaced rather than " +
@@ -164,8 +188,8 @@ internal object OperationCatalog {
     ),
   ).map { spec -> spec.copy(
     annotations = OperationAnnotations(
-      readOnly = spec.name !in setOf("write_file", "edit_file", "create_directory", "run_command", "get_result"),
-      destructive = spec.name in setOf("write_file", "edit_file", "run_command"),
+      readOnly = spec.name !in setOf("write_file", "edit_file", "create_directory", "import_attachment", "run_command", "get_result"),
+      destructive = spec.name in setOf("write_file", "edit_file", "import_attachment", "run_command"),
       openWorld = spec.name == "run_command",
     ),
     output = outputContract(spec.name),
@@ -182,6 +206,8 @@ internal object OperationCatalog {
    */
   fun specFor(op: Operation<*>): OperationSpec = when (op) {
     Operation.ListWorkspaces -> entry("list_workspaces")
+    is Operation.ImportAttachment -> entry("import_attachment")
+    is Operation.ExportFile -> entry("export_file")
     is Operation.ReadFile -> entry("read_file")
     is Operation.ReadFiles -> entry("read_files")
     is Operation.CreateDirectory -> entry("create_directory")
@@ -203,6 +229,8 @@ internal object OperationCatalog {
    */
   fun argumentsOf(op: Operation<*>): String = when (op) {
     Operation.ListWorkspaces -> ""
+    is Operation.ImportAttachment -> "path=${op.path} attachment=[redacted] request_id=${op.deliveryKey}"
+    is Operation.ExportFile -> "path=${op.path} vision=${op.vision}"
     is Operation.ReadFiles -> "files=${op.files.joinToString()}"
     is Operation.CreateDirectory -> "path=${op.path} parents=${op.parents} request_id=${op.deliveryKey}"
     is Operation.ReadFile -> listOfNotNull(
@@ -245,6 +273,10 @@ internal object OperationCatalog {
    */
   fun outputOf(op: Operation<*>, value: Any?): String = when (op) {
     Operation.ListWorkspaces -> "${(value as List<*>).size} Workspaces"
+    is Operation.ImportAttachment -> (value as AssetImported).let {
+      "${if (it.created) "created" else "replaced"}, ${it.metadata.bytes} bytes, ${it.metadata.mimeType}, SHA-256 ${it.metadata.sha256}"
+    }
+    is Operation.ExportFile -> (value as AssetExported).metadata.let { "${it.bytes} bytes, ${it.mimeType}, SHA-256 ${it.sha256}" }
     is Operation.ReadFiles -> (value as BatchRead).let { "${it.items.size} file ranges, incomplete=${it.incomplete}" }
     is Operation.CreateDirectory -> (value as DirectoryCreated).let { "created=${it.createdPaths} no_op=${it.noOp}" }
     is Operation.ReadFile -> (value as FileContent).let {

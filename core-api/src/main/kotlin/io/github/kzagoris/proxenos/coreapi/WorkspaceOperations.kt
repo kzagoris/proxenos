@@ -29,6 +29,7 @@ data class OperationSpec(
   val arguments: List<ArgumentSpec>,
   val annotations: OperationAnnotations = OperationAnnotations(),
   val output: ArgumentSpec? = null,
+  val fileArguments: List<String> = emptyList(),
 )
 
 @Serializable
@@ -239,6 +240,28 @@ sealed interface Operation<R> {
     override val mutatedPath: String get() = path
   }
 
+  @Serializable
+  data class ImportAttachment(
+    override val workspace: String?,
+    val path: String,
+    val file: AttachmentReference,
+    override val deliveryKey: String,
+  ) : Scoped<AssetImported> {
+    override val confinedPaths: List<String> get() = listOf(path)
+    override val mutatedPath: String get() = path
+  }
+
+  @Serializable
+  data class ExportFile(
+    override val workspace: String?,
+    val path: String,
+    val vision: Boolean = false,
+  ) : Scoped<AssetExported> {
+    override val confinedPaths: List<String> get() = listOf(path)
+    override val mutatedPath: String? get() = null
+    override val deliveryKey: String? get() = null
+  }
+
   /**
    * One byte-exact replacement that must match **exactly once**. Zero matches and several
    * are both refused, and several names the count rather than taking the first: the uniqueness
@@ -421,6 +444,30 @@ sealed interface Operation<R> {
     const val KEY_ARGUMENT: String = "request_id"
   }
 }
+
+/** A host-supplied reference, never a local or sandbox path. URLs stay out of diagnostics. */
+@Serializable
+data class AttachmentReference(
+  val downloadUrl: String,
+  val fileId: String,
+  val mimeType: String? = null,
+  val fileName: String? = null,
+) {
+  override fun toString(): String = "AttachmentReference([redacted])"
+}
+
+@Serializable
+data class AssetMetadata(val path: String, val mimeType: String, val bytes: Int, val sha256: String)
+
+@Serializable
+data class AssetImported(val metadata: AssetMetadata, val created: Boolean)
+
+/** The bytes occur once on the MCP wire, in an embedded resource, never in structured metadata. */
+@Serializable
+data class AssetExported(val metadata: AssetMetadata, val base64: String)
+
+/** Raw limit leaves room for two Base64 copies (optional vision), metadata and tunnel framing. */
+const val ASSET_BYTE_CAP: Int = 1024 * 1024
 
 /**
  * What a read returned, and enough about what it did not: [totalLines] against [firstLine] and

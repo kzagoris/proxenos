@@ -16,7 +16,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.*
 
 /**
  * The logical host the tunnel dials this Runtime by. It is never registered with
@@ -105,7 +105,10 @@ class McpEndpoint(
     // arrives here with nothing edited, which is the whole point of the core owning it.
     operations.catalog.forEach { spec ->
       server.addTool(name = spec.name, description = spec.description, inputSchema = spec.inputSchema(),
-        outputSchema = spec.outputSchema(), toolAnnotations = spec.toolAnnotations()) { request ->
+        outputSchema = spec.outputSchema(), toolAnnotations = spec.toolAnnotations(),
+        meta = if (spec.fileArguments.isEmpty()) null else buildJsonObject {
+          put("openai/fileParams", JsonArray(spec.fileArguments.map(::JsonPrimitive)))
+        }) { request ->
         answer(spec, request.arguments)
       }
     }

@@ -139,7 +139,7 @@ class McpEndpointTest {
       }
       assertFalse("workspace" in tools.getValue("list_workspaces").inputSchema.required.orEmpty())
 
-      val mutating = listOf("write_file", "edit_file", "create_directory", "run_command")
+      val mutating = listOf("write_file", "import_attachment", "edit_file", "create_directory", "run_command")
       mutating.forEach { name ->
         val declared = tools.getValue(name).describes("request_id")
         assertContains(tools.getValue(name).inputSchema.required.orEmpty(), "request_id")
@@ -493,6 +493,61 @@ class McpEndpointTest {
       }
       val limited = client.callTool("search", mapOf("workspace" to "api", "query" to "needle", "mode" to "content", "limit" to 1))
       assertContains(limited.said(), "Capped at 1 results")
+    }
+  }
+
+  @Test
+  fun `export_file sends exact downloadable bytes as an embedded resource and optional PNG vision`() = runBlocking {
+    val root = Files.createDirectory(temporary.resolve("assets"))
+    val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aA1sAAAAASUVORK5CYII=")
+    Files.write(root.resolve("fresh.png"), png)
+    val (registry, operations) = pipeline()
+    registry.perform(ManagementAct.Register(root.toString(), "assets"))
+    served(operations) { client ->
+      val result = client.callTool("export_file", mapOf("workspace" to "assets", "path" to "fresh.png", "vision" to true))
+      assertEquals(false, result.isError)
+      val resource = kotlin.test.assertIs<io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents>(
+        result.content.filterIsInstance<io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource>().single().resource)
+      kotlin.test.assertContentEquals(png, java.util.Base64.getDecoder().decode(resource.blob))
+      assertEquals("image/png", resource.mimeType)
+      assertEquals(resource.blob, result.content.filterIsInstance<io.modelcontextprotocol.kotlin.sdk.types.ImageContent>().single().data)
+      val metadata = result.structuredContent!!.getValue("result").jsonObject
+      assertEquals(68, metadata.getValue("bytes").jsonPrimitive.int)
+      assertEquals("image/png", metadata.getValue("mimeType").jsonPrimitive.content)
+      assertFalse("base64" in metadata)
+      val maximum = png.copyOf(1024 * 1024)
+      Files.write(root.resolve("maximum.png"), maximum)
+      val bounded = client.callTool("export_file", mapOf("workspace" to "assets", "path" to "maximum.png", "vision" to true))
+      assertEquals(false, bounded.isError)
+      val binary = kotlin.test.assertIs<io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents>(
+        bounded.content.filterIsInstance<io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource>().single().resource)
+      kotlin.test.assertContentEquals(maximum, java.util.Base64.getDecoder().decode(binary.blob))
+      assertTrue(Json.encodeToString(io.modelcontextprotocol.kotlin.sdk.types.CallToolResult.serializer(), bounded).toByteArray().size < 3 * 1024 * 1024)
+      Files.write(root.resolve("too-large.png"), maximum + byteArrayOf(0))
+      val oversized = client.callTool("export_file", mapOf("workspace" to "assets", "path" to "too-large.png"))
+      assertEquals(true, oversized.isError)
+      assertTrue(oversized.content.none { it is io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource })
+    }
+  }
+
+  @Test
+  fun `host file metadata admits attachment objects and malformed references never disclose signed URLs`() = runBlocking {
+    val (registry, operations) = pipeline()
+    val root = Files.createDirectory(temporary.resolve("assets"))
+    val workspace = registry.perform(ManagementAct.Register(root.toString(), "assets"))
+    registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Write))
+    served(operations) { client ->
+      val tool = client.listTools().tools.single { it.name == "import_attachment" }
+      assertEquals(JsonArray(listOf(JsonPrimitive("file"))), tool.meta?.get("openai/fileParams"))
+      val signed = "https://untrusted.invalid/file?signature=DO-NOT-DISCLOSE"
+      for (file in listOf<Any>(signed, mapOf("download_url" to mapOf("url" to signed), "file_id" to "file-test"),
+        mapOf("download_url" to signed, "file_id" to "file-test"))) {
+        val reply = client.callTool("import_attachment", mapOf("workspace" to "assets", "path" to "saved.pdf", "file" to file, "request_id" to "host-refusal"))
+        assertEquals(true, reply.isError)
+        assertFalse(reply.toString().contains("DO-NOT-DISCLOSE"))
+      }
+      assertFalse(Files.exists(root.resolve("saved.pdf")))
+      assertFalse(Files.readString(temporary.resolve("activity")).contains("DO-NOT-DISCLOSE"))
     }
   }
 

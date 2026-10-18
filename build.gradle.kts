@@ -84,7 +84,7 @@ distributions {
       }
       into("docs") {
         // Under docs/ as in the repository, so its relative links hold in both places.
-        from("docs/INSTALL.md")
+        from("docs/INSTALL.md", "docs/ATTACHMENTS.md")
         // Documentation, not an installer: nothing in the product copies or enables this unit.
         // It ships so a user who reads the reason and disagrees has it to hand.
         into("systemd") {

@@ -10,7 +10,11 @@ import java.util.UUID
  */
 fun askedOf(spec: OperationSpec): List<ArgumentSpec> =
   spec.arguments.filter { it.name != Operation.WORKSPACE_ARGUMENT && it.name != Operation.KEY_ARGUMENT }.map {
-    if (it.type == ArgumentType.Array) it.copy(description = it.description + " Enter a JSON array.") else it
+    when (it.type) {
+      ArgumentType.Array -> it.copy(description = it.description + " Enter a JSON array.")
+      ArgumentType.Object -> it.copy(description = it.description + " Enter a JSON object.")
+      else -> it
+    }
   }
 
 /**
@@ -63,6 +67,14 @@ fun operationFrom(caller: String, tool: String, workspace: String, given: Map<St
     "list_workspaces" -> Operation.ListWorkspaces
     "list_directory" -> Operation.ListDirectory(workspace, text("path"), text("after"), number("limit") ?: 1000)
     "read_file" -> Operation.ReadFile(workspace, required("path"), number("offset"), number("limit"), number("byte_offset") ?: 0)
+    "export_file" -> Operation.ExportFile(workspace, required("path"), flag("vision"))
+    "import_attachment" -> {
+      val file = try { Json.parseToJsonElement(required("file")) as? JsonObject }
+      catch (_: IllegalArgumentException) { null }
+      requireNotNull(file) { "'file' must be a JSON object containing a genuine host attachment reference." }
+      Operation.ImportAttachment(workspace, required("path"), AttachmentReference(
+        requiredField(file, "download_url"), requiredField(file, "file_id"), field(file, "mime_type"), field(file, "file_name")), key)
+    }
     "read_files" -> Operation.ReadFiles(workspace, (objects("files") ?: throw IllegalArgumentException("'files' is required.")).map {
       FileRead(requiredField(it, "path"), integer(it, "offset"), integer(it, "limit"), integer(it, "byte_offset") ?: 0)
     })

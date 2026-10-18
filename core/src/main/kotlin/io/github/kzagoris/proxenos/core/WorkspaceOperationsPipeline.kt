@@ -6,6 +6,7 @@ import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -61,6 +62,7 @@ class WorkspaceOperationsPipeline internal constructor(
   private val deliveries: Deliveries = Deliveries(),
   /** Concurrent commands per Runtime. Configuration, like the budget above it. */
   commandConcurrency: Int = Operation.COMMAND_CONCURRENCY_CAP,
+  private val attachments: AttachmentDownloads = AttachmentDownloads(),
 ) {
   /**
    * Where a command that outran its call goes, the cap on concurrent commands, and the
@@ -158,13 +160,19 @@ class WorkspaceOperationsPipeline internal constructor(
       // have answered is then the Handle, and a repeat is owed that.
       val carried = commands.promotedReply(entry)
       val reply: Outcome<*> = if (carried != null) Outcome.Ok(carried) else {
-        val uncertain = Outcome.Uncertain(
+        // Import has no suspension or cancellation check once staging begins. A coroutine
+        // cancellation here therefore preceded all filesystem effects, including while locked.
+        val ended = if (op is Operation.ImportAttachment && interrupted is CancellationException) Outcome.Failed(
+          Failure.IoError(scoped?.workspace, "Attachment download interrupted"),
+          "This Operation failed and changed nothing: attachment download was interrupted before destination replacement; no staging file was created.",
+        ) else Outcome.Uncertain(
           Uncertainty.Interrupted,
-          "This Operation did not complete: $interrupted. Its effects on disk are unknown — " +
-            Outcome.Uncertain.EFFECTS_UNCERTAIN + ".",
+          "This Operation did not complete: " +
+            (if (op is Operation.ImportAttachment) "attachment transfer interrupted" else interrupted.toString()) +
+            ". Its effects on disk are unknown — " + Outcome.Uncertain.EFFECTS_UNCERTAIN + ".",
         )
-        activity.complete(entry, ActivityOutcome.Uncertain(uncertain.message))
-        uncertain
+        activity.complete(entry, OperationCatalog.recordOf(op, ended))
+        ended
       }
       commands.recorded(entry)
       first?.let { deliveries.replied(it, reply) }
@@ -306,6 +314,8 @@ class WorkspaceOperationsPipeline internal constructor(
   ): Outcome<R> = when (op) {
     Operation.ListWorkspaces -> Outcome.Ok(registry.listings())
     // A Scoped Operation reaches here only through admission, which cannot yield a null.
+    is Operation.ImportAttachment -> importAttachment(op, workspace!!, paths.single(), registry, attachments)
+    is Operation.ExportFile -> exportFile(op, workspace!!, paths.single())
     is Operation.ReadFiles -> readFiles(op, workspace!!)
     is Operation.CreateDirectory -> createDirectory(op, workspace!!, paths.single())
     is Operation.ReadFile -> readFile(op, workspace!!, paths.single())

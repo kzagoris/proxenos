@@ -9,6 +9,8 @@ import kotlinx.serialization.serializer
 internal fun outputContract(name: String): ArgumentSpec {
   val result = when (name) {
     "list_workspaces" -> shape<List<WorkspaceListing>>()
+    "import_attachment" -> shape<AssetImported>()
+    "export_file" -> shape<AssetMetadata>()
     "read_file" -> shape<FileContent>()
     "read_files" -> shape<BatchRead>()
     "list_directory" -> shape<DirectoryListing>()

@@ -392,3 +392,11 @@ To remove everything: stop the Runtime, run `bin/install-desktop-entry --remove`
 linux-x64 tree if you installed the menu entry, then delete `~/.local/opt/proxenos/`,
 `~/.local/state/proxenos/` and `~/.config/proxenos/`, revoke the runtime key in the
 Platform dashboard, and delete the connector in ChatGPT.
+
+### Attachment tools
+
+The PNG/PDF transfer release adds `import_attachment` (Write) and `export_file` (Read), bringing
+the catalog to 15 tools. Refresh tools, review them in a new ChatGPT conversation, then acknowledge
+the updated connector locally. Both directions are limited to 1 MiB; imports need genuine host
+file references and exports can require ChatGPT file-materialization approval. See the
+[attachment contract, limits, and expired-reference workflow](ATTACHMENTS.md).

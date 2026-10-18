@@ -37,6 +37,8 @@ internal fun structured(operation: Operation<*>, outcome: Outcome<*>): JsonObjec
 @Suppress("UNCHECKED_CAST") // Operation fixes the type of its result.
 private fun result(op: Operation<*>, value: Any?): JsonElement = when (op) {
   Operation.ListWorkspaces -> wire.encodeToJsonElement(value as List<WorkspaceListing>)
+  is Operation.ImportAttachment -> wire.encodeToJsonElement(value as AssetImported)
+  is Operation.ExportFile -> wire.encodeToJsonElement((value as AssetExported).metadata)
   is Operation.ReadFile -> wire.encodeToJsonElement(value as FileContent)
   is Operation.ReadFiles -> wire.encodeToJsonElement(value as BatchRead)
   is Operation.ListDirectory -> wire.encodeToJsonElement(value as DirectoryListing)

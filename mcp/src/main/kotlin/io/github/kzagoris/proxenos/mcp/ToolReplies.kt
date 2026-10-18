@@ -22,6 +22,9 @@ import io.github.kzagoris.proxenos.coreapi.Outcome
 import io.github.kzagoris.proxenos.coreapi.SearchHit
 import io.github.kzagoris.proxenos.coreapi.SearchResults
 import io.github.kzagoris.proxenos.coreapi.WorkspaceListing
+import io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents
+import io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource
+import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 
@@ -44,7 +47,25 @@ internal fun reply(operation: Operation<*>, outcome: Outcome<*>): CallToolResult
     is Outcome.Uncertain -> outcome.message.withRecordedNote(outcome)
   }
   val isError = outcome !is Outcome.Ok || outcome.carriesAnError()
-  return boundedReply(body, isError, structured(operation, outcome))
+  val data = structured(operation, outcome)
+  if (operation is Operation.ExportFile && outcome is Outcome.Ok) {
+    val asset = outcome.value as AssetExported
+    val metadata = asset.metadata
+    val name = java.nio.file.Path.of(metadata.path).fileName.toString()
+    val uri = java.net.URI("proxenos", "exports", "/${metadata.sha256}/$name", null).toASCIIString()
+    val content = buildList {
+      add(TextContent(body))
+      add(EmbeddedResource(BlobResourceContents(blob = asset.base64, uri = uri, mimeType = metadata.mimeType)))
+      if (operation.vision) add(ImageContent(data = asset.base64, mimeType = metadata.mimeType))
+    }
+    val result = CallToolResult(content, false, data)
+    // Count the actual binary envelope, including optional vision's second Base64 copy.
+    // 3 MiB leaves at least 7 MiB for the tunnel's outer headers/metadata (10 MiB ceiling).
+    if (Json.encodeToString(CallToolResult.serializer(), result).toByteArray().size > 3 * 1024 * 1024)
+      return text("Binary reply exceeds the complete serialized envelope budget; nothing was exported.", true)
+    return result
+  }
+  return boundedReply(body, isError, data)
 }
 
 /**
@@ -91,6 +112,8 @@ private fun render(operation: Operation<*>, value: Any?): String = when (operati
   is Operation.CreateDirectory -> (value as DirectoryCreated).let {
     "${it.path}: ${if (it.noOp) "already a directory; no change" else "created ${it.createdPaths.joinToString()}"}."
   }
+  is Operation.ImportAttachment -> (value as AssetImported).let { "${it.metadata.path}: ${if (it.created) "created" else "replaced"}, ${it.metadata.bytes} bytes, ${it.metadata.mimeType}, SHA-256 ${it.metadata.sha256}." }
+  is Operation.ExportFile -> (value as AssetExported).metadata.let { "${it.path}: ${it.bytes} bytes, ${it.mimeType}, SHA-256 ${it.sha256}." }
   is Operation.ReadFile -> renderFile(value as FileContent)
   is Operation.ListDirectory -> renderListing(value as DirectoryListing)
   is Operation.Search -> renderSearch(value as SearchResults, operation.limit)

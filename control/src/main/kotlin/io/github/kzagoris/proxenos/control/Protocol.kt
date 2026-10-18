@@ -86,6 +86,8 @@ internal fun <R> resultSerializer(act: ManagementAct<R>): KSerializer<R> = when 
 /** What an Ok outcome of [op] carries. Exhaustive for the same reason as [resultSerializer]. */
 private fun valueSerializer(op: Operation<*>): KSerializer<*> = when (op) {
   Operation.ListWorkspaces -> ListSerializer(WorkspaceListing.serializer())
+  is Operation.ImportAttachment -> AssetImported.serializer()
+  is Operation.ExportFile -> AssetExported.serializer()
   is Operation.ReadFile -> FileContent.serializer()
   is Operation.ReadFiles -> BatchRead.serializer()
   is Operation.CreateDirectory -> DirectoryCreated.serializer()

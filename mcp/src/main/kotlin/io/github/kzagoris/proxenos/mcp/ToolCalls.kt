@@ -1,5 +1,6 @@
 package io.github.kzagoris.proxenos.mcp
 
+import io.github.kzagoris.proxenos.coreapi.AttachmentReference
 import io.github.kzagoris.proxenos.coreapi.FileRead
 import io.github.kzagoris.proxenos.coreapi.TextEdit
 import io.github.kzagoris.proxenos.coreapi.Operation
@@ -46,6 +47,11 @@ internal fun decode(spec: OperationSpec, arguments: JsonObject?): ToolCall = try
     "read_file" -> Operation.ReadFile(
       read.workspace(), read.requiredText("path"), read.number("offset"), read.number("limit"), read.number("byte_offset") ?: 0,
     )
+    "export_file" -> Operation.ExportFile(read.workspace(), read.requiredText("path"), read.flag("vision"))
+    "import_attachment" -> read.objectValue("file").let { file ->
+      Operation.ImportAttachment(read.workspace(), read.requiredText("path"), AttachmentReference(
+        file.requiredText("download_url"), file.requiredText("file_id"), file.text("mime_type"), file.text("file_name")), read.key())
+    }
     "read_files" -> Operation.ReadFiles(read.workspace(), read.objects("files", required = true)!!.map { item ->
       FileRead(item.requiredText("path"), item.number("offset"), item.number("limit"), item.number("byte_offset") ?: 0)
     })
@@ -125,6 +131,12 @@ private class Arguments(private val tool: String, private val arguments: JsonObj
     if (item is JsonPrimitive && item.isString) item.content else throw MalformedCall(mistyped(name, "an array of text", item))
   }.orEmpty()
 
+  fun objectValue(name: String): Arguments = when (val value = arguments?.get(name)) {
+    is JsonObject -> Arguments("$tool.$name", value)
+    null, JsonNull -> throw MalformedCall(missing(name))
+    else -> throw MalformedCall(mistyped(name, "an object", value))
+  }
+
   fun objects(name: String, required: Boolean = false): List<Arguments>? {
     val value = array(name) ?: if (required) throw MalformedCall(missing(name)) else return null
     return value.mapIndexed { index, item ->
@@ -150,5 +162,5 @@ private class Arguments(private val tool: String, private val arguments: JsonObj
       "Supply '$name' and call again."
 
   private fun mistyped(name: String, expected: String, got: JsonElement): String =
-    "'$tool' needs '$name' to be $expected, and it arrived as $got. $NOTHING_ATTEMPTED"
+    "'$tool' needs '$name' to be $expected, but it arrived with another type. $NOTHING_ATTEMPTED"
 }

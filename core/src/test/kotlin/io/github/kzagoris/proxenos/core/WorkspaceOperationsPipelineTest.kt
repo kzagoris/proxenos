@@ -84,7 +84,7 @@ class WorkspaceOperationsPipelineTest {
     assertEquals(
       listOf(
         "list_workspaces", "list_directory", "read_file", "read_files", "search", "git_status", "git_diff",
-        "git_log", "write_file", "edit_file", "create_directory", "run_command", "get_result",
+        "git_log", "write_file", "import_attachment", "export_file", "edit_file", "create_directory", "run_command", "get_result",
       ),
       catalog.map { it.name },
     )
@@ -100,6 +100,8 @@ class WorkspaceOperationsPipelineTest {
         "git_diff" to AccessLevel.Read,
         "git_log" to AccessLevel.Read,
         "write_file" to AccessLevel.Write,
+        "import_attachment" to AccessLevel.Write,
+        "export_file" to AccessLevel.Read,
         "edit_file" to AccessLevel.Write,
         "run_command" to AccessLevel.Command,
         "get_result" to AccessLevel.Command,
@@ -116,7 +118,7 @@ class WorkspaceOperationsPipelineTest {
       assertEquals(ArgumentSpec("workspace", ArgumentType.Text, true, first.description), first)
     }
     assertEquals(
-      listOf("write_file", "edit_file", "create_directory", "run_command"),
+      listOf("write_file", "import_attachment", "edit_file", "create_directory", "run_command"),
       catalog.filter { spec -> spec.arguments.any { it.name == "request_id" } }.map { it.name },
     )
     // Promotion is automatic and never requested, and the model cannot buy time the
@@ -172,7 +174,7 @@ class WorkspaceOperationsPipelineTest {
 
     val recorded = activity.entries()
     assertEquals(13, recorded.size)
-    assertEquals(operations.catalog.map { it.name }.toSet(), recorded.map { it.tool }.toSet())
+    assertEquals(operations.catalog.filter { it.name !in setOf("import_attachment", "export_file") }.map { it.name }.toSet(), recorded.map { it.tool }.toSet())
     assertTrue(recorded.all { it.origin == Origin.ChatGpt && it.outcome is ActivityOutcome.Ok })
     registry.perform(ManagementAct.SetLevel(workspace.id, AccessLevel.Read))
     pipeline.stop()

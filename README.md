@@ -24,6 +24,7 @@ The Runtime uses local Unix sockets and manages the tunnel client itself. No pub
 - Register several directories, each with its own name and access level.
 - Let ChatGPT browse files, search contents, and inspect Git status, diffs, and history.
 - Enable file creation and editing for selected workspaces.
+- Import ChatGPT PNG/PDF attachments at Write and export exact local PNG/PDF bytes at Read, up to 1 MiB. See [attachment transfer](docs/ATTACHMENTS.md).
 - Enable commands for builds, tests, and other local work.
 - Watch Activity live, follow a running command's output as it prints, and stop it.
 - Try any tool yourself, through the same path ChatGPT's calls take, before ChatGPT does.

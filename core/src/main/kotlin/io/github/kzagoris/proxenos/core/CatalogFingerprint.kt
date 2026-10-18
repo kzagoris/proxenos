@@ -57,6 +57,8 @@ fun catalogFingerprint(catalog: List<OperationSpec>): String {
     field(spec.annotations.readOnly.toString())
     field(spec.annotations.destructive.toString())
     field(spec.annotations.openWorld.toString())
+    field(spec.fileArguments.size.toString())
+    spec.fileArguments.forEach(::field)
     field(spec.arguments.size.toString())
     spec.arguments.forEach(::argument)
     field((spec.output != null).toString())
