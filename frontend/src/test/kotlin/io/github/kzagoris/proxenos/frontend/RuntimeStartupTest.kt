@@ -1,6 +1,16 @@
 package io.github.kzagoris.proxenos.frontend
 
 import java.nio.file.Files
+import java.nio.channels.FileChannel
+import java.nio.channels.ServerSocketChannel
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.WRITE
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.seconds
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
@@ -20,11 +30,14 @@ class RuntimeStartupTest {
     var failLink = false
     var linked = true
     var active = false
+    var exitStatus: Int? = null
+    var refusal = ""
     override fun run(arguments: List<String>): StartupReply = when {
+      arguments.first() == "journalctl" -> StartupReply(0, refusal)
       arguments.contains("show-user") -> StartupReply(0, if (lingering) "yes" else "no")
       arguments.contains("enable-linger") -> if (denyLinger) StartupReply(1, "Authorization denied")
         else StartupReply(0, "").also { lingering = true }
-      arguments.contains("show") -> StartupReply(0, "LoadState=${if (linked) "loaded" else "not-found"}\nUnitFileState=${if (enabled) "enabled" else "disabled"}\nActiveState=${if (active) "active" else "inactive"}\nDropInPaths=\n")
+      arguments.contains("show") -> StartupReply(0, "LoadState=${if (linked) "loaded" else "not-found"}\nUnitFileState=${if (enabled) "enabled" else "disabled"}\nActiveState=${if (exitStatus != null) "failed" else if (active) "active" else "inactive"}\nDropInPaths=\nResult=exit-code\nExecMainStatus=${exitStatus ?: 0}\nInvocationID=0123456789abcdef0123456789abcdef\n")
       arguments.contains("enable") -> if (failEnable) StartupReply(1, "Read-only filesystem")
         else StartupReply(0, "").also { enabled = true }
       arguments.contains("disable") -> StartupReply(0, "").also { enabled = false; linked = false }
@@ -161,6 +174,42 @@ class RuntimeStartupTest {
     assertFailsWith<IllegalStateException> { startup.enable() }
     assertFalse(machine.enabled)
     assertEquals(StartupState.Off, startup.inspect().state)
+  }
+
+
+  @Test fun `a concurrent Start attaches when the other Runtime becomes ready while holding its locks`() = runBlocking {
+    val machine = Machine()
+    val socket = temporary.resolve("run/control.sock")
+    val startup = RuntimeStartup(launcher(), socket, environment, machine)
+    startup.enable()
+    val lock = temporary.resolve(".local/state/proxenos/runtime.lock")
+    Files.createDirectories(lock.parent)
+    Files.createDirectories(socket.parent)
+    FileChannel.open(lock, CREATE, WRITE).use { channel ->
+      channel.lock().use {
+        withTimeout(2.seconds) {
+          val start = async { startup.startRegistered() }
+          delay(150)
+          ServerSocketChannel.open(StandardProtocolFamily.UNIX).use { server ->
+            server.bind(UnixDomainSocketAddress.of(socket))
+            assertTrue(start.await())
+            assertEquals(0, machine.starts, "a healthy competing Runtime must be attached to without another launch")
+          }
+        }
+      }
+    }
+  }
+
+  @Test fun `a supervised refusal exposes its current diagnosis without unrelated journal output`() = runBlocking {
+    val machine = Machine()
+    val startup = RuntimeStartup(launcher(), temporary.resolve("run/control.sock"), environment, machine)
+    startup.enable()
+    machine.exitStatus = 78
+    machine.refusal = "unrelated sensitive child output\nruntime: will not start. No credentials file at the configured location.\n"
+    val status = startup.inspect()
+    assertEquals(StartupState.NeedsAttention, status.state)
+    assertContains(status.words, "No credentials file at the configured location.")
+    assertFalse(status.words.contains("sensitive child output"))
   }
 
 }

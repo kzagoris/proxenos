@@ -117,7 +117,8 @@ class RuntimeAttachment(
           if (answering()) return null
           delay(100.milliseconds)
         }
-        return "The registered Runtime did not answer on $socket. Review systemctl --user status proxenos.service."
+        val status = startup.inspect()
+        return "The registered Runtime did not answer on $socket. ${status.words} Review systemctl --user status proxenos.service."
       }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
       throw cancelled

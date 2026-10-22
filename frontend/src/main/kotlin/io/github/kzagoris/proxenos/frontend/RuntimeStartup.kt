@@ -4,6 +4,10 @@ import io.github.kzagoris.proxenos.control.ControlSocket
 import io.github.kzagoris.proxenos.control.ConfigToml
 import io.github.kzagoris.proxenos.control.TunnelClient
 import io.github.kzagoris.proxenos.control.stateDirectory
+import java.io.IOException
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.SocketChannel
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
@@ -72,12 +76,13 @@ class RuntimeStartup(
     if (!status.registered) return@runInterruptible false
     check(status.managed && status.launcher == launcher?.toString() &&
       status.controlSocket == socket.toAbsolutePath().normalize().toString()) { status.words }
-    awaitPreviousStop()
+    if (awaitPreviousStop()) return@runInterruptible true
     checked("systemctl", "--user", "start", UNIT)
     true
   }
 
-  private fun awaitPreviousStop() {
+  /** True when a competing Start has made the existing Runtime ready. */
+  private fun awaitPreviousStop(): Boolean {
     val toml = ConfigToml.read(environment, ignored = "gui_scale")
     val state = stateDirectory(toml, environment)
     val mcp = toml.path("mcp_socket", environment, "PROXENOS_MCP_SOCKET")
@@ -87,12 +92,19 @@ class RuntimeStartup(
     // A detached Runtime closes its control socket before the MCP endpoint's grace period
     // ends and its instance locks are released. Starting the unit in that gap exits 78.
     while (locks.any { !released(it) }) {
+      if (answering()) return true
       check(System.nanoTime() < deadline) {
         "Another Runtime still holds its instance lock. Wait for Stop to finish before starting again; nothing was stopped or started."
       }
       Thread.sleep(50)
     }
+    return answering()
   }
+
+  private fun answering(): Boolean = try {
+    SocketChannel.open(StandardProtocolFamily.UNIX).use { it.connect(UnixDomainSocketAddress.of(socket)) }
+    true
+  } catch (_: IOException) { false }
 
   private fun released(file: Path): Boolean {
     if (!Files.exists(file)) return true
@@ -113,8 +125,7 @@ class RuntimeStartup(
     // the lock that serializes separate GUI/TUI processes. Inspection never creates files.
     mutations.withLock {
       // All frontends configure the same account-wide unit, even with different XDG configs.
-      val lock = (environment["XDG_RUNTIME_DIR"]?.let(Path::of)?.takeIf { it.isAbsolute } ?: home.resolve(".local/state"))
-        .resolve("proxenos-startup.lock")
+      val lock = home.resolve(".local/state/proxenos-startup.lock")
       Files.createDirectories(lock.parent)
       Files.createDirectories(directory)
       FileChannel.open(lock, CREATE, WRITE).use { channel ->
@@ -192,7 +203,7 @@ class RuntimeStartup(
     fun unavailable(words: String) = StartupStatus(StartupState.Unavailable, words, registered = exists,
       managed = unitMatchesRecord, launcher = registeredLauncher)
     val reply = try {
-      system.run(listOf("systemctl", "--user", "show", UNIT, "--property=LoadState,UnitFileState,ActiveState,FragmentPath,DropInPaths"))
+      system.run(listOf("systemctl", "--user", "show", UNIT, "--property=LoadState,UnitFileState,ActiveState,FragmentPath,DropInPaths,Result,ExecMainStatus,InvocationID"))
     } catch (_: Exception) { return unavailable("The systemd user manager is unavailable. Manual startup remains available when no unit is registered.") }
     if (reply.code != 0) return unavailable("The systemd user manager did not answer: ${reply.words}")
     val values = reply.words.lineSequence().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
@@ -220,8 +231,7 @@ class RuntimeStartup(
         "Account lingering cannot be checked because logind is unavailable or refused access. Startup before login cannot be configured here."
       registered && values["LoadState"] != "loaded" -> StartupState.NeedsAttention to
         "The registered unit is not loaded by systemd. Enable automatic startup to repair its registration."
-      registered && values["ActiveState"] == "failed" -> StartupState.NeedsAttention to
-        "The Runtime unit failed. Review it with systemctl --user status $UNIT; Start Runtime retries without changing boot startup."
+      registered && values["ActiveState"] == "failed" -> StartupState.NeedsAttention to failureWords(values)
       registered && persistent && lingering -> StartupState.On to
         "The Runtime is configured to start at boot, before login."
       enabled -> StartupState.NeedsAttention to
@@ -234,6 +244,24 @@ class RuntimeStartup(
       canEnable = lingering != null && executable && (!registered || (effectiveUnitUnmodified && installationAndSocketMatch)),
       canDisable = registered && effectiveUnitUnmodified && (enabled || values["LoadState"] != "loaded"),
       canUseInstallation = lingering != null && registered && effectiveUnitUnmodified && !installationAndSocketMatch && executable)
+  }
+
+  private fun failureWords(values: Map<String, String>): String {
+    val invocation = values["InvocationID"]?.takeIf { it.matches(Regex("[0-9a-f]{32}")) }
+    // Only the Runtime's deliberately secret-free startup refusal is displayed. Never show
+    // arbitrary tunnel/child output, nor a refusal from an earlier invocation.
+    val refusal = invocation?.let { id -> runCatching {
+      system.run(listOf("journalctl", "--user", "--unit=$UNIT", "_SYSTEMD_INVOCATION_ID=$id",
+        "--output=cat", "--no-pager", "--lines=20", "--grep=^runtime: will not start[.]"))
+        .takeIf { it.code == 0 }?.words?.lineSequence()
+        ?.firstOrNull { it.startsWith("runtime: ${ControlSocket.REFUSAL}") }
+        ?.removePrefix("runtime: ${ControlSocket.REFUSAL}")?.take(4096)
+    }.getOrNull() }
+    val setup = if (refusal == null) runCatching {
+      LocalSetup(environment).requirements(launcher).filterNot { it.met }.joinToString(" ") { it.words }
+    }.getOrNull().orEmpty() else refusal
+    return "The Runtime unit failed (result ${values["Result"] ?: "unknown"}, status ${values["ExecMainStatus"] ?: "unknown"}). " +
+      "$setup Review systemctl --user status $UNIT or journalctl --user -u $UNIT. Start Runtime retries without changing boot startup."
   }
 
   private fun checked(vararg arguments: String) {
