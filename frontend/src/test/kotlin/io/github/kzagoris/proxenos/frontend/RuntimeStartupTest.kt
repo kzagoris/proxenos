@@ -37,7 +37,8 @@ class RuntimeStartupTest {
   }
 
   private val environment get() = mapOf("HOME" to temporary.toString(),
-    "XDG_CONFIG_HOME" to temporary.resolve("config").toString(), "XDG_RUNTIME_DIR" to temporary.resolve("run").toString())
+    "XDG_CONFIG_HOME" to temporary.resolve("config").toString(),
+    "PROXENOS_TUNNEL_CLIENT" to launcher("tools/tunnel-client").toString(), "XDG_RUNTIME_DIR" to temporary.resolve("run").toString())
 
   private fun launcher(name: String = "release/bin/runtime"): Path = temporary.resolve(name).also {
     Files.createDirectories(it.parent)
@@ -134,10 +135,32 @@ class RuntimeStartupTest {
     startup.enable()
     machine.failLink = true
     assertFailsWith<IllegalStateException> { startup.disable() }
+    assertTrue(startup.inspect().canDisable, "both frontends must offer the partial Disable retry")
     machine.failLink = false
     assertEquals(StartupState.Off, startup.disable().state)
     assertTrue(startup.startRegistered())
     assertFalse(machine.enabled)
     assertTrue(machine.lingering)
   }
+
+  @Test fun `denied Enable preserves a previously disabled manual registration`() = runBlocking {
+    val machine = Machine()
+    val startup = RuntimeStartup(launcher(), temporary.resolve("run/control.sock"), environment, machine)
+    startup.enable()
+    startup.disable()
+    machine.denyLinger = true
+    assertFailsWith<IllegalStateException> { startup.enable() }
+    assertTrue(startup.startRegistered(), "rollback must retain the pre-existing manual Start link")
+    assertFalse(machine.enabled)
+  }
+
+  @Test fun `an unavailable configured tunnel executable cannot enable boot startup`() = runBlocking {
+    val machine = Machine()
+    val startup = RuntimeStartup(launcher(), temporary.resolve("run/control.sock"),
+      environment + ("PROXENOS_TUNNEL_CLIENT" to temporary.resolve("missing-tunnel-client").toString()), machine)
+    assertFailsWith<IllegalStateException> { startup.enable() }
+    assertFalse(machine.enabled)
+    assertEquals(StartupState.Off, startup.inspect().state)
+  }
+
 }

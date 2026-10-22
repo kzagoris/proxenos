@@ -80,9 +80,11 @@ def main():
     credentials.chmod(0o600)
     env = dict(os.environ, PATH=str(helpers) + ":" + os.environ["PATH"],
                XDG_CONFIG_HOME=str(config.parent), XDG_STATE_HOME=str(root / "state"),
-               PROXENOS_RUNTIME=tui.RUNTIME, PROXENOS_TUNNEL_CLIENT=str(tunnel))
+               PROXENOS_RUNTIME=tui.RUNTIME)
+    # Registration must preserve a tunnel executable discovered only on the shell PATH.
+    env.pop("PROXENOS_TUNNEL_CLIENT", None)
     exports = "".join(f"export {key}={shlex.quote(env[key])}\n" for key in
-                      ("PATH", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "PROXENOS_RUNTIME", "PROXENOS_TUNNEL_CLIENT"))
+                      ("PATH", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "PROXENOS_RUNTIME"))
     gui = root / "start-gui"
     gui.write_text("#!/bin/sh\n" + exports + "exec " + shlex.quote(str(tree / "bin/gui")) + "\n")
     gui.chmod(0o700)

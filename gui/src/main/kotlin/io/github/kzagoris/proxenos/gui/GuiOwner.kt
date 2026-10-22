@@ -229,13 +229,13 @@ class GuiOwner(
     try {
       val status = attachment.startup.apply(action)
       current.value = current.value.copy(startup = status, notice = when (action) {
-        StartupAction.Disable -> "Automatic startup is off. The Runtime was left unchanged."
+        StartupAction.Disable -> Wording.STARTUP_DISABLED
         else -> "${status.words} The current Runtime was left unchanged."
       })
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failed: Exception) {
-      current.value = current.value.copy(notice = failed.message ?: "Could not configure automatic startup.")
+      current.value = current.value.copy(notice = failed.message ?: Wording.STARTUP_FAILED)
       refreshStartup()
     } finally { current.value = current.value.copy(startupBusy = false) }
   }

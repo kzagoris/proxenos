@@ -2,6 +2,7 @@ package io.github.kzagoris.proxenos.frontend
 
 import io.github.kzagoris.proxenos.control.ControlSocket
 import io.github.kzagoris.proxenos.control.ConfigToml
+import io.github.kzagoris.proxenos.control.TunnelClient
 import io.github.kzagoris.proxenos.control.stateDirectory
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
@@ -111,8 +112,12 @@ class RuntimeStartup(
     // Java rejects overlapping file locks within one JVM, so serialize there before taking
     // the lock that serializes separate GUI/TUI processes. Inspection never creates files.
     mutations.withLock {
+      // All frontends configure the same account-wide unit, even with different XDG configs.
+      val lock = (environment["XDG_RUNTIME_DIR"]?.let(Path::of)?.takeIf { it.isAbsolute } ?: home.resolve(".local/state"))
+        .resolve("proxenos-startup.lock")
+      Files.createDirectories(lock.parent)
       Files.createDirectories(directory)
-      FileChannel.open(directory.resolve("proxenos-startup.lock"), CREATE, WRITE).use { channel ->
+      FileChannel.open(lock, CREATE, WRITE).use { channel ->
         channel.lock().use { changeNow(action) }
       }
     }
@@ -137,10 +142,10 @@ class RuntimeStartup(
     check(if (action == StartupAction.UseInstallation) before.canUseInstallation else before.canEnable) { before.words }
     val selected = checkNotNull(launcher) { "Cannot find the Runtime launcher for this installation." }
     check(Files.isExecutable(selected)) { "The Runtime launcher at $selected is unavailable." }
+    val content = unitText(selected)
     val oldUnit = unit.takeIf(Files::exists)?.let(Files::readAllBytes)
     val oldRecord = record.takeIf(Files::exists)?.let(Files::readAllBytes)
     try {
-      val content = unitText(selected)
       replace(unit, content.toByteArray())
       val registration = Properties().apply {
         setProperty("launcher", selected.toString())
@@ -162,25 +167,30 @@ class RuntimeStartup(
     } catch (failed: Exception) {
       // Enable can have changed symlinks before failing. Restore only our prior enablement;
       // never --now, and never undo account-wide lingering.
-      val restored = runCatching {
-        if (action == StartupAction.Enable && before.enabled != true) checked("systemctl", "--user", "disable", UNIT)
-        restore(unit, oldUnit)
-        restore(record, oldRecord)
-        checked("systemctl", "--user", "daemon-reload")
+      val restoreFailures = mutableListOf<String>()
+      fun restoreStep(action: () -> Unit) {
+        runCatching(action).exceptionOrNull()?.let { restoreFailures.add(it.message ?: "Unknown restoration failure") }
       }
+      restoreStep { if (action == StartupAction.Enable && before.enabled != true) checked("systemctl", "--user", "disable", UNIT) }
+      restoreStep { restore(unit, oldUnit) }
+      restoreStep { restore(record, oldRecord) }
+      // disable removes custom-XDG links as well as boot enablement. Restore an existing
+      // manual registration before claiming that the previous setup has been restored.
+      restoreStep { if (oldUnit != null) checked("systemctl", "--user", "link", unit.toAbsolutePath().toString()) }
+      restoreStep { checked("systemctl", "--user", "daemon-reload") }
       throw IllegalStateException("${failed.message ?: "Startup configuration failed."} " +
-        if (restored.isSuccess) "Proxenos registration was restored; the Runtime was left unchanged. Account lingering, if enabled, was left enabled."
-        else "Registration could not be fully restored: ${restored.exceptionOrNull()?.message}. Check automatic startup before retrying.", failed)
+        if (restoreFailures.isEmpty()) "Proxenos registration was restored; the Runtime was left unchanged. Account lingering, if enabled, was left enabled."
+        else "Registration could not be fully restored: ${restoreFailures.joinToString("; ")}. Check automatic startup before retrying.", failed)
     }
   }
 
   private fun inspectNow(): StartupStatus {
     val exists = Files.exists(unit)
     val registration = runCatching { Properties().apply { if (Files.exists(record)) Files.newBufferedReader(record).use(::load) } }.getOrDefault(Properties())
-    val known = exists && runCatching { digest(Files.readAllBytes(unit)) == registration.getProperty("sha256") }.getOrDefault(false)
+    val unitMatchesRecord = exists && runCatching { digest(Files.readAllBytes(unit)) == registration.getProperty("sha256") }.getOrDefault(false)
     val registeredLauncher = registration.getProperty("launcher")
     fun unavailable(words: String) = StartupStatus(StartupState.Unavailable, words, registered = exists,
-      managed = known, launcher = registeredLauncher)
+      managed = unitMatchesRecord, launcher = registeredLauncher)
     val reply = try {
       system.run(listOf("systemctl", "--user", "show", UNIT, "--property=LoadState,UnitFileState,ActiveState,FragmentPath,DropInPaths"))
     } catch (_: Exception) { return unavailable("The systemd user manager is unavailable. Manual startup remains available when no unit is registered.") }
@@ -193,39 +203,37 @@ class RuntimeStartup(
     val active = values["ActiveState"] in listOf("active", "activating", "reloading")
     val linger = runCatching { system.run(listOf("loginctl", "show-user", System.getProperty("user.name"), "--property=Linger", "--value")) }.getOrNull()
     val lingering = if (linger?.code == 0) when (linger.words.trim()) { "yes" -> true; "no" -> false; else -> null } else null
-    val intact = known && values["DropInPaths"].isNullOrBlank() &&
+    val effectiveUnitUnmodified = unitMatchesRecord && values["DropInPaths"].isNullOrBlank() &&
       // A custom XDG configuration is linked into the manager's own search path. Its
       // FragmentPath names that link; compare file identity rather than spelling.
       (fragment.isEmpty() || runCatching { Files.isSameFile(Path.of(fragment), unit) }.getOrDefault(false))
-    val same = registeredLauncher == launcher?.toString() && registration.getProperty("socket") == socket.toAbsolutePath().normalize().toString()
+    val installationAndSocketMatch = registeredLauncher == launcher?.toString() && registration.getProperty("socket") == socket.toAbsolutePath().normalize().toString()
     val executable = launcher?.let(Files::isExecutable) == true
-    val broken = registered && (!intact || !same || !executable)
-    val state = when {
-      broken -> StartupState.NeedsAttention
-      lingering == null -> StartupState.Unavailable
-      registered && values["LoadState"] != "loaded" -> StartupState.NeedsAttention
-      registered && values["ActiveState"] == "failed" -> StartupState.NeedsAttention
-      registered && persistent && lingering -> StartupState.On
-      enabled -> StartupState.NeedsAttention
-      else -> StartupState.Off
-    }
-    val words = when {
-      registered && !intact -> "The existing $UNIT is external or has been modified. It was left unchanged; review it before configuring Proxenos startup."
-      registered && !same -> "Automatic startup uses $registeredLauncher. Use this installation to register ${launcher ?: "an available Runtime launcher"}."
-      registered && !executable -> "The registered Runtime launcher at $registeredLauncher is unavailable. Restore the release or use another installation."
-      lingering == null -> "Account lingering cannot be checked because logind is unavailable or refused access. Startup before login cannot be configured here."
-      registered && values["LoadState"] != "loaded" -> "The registered unit is not loaded by systemd. Enable automatic startup to repair its registration."
-      registered && values["ActiveState"] == "failed" -> "The Runtime unit failed. Review it with systemctl --user status $UNIT; Start Runtime retries without changing boot startup."
-      state == StartupState.On -> "The Runtime is configured to start at boot, before login."
-      enabled -> "The unit is enabled without persistent boot startup and account lingering. Enable automatic startup to complete the configuration."
-      else -> "Automatic startup is off. Opening a frontend still starts an absent Runtime."
+    val (state, words) = when {
+      registered && !effectiveUnitUnmodified -> StartupState.NeedsAttention to
+        "The existing $UNIT is external or has been modified. It was left unchanged; review it before configuring Proxenos startup."
+      registered && !installationAndSocketMatch -> StartupState.NeedsAttention to
+        "Automatic startup uses $registeredLauncher. Use this installation to register ${launcher ?: "an available Runtime launcher"}."
+      registered && !executable -> StartupState.NeedsAttention to
+        "The registered Runtime launcher at $registeredLauncher is unavailable. Restore the release or use another installation."
+      lingering == null -> StartupState.Unavailable to
+        "Account lingering cannot be checked because logind is unavailable or refused access. Startup before login cannot be configured here."
+      registered && values["LoadState"] != "loaded" -> StartupState.NeedsAttention to
+        "The registered unit is not loaded by systemd. Enable automatic startup to repair its registration."
+      registered && values["ActiveState"] == "failed" -> StartupState.NeedsAttention to
+        "The Runtime unit failed. Review it with systemctl --user status $UNIT; Start Runtime retries without changing boot startup."
+      registered && persistent && lingering -> StartupState.On to
+        "The Runtime is configured to start at boot, before login."
+      enabled -> StartupState.NeedsAttention to
+        "The unit is enabled without persistent boot startup and account lingering. Enable automatic startup to complete the configuration."
+      else -> StartupState.Off to "Automatic startup is off. Opening a frontend still starts an absent Runtime."
     }
     return StartupStatus(state, words, enabled = if (registered) enabled else false, lingering = lingering,
-      registered = registered, managed = intact, launcher = registeredLauncher,
+      registered = registered, managed = effectiveUnitUnmodified, launcher = registeredLauncher,
       controlSocket = registration.getProperty("socket"), supervised = if (registered) active else false,
-      canEnable = lingering != null && executable && (!registered || (intact && same)),
-      canDisable = registered && intact && enabled,
-      canUseInstallation = lingering != null && registered && intact && !same && executable)
+      canEnable = lingering != null && executable && (!registered || (effectiveUnitUnmodified && installationAndSocketMatch)),
+      canDisable = registered && effectiveUnitUnmodified && (enabled || values["LoadState"] != "loaded"),
+      canUseInstallation = lingering != null && registered && effectiveUnitUnmodified && !installationAndSocketMatch && executable)
   }
 
   private fun checked(vararg arguments: String) {
@@ -234,7 +242,16 @@ class RuntimeStartup(
   }
 
   private fun unitText(selected: Path): String {
+    val toml = ConfigToml.read(environment, ignored = "gui_scale")
+    val state = stateDirectory(toml, environment)
+    val tunnel = (TunnelClient.configured(toml, environment) ?: TunnelClient.search(environment, state))
+      ?.toAbsolutePath()?.normalize()
+    check(tunnel != null && Files.isExecutable(tunnel)) {
+      "Cannot configure boot startup: the tunnel executable is unavailable. Install it or set tunnel_client in config.toml."
+    }
     val paths = environment.filterKeys { it in PATH_SETTINGS }.toMutableMap()
+    // A tunnel found only on a shell's PATH must also resolve under the user manager.
+    paths["PROXENOS_TUNNEL_CLIENT"] = tunnel.toString()
     paths["HOME"] = home.toString()
     paths["XDG_CONFIG_HOME"] = config.toString()
     paths["XDG_STATE_HOME"] = environment["XDG_STATE_HOME"] ?: home.resolve(".local/state").toString()
@@ -243,6 +260,10 @@ class RuntimeStartup(
     // A portable release's Java must work with the manager's short PATH too. The launcher's
     // own jre/ still wins over JAVA_HOME (ADR 0010).
     paths["JAVA_HOME"] = environment["JAVA_HOME"] ?: System.getProperty("java.home")
+    check(Files.isExecutable(selected.parent.parent.resolve("jre/bin/java")) ||
+      Files.isExecutable(Path.of(paths.getValue("JAVA_HOME")).resolve("bin/java"))) {
+      "Cannot configure boot startup: Java is unavailable outside the shell. Restore the bundled jre or set JAVA_HOME."
+    }
     return buildString {
       appendLine("# Managed by Proxenos. Change startup through the GUI or TUI.")
       appendLine("[Unit]\nDescription=Proxenos Runtime")

@@ -135,10 +135,10 @@ internal suspend fun carryOut(
       try {
         val status = command.action?.let { startup.apply(it) } ?: startup.inspect()
         update(home().copy(startup = status).say(if (command.action == StartupAction.Disable)
-          "Automatic startup is off. The Runtime was left unchanged." else status.words))
+          Wording.STARTUP_DISABLED else status.words))
       } catch (cancelled: CancellationException) { throw cancelled
       } catch (failed: Exception) {
-        update(home().copy(startup = startup.inspect()).say(failed.message ?: "Could not configure automatic startup.", Tone.Bad))
+        update(home().copy(startup = startup.inspect()).say(failed.message ?: Wording.STARTUP_FAILED, Tone.Bad))
       } finally { update(home().copy(startupBusy = false)) }
     }
     Command.Quit -> Unit

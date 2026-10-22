@@ -182,6 +182,9 @@ object Wording {
     "Automatic startup is off by default. Enable Start Runtime at boot in the Runtime detail to start " +
       "before login; otherwise open a frontend or start the Runtime after a reboot."
 
+  const val STARTUP_DISABLED = "Automatic startup is off. The Runtime was left unchanged."
+  const val STARTUP_FAILED = "Could not configure automatic startup."
+
   const val BOOT_STARTUP: String =
     "Run Proxenos when this machine boots, before you log in, using your saved Workspace Access Levels. " +
       "Your saved Connect or Disconnect choice is preserved."
