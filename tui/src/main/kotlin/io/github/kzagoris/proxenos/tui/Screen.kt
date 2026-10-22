@@ -233,6 +233,20 @@ private fun runtimeDetail(home: Home, frame: Frame): List<Line> {
       }
     }
     addAll(paragraph(Wording.NO_AUTOSTART, width))
+    add(Line(""))
+    addAll(paragraph("Start Runtime at boot · ${home.startup?.label ?: "Checking…"}", width))
+    home.startup?.let { addAll(paragraph(it.words, width)) }
+    addAll(paragraph(Wording.BOOT_STARTUP, width))
+    addAll(paragraph(Wording.BOOT_ACCOUNT, width))
+    addAll(paragraph(Wording.BOOT_STORAGE, width))
+    home.startup?.launcher?.let { addAll(paragraph("Registered installation: $it", width, Tone.Dim)) }
+    val actions = buildList {
+      if (home.startup?.canEnable == true) add("[e] Enable")
+      if (home.startup?.canDisable == true) add("[d] Disable")
+      if (home.startup?.canUseInstallation == true) add("[u] Use this installation")
+      add("[r] Refresh")
+    }
+    addAll(paragraph(if (home.startupBusy) "Updating automatic startup…" else actions.joinToString(" · "), width))
   }
 }
 

@@ -177,11 +177,22 @@ object Wording {
       "but nothing is exposed and no frontend can attach until the Runtime is started again.",
   )
 
-  /** There is no autostart, and the silence after a reboot is expected. */
+  /** Boot startup is a local installation choice, independent of the current Runtime. */
   const val NO_AUTOSTART: String =
-    "There is no autostart, and that is deliberate: a Runtime started at login would leave a Command Workspace " +
-      "reachable with nobody present. After a reboot every call from ChatGPT fails until the Runtime is started " +
-      "once, so that silence is expected rather than a fault to hunt."
+    "Automatic startup is off by default. Enable Start Runtime at boot in the Runtime detail to start " +
+      "before login; otherwise open a frontend or start the Runtime after a reboot."
+
+  const val BOOT_STARTUP: String =
+    "Run Proxenos when this machine boots, before you log in, using your saved Workspace Access Levels. " +
+      "Your saved Connect or Disconnect choice is preserved."
+
+  const val BOOT_ACCOUNT: String =
+    "Enabling this keeps your account's background user manager running before login and after logout; " +
+      "its other enabled user services can also start. Disabling Proxenos startup leaves that account setting enabled."
+
+  const val BOOT_STORAGE: String =
+    "The installed release and its configuration must be accessible before login. " +
+      "Storage unlocked only when you log in cannot provide boot startup."
 
   const val CHATGPT_MCP_STEPS: String =
     "1. Use ChatGPT on the web at https://chatgpt.com in your browser.\n" +

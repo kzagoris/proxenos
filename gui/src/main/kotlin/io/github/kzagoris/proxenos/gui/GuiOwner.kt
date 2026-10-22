@@ -12,6 +12,7 @@ import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
 import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.StartupAction
 import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import io.github.kzagoris.proxenos.frontend.operationFrom
 import java.io.IOException
@@ -32,6 +33,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
 sealed interface GuiIntent {
+  data object RefreshStartup : GuiIntent
+  data class ConfigureStartup(val action: StartupAction) : GuiIntent
   data object OpenSetup : GuiIntent
   data object FinishLater : GuiIntent
   data object CheckSetup : GuiIntent
@@ -110,12 +113,14 @@ class GuiOwner(
   private var opened = false
   private var awaitingPluginConfirmation = false
   private var connectAfterCredentialStart = false
+  private var startupRevision = 0
 
   /** Start intake after the window has drawn; a renderer failure must not start exposure. */
   fun open() {
     scope.launch {
       if (!opened) {
         opened = true
+        scope.launch { refreshStartup() }
         setupFiles?.let { files ->
           try {
             val progress = withContext(Dispatchers.IO) { files.loadProgress() }
@@ -141,6 +146,16 @@ class GuiOwner(
     scope.launch {
       val state = current.value
       when (intent) {
+        GuiIntent.RefreshStartup -> if (!state.startupBusy) refreshStartup()
+        is GuiIntent.ConfigureStartup -> if (!state.startupBusy) configureStartup(intent.action)
+        is GuiIntent.ShowStage -> {
+          current.value = state.after(intent)
+          if (intent.stage == Stage.Runtime && !state.startupBusy) refreshStartup()
+        }
+        is GuiIntent.Show -> {
+          current.value = state.after(intent)
+          if (intent.destination == Destination.Connection && !state.startupBusy) refreshStartup()
+        }
         GuiIntent.CheckSetup -> if (!state.setupBusy) checkSetup()
         GuiIntent.InstallTunnelClient -> installTunnelClient()
         is GuiIntent.SetupAssociated -> state.setup?.let { changeSetup(it.copy(associated = intent.associated)) }
@@ -200,6 +215,29 @@ class GuiOwner(
         else -> current.value = state.after(intent)
       }
     }
+  }
+
+  private suspend fun refreshStartup() {
+    val revision = ++startupRevision
+    val status = attachment.startup.inspect()
+    if (revision == startupRevision) current.value = current.value.copy(startup = status)
+  }
+
+  private suspend fun configureStartup(action: StartupAction) {
+    startupRevision++
+    current.value = current.value.copy(startupBusy = true, notice = null)
+    try {
+      val status = attachment.startup.apply(action)
+      current.value = current.value.copy(startup = status, notice = when (action) {
+        StartupAction.Disable -> "Automatic startup is off. The Runtime was left unchanged."
+        else -> "${status.words} The current Runtime was left unchanged."
+      })
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failed: Exception) {
+      current.value = current.value.copy(notice = failed.message ?: "Could not configure automatic startup.")
+      refreshStartup()
+    } finally { current.value = current.value.copy(startupBusy = false) }
   }
 
   private suspend fun advanceConfirmedPlugin() {

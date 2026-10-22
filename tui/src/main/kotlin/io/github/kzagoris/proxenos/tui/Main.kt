@@ -78,7 +78,7 @@ private fun interactive(attachment: RuntimeAttachment) {
 private fun start(attachment: RuntimeAttachment, socket: Path): Int = runBlocking {
   if (attachment.answering()) return@runBlocking 0.also { println("The Runtime is already running on $socket.") }
   val refused = attachment.start() ?: return@runBlocking 0.also {
-    println("The Runtime is running on $socket. There is no autostart: after a reboot, start it again.")
+    println("The Runtime is running on $socket. Boot startup is a separate setting in the Runtime detail.")
   }
   System.err.println("tui: the Runtime ${refused.words}")
   1

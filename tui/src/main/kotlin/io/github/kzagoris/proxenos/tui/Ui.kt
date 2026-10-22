@@ -22,6 +22,8 @@ import io.github.kzagoris.proxenos.coreapi.WorkspaceManagement
 import io.github.kzagoris.proxenos.frontend.RuntimeAttachment
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.RuntimeStartup
+import io.github.kzagoris.proxenos.frontend.StartupAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -39,6 +41,7 @@ fun runHome(attachment: RuntimeAttachment) = runMosaicMain {
   // Bumped to attach again, starting the Runtime if nothing answers: [S] after it went away.
   var attempt by remember { mutableIntStateOf(0) }
   var quit by remember { mutableStateOf(false) }
+  var startupRevision by remember { mutableIntStateOf(0) }
   // What keys ask for, carried out by the effect below rather than by a remembered scope: a
   // remembered scope's Job never completes, and Mosaic ends a composition only once nothing in
   // it is still running — so it would outlive `q`.
@@ -49,7 +52,16 @@ fun runHome(attachment: RuntimeAttachment) = runMosaicMain {
   if (!quit) {
     LaunchedEffect(Unit) {
       for (command in commands) launch {
-        carryOut(command, management, { home }, { home = it }, { attempt++ }, { attempt })
+        if (command is Command.Startup) startupRevision++
+        carryOut(command, management, { home }, { home = it }, { attempt++ }, { attempt }, attachment.startup)
+      }
+    }
+
+    LaunchedEffect(home.overlay is Overlay.StageDetail && (home.overlay as? Overlay.StageDetail)?.stage == Stage.Runtime) {
+      if (!home.startupBusy) {
+        val revision = startupRevision
+        val status = attachment.startup.inspect()
+        if (revision == startupRevision && !home.startupBusy) home = home.copy(startup = status)
       }
     }
 
@@ -115,8 +127,20 @@ internal suspend fun carryOut(
   update: (Home) -> Unit,
   start: () -> Unit,
   attempt: () -> Int,
+  startup: RuntimeStartup? = null,
 ) {
   when (command) {
+    is Command.Startup -> if (startup != null && !home().startupBusy) {
+      update(home().copy(startupBusy = true))
+      try {
+        val status = command.action?.let { startup.apply(it) } ?: startup.inspect()
+        update(home().copy(startup = status).say(if (command.action == StartupAction.Disable)
+          "Automatic startup is off. The Runtime was left unchanged." else status.words))
+      } catch (cancelled: CancellationException) { throw cancelled
+      } catch (failed: Exception) {
+        update(home().copy(startup = startup.inspect()).say(failed.message ?: "Could not configure automatic startup.", Tone.Bad))
+      } finally { update(home().copy(startupBusy = false)) }
+    }
     Command.Quit -> Unit
     Command.StartRuntime -> start()
     is Command.Try -> update(

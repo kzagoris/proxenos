@@ -49,9 +49,20 @@ private suspend fun RuntimeAttachment.snapshot(): RuntimeEvent.Snapshot? =
  */
 internal suspend fun status(attachment: RuntimeAttachment, local: LocalSetup, runtime: Path?, out: Appendable): Int {
   val snapshot = attachment.snapshot()
+  val startup = attachment.startup.inspect()
   val status = buildJsonObject {
     put("version", STATUS_VERSION)
     put("runtime", if (snapshot == null) "absent" else "running")
+    put("startup", buildJsonObject {
+      put("state", startup.state.name)
+      put("enabled", startup.enabled)
+      put("lingering", startup.lingering)
+      put("registered", startup.registered)
+      put("supervised", startup.supervised)
+      put("launcher", startup.launcher)
+      put("controlSocket", startup.controlSocket)
+      put("words", startup.words)
+    })
     put("tunnel", snapshot?.let(::tunnel) ?: JsonNull)
     put("connector", snapshot?.let { Wording.connector(it.connectorUnconfirmed) })
     put("runningOperations", snapshot?.running?.size)

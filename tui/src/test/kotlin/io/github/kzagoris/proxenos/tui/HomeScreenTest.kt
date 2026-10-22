@@ -230,11 +230,10 @@ class HomeScreenTest {
   }
 
   @Test
-  fun `the stage details carry the no-autostart statement and the Connected caveat verbatim`() {
+  fun `the stage details explain optional boot startup and the Connected caveat`() {
     val runtime = attached().keys("i", "Enter").prose()
-    assertTrue("There is no autostart, and that is deliberate" in runtime, runtime)
-    assertTrue("After a reboot every call from ChatGPT fails until the Runtime is started once" in runtime, runtime)
-    assertTrue("expected rather than a fault to hunt" in runtime, runtime)
+    assertTrue("Automatic startup is off by default" in runtime, runtime)
+    assertTrue("Start Runtime at boot" in runtime, runtime)
 
     val tunnel = attached().keys("i", "ArrowDown", "r").prose()
     assertTrue(Wording.CONNECTED_CAVEAT in tunnel, tunnel)

@@ -1,10 +1,25 @@
 package io.github.kzagoris.proxenos.tui
 
 import io.github.kzagoris.proxenos.coreapi.*
+import io.github.kzagoris.proxenos.frontend.StartupAction
+import io.github.kzagoris.proxenos.frontend.StartupState
+import io.github.kzagoris.proxenos.frontend.StartupStatus
 import java.time.Instant
 import kotlin.test.*
 
 class NavigationTest {
+  @Test fun `startup actions work without a Runtime and enable requires explicit confirmation`() {
+    val home = Home(startup = StartupStatus(StartupState.Off, "Off", canEnable = true))
+      .key("i").key("Enter")
+    val asked = home.press(Key("e"))
+    assertNull(asked.command)
+    assertIs<Overlay.Confirm>(asked.home.overlay)
+    assertEquals(Command.Startup(StartupAction.Enable), asked.home.press(Key("y")).command)
+    assertNull(asked.home.press(Key("Escape")).command)
+    val enabled = home.copy(startup = StartupStatus(StartupState.On, "On", canDisable = true))
+    assertEquals(Command.Startup(StartupAction.Disable), enabled.press(Key("d")).command)
+    assertNull(enabled.copy(startupBusy = true).press(Key("d")).command)
+  }
   private val now = Instant.parse("2026-09-27T12:00:00Z")
   private val start = RuntimeStart(RuntimeStartId("current"), now)
   private val workspace = WorkspaceState(Workspace(WorkspaceId("one"), "one", "/tmp/one", AccessLevel.Read), true)

@@ -19,6 +19,8 @@ import io.github.kzagoris.proxenos.frontend.FeedRow
 import io.github.kzagoris.proxenos.frontend.RUN_COMMAND
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.StartupAction
+import io.github.kzagoris.proxenos.frontend.StartupStatus
 import io.github.kzagoris.proxenos.frontend.absoluteRoot
 import io.github.kzagoris.proxenos.frontend.askedOf
 import io.github.kzagoris.proxenos.frontend.commandOf
@@ -39,6 +41,8 @@ import java.nio.file.Path
  */
 data class Home(
   val attachment: Attachment = Attachment.Attaching,
+  val startup: StartupStatus? = null,
+  val startupBusy: Boolean = false,
   val page: Page = Page.Workspaces,
   val scroll: Int = 0,
   /** Selected workspace identity. Manage never falls back to another workspace after removal. */
@@ -314,6 +318,7 @@ data class Step(val home: Home, val command: Command? = null)
 
 /** What a key asks the caller to do beyond changing the screen. */
 sealed interface Command {
+  data class Startup(val action: StartupAction? = null) : Command
   data class Perform(val act: ManagementAct<*>, val done: String) : Command
   /** TryOperation, whose answer is the Operation's own outcome and is said as one. */
   data class Try(val op: Operation<*>, val tool: String, val workspace: String) : Command
@@ -363,6 +368,13 @@ sealed interface Overlay {
       val snapshot = home.snapshot
       return when (stage) {
         Stage.Runtime -> when {
+          home.startupBusy -> Step(home)
+          key.name == "e" && home.startup?.canEnable == true -> Step(home.copy(overlay = Confirm(
+            listOf("Start Runtime at boot?", Wording.BOOT_STARTUP, Wording.BOOT_ACCOUNT, Wording.BOOT_STORAGE),
+            Tone.Warn, Command.Startup(StartupAction.Enable))))
+          key.name == "d" && home.startup?.canDisable == true -> Step(home, Command.Startup(StartupAction.Disable))
+          key.name == "u" && home.startup?.canUseInstallation == true -> Step(home, Command.Startup(StartupAction.UseInstallation))
+          key.name == "r" -> Step(home, Command.Startup())
           key.name == "S" -> home.startRuntime()
           key.name == "X" && snapshot != null -> home.attachedPress(key, snapshot)
           else -> Step(home)

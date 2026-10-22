@@ -42,6 +42,7 @@ class RuntimeAttachment(
   private val executable: Path?,
   /** How long a started Runtime has to answer before the start is reported as failed. */
   private val patience: Duration = 20.seconds,
+  val startup: RuntimeStartup = RuntimeStartup(executable, socket),
 ) {
   /** Where a started Runtime's output goes, since it has no terminal to write to. */
   private val log: Path = socket.resolveSibling("runtime.log")
@@ -109,6 +110,20 @@ class RuntimeAttachment(
   }
 
   private suspend fun spawn(): String? {
+    try {
+      if (startup.startRegistered()) {
+        val deadline = System.nanoTime() + patience.inWholeNanoseconds
+        while (System.nanoTime() < deadline) {
+          if (answering()) return null
+          delay(100.milliseconds)
+        }
+        return "The registered Runtime did not answer on $socket. Review systemctl --user status proxenos.service."
+      }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+      throw cancelled
+    } catch (failed: Exception) {
+      return "The registered Runtime could not start: ${failed.message}"
+    }
     val program = executable ?: return "Cannot find the Runtime to start: neither $VARIABLE nor the $PROPERTY " +
       "property the launcher scripts set names it. $SET_VARIABLE"
     // setsid would start and then fail to run it, and say so only in the log. A bare name is

@@ -26,9 +26,8 @@ import kotlinx.coroutines.runBlocking
  * Nothing here reads standard input. A frontend starts the Runtime with no terminal attached,
  * so every reason not to start is said once on standard error and the process exits.
  *
- * There is no autostart at login, and nothing here offers one: that would boot
- * the machine into a state where a Command Workspace is reachable with nobody present. The
- * systemd `--user` unit in `docs/` is for a user who has read why and disagrees.
+ * Boot startup is an opt-in local installation choice managed by the frontends (ADR 0015).
+ * The Runtime follows the same lifecycle whether started by systemd or a frontend.
  */
 fun main(args: Array<String>) {
   try {

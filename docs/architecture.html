@@ -698,7 +698,7 @@ footer { padding-block: 48px 64px; color: var(--ink-faint); font-size: 0.9rem; }
         <dt>mcp.sock</dt><dd><code>$XDG_RUNTIME_DIR/proxenos/</code>: where tunnel-client delivers ChatGPT's calls.</dd>
         <dt>control.sock</dt><dd>Same folder: where frontends connect. The server checks the caller is the same Linux user (<code>SO_PEERCRED</code>).</dd>
         <dt>bin/wizard</dt><dd>One-time setup script for the OpenAI dashboard side; writes the credentials file.</dd>
-        <dt>no autostart</dt><dd>On purpose: after a reboot, nothing is reachable until you start it once. A systemd unit is in <code>docs/</code> if you disagree.</dd>
+        <dt>optional boot startup</dt><dd>Off by default. Enable Start Runtime at boot in either frontend to run before login under your account. Disabling future startup leaves the current Runtime unchanged.</dd>
       </dl>
     </div>
   </div>

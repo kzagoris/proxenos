@@ -15,7 +15,7 @@ bin/install-tunnel-client  downloads tunnel-client and verifies it against SHA25
 lib/                       the jars the launchers share
 docs/INSTALL.md            this file
 docs/THIRD-PARTY.md        generated notices from the resolved runtime classpaths
-docs/systemd/              a systemd --user unit, for a user who disagrees with no autostart
+docs/systemd/              a reference systemd user unit for optional boot startup
 jre/                       the Java runtime the launchers use: bundled in linux-x64, an optional link in a portable tree
 share/icons/               matching desktop SVG and ChatGPT plugin PNG
 VERSION                    the release this tree is
@@ -333,16 +333,41 @@ In a ChatGPT conversation with your connector enabled, ask it to list your works
 `list_workspaces`, the call appears in Activity in the GUI or the TUI, and ChatGPT answers with the Workspace
 you registered in step 6.
 
-## After a reboot
+## Automatic startup before login
 
-Nothing starts by itself, deliberately: a Runtime started at login would leave a Workspace at
-Command reachable from ChatGPT with nobody present. Until you start it once —
-`bin/tui`, `bin/gui`, or `bin/runtime` — ChatGPT's calls fail, and the failure shows up there as tool errors
-rather than anywhere on this machine.
+Automatic startup is off by default. Downloading, unpacking, installing a menu entry or opening
+a frontend does not enable it. Without it, start the Runtime after a reboot by opening either
+frontend or running `bin/tui start`; until then ChatGPT's calls fail.
 
-If you have read that and disagree, `docs/systemd/proxenos.service` is a ready
-systemd `--user` unit, with the reason and the steps in its header. The product never installs it
-and never offers to.
+In the GUI, open **Connection → Runtime → Start Runtime at boot**, then **Enable**. In the TUI,
+press `i`, select Runtime, Enter, then `e` and confirm with `y`. Enabling configures the next
+boot; it never restarts a Runtime that is already running. Both frontends show the actual
+registration and provide Refresh; `tui status --json` includes the same facts under `startup`.
+
+This installs a systemd user unit and enables account lingering, so the Runtime runs under
+your account before login and continues after logout. Local authorization policy may require
+an operating-system authentication prompt. Lingering also allows your other enabled user
+services to run before login. It is left enabled when you disable Proxenos startup.
+
+Saved Workspace Access Levels and the saved Connect/Disconnect choice apply at boot. The
+Runtime does not become Connected merely by starting. The installed release, Java, tunnel
+client and configuration must be accessible before login; storage unlocked only at login
+cannot provide this. Commands use the user manager's environment, not your shell profile.
+Selected nonsecret Proxenos path settings and Java are recorded in the unit; credentials remain
+only in the existing owner-only credentials file.
+
+**Disable** (`d` in the TUI Runtime detail) prevents future boot startup and leaves the current
+Runtime unchanged. It retains the unit for supervised manual Start. **Stop Runtime** is
+separate: it ends the current Runtime and running Operations, does not disable boot startup,
+and is not restarted automatically. A later Start, opening a frontend or the next enabled boot
+starts it again. A crash is supervised; a configuration refusal is not repeatedly restarted.
+
+Keep the installed tree at a stable location such as `~/.local/opt/proxenos`. Replacing a release
+there preserves startup. After moving it, open a frontend from the new tree and choose **Use
+this installation** (`u` in the TUI) to update registration without restarting the Runtime.
+Customized or external units are reported and preserved; resolve those conflicts before
+using the managed setting. Review a failed unit with `systemctl --user status proxenos.service`.
+The shipped `docs/systemd/proxenos.service` remains a reference for manual administration.
 
 ## Checking from a terminal, or from a coding agent
 
@@ -388,7 +413,12 @@ tools and test in a new conversation, then select **I updated the connector** (T
 Connector detail). Create the plugin again only if refresh fails. Once the new version works, delete `~/.local/opt/proxenos.previous`; to go back instead,
 stop the Runtime and move it back into place.
 
-To remove everything: stop the Runtime, run `bin/install-desktop-entry --remove` from the
+To remove everything: first Disable boot startup, then stop the Runtime. If you used managed
+startup, run `systemctl --user disable proxenos.service`, remove
+`${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/proxenos.service` and
+`${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/proxenos-startup.properties`, and run
+`systemctl --user daemon-reload`. Leave account lingering unchanged if other user services need
+it. Run `bin/install-desktop-entry --remove` from the
 linux-x64 tree if you installed the menu entry, then delete `~/.local/opt/proxenos/`,
 `~/.local/state/proxenos/` and `~/.config/proxenos/`, revoke the runtime key in the
 Platform dashboard, and delete the connector in ChatGPT.

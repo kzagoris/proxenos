@@ -1,11 +1,9 @@
-# A systemd --user unit that starts the Proxenos Runtime at login.
+# Reference systemd user unit for the Proxenos Runtime (ADR 0015).
+# Prefer Connection -> Runtime -> Start Runtime at boot in either frontend: it generates the
+# installation-specific unit, preserves custom paths and checks the registration. Boot startup
+# is off by default. The UI preserves the current Runtime when enabling or disabling it.
 #
-# The product does not install this, and it never offers to. Starting at
-# login boots the machine into a state where a Workspace at Command is reachable from ChatGPT
-# with nobody present and no human act in between. Without it the cost is the one this
-# accepts: after a reboot, ChatGPT's calls fail until you start the Runtime once.
-#
-# If you have read that and still want it:
+# Manual alternative, for administrators who will maintain their own unit:
 #
 #   mkdir -p ~/.config/systemd/user
 #   cp docs/systemd/proxenos.service ~/.config/systemd/user/
@@ -13,9 +11,15 @@
 #   # on the portable archive, link jre/ in the tree to a Java 26 or newer (docs/INSTALL.md §3)
 #   # if that is not the `java` on the user manager's PATH
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now proxenos.service
+#   loginctl enable-linger
+#   systemctl --user enable proxenos.service
+#   # To start it now as well, first stop any existing detached Runtime, then:
+#   systemctl --user start proxenos.service
 #
-# Undo with `systemctl --user disable --now proxenos.service`.
+# Disable future boot startup with `systemctl --user disable proxenos.service` (without --now).
+# Stop the current Runtime separately. Leave account lingering enabled if other services use it.
+# Lingering starts the user manager at boot, before login, and keeps it after logout; it also
+# affects other enabled user services. Saved Access Levels and Connect/Disconnect state apply.
 #
 # Never add the tunnel ID or the runtime key to this file, as Environment= or otherwise. The
 # Runtime reads them from ~/.config/proxenos/credentials (mode 0600) and ignores them in

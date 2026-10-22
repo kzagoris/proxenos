@@ -22,6 +22,8 @@ import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
 import io.github.kzagoris.proxenos.frontend.Wording
+import io.github.kzagoris.proxenos.frontend.StartupAction
+import io.github.kzagoris.proxenos.frontend.StartupState
 import io.github.kzagoris.proxenos.gui.res.*
 import org.jetbrains.compose.resources.DrawableResource
 
@@ -46,7 +48,6 @@ internal fun RuntimeWords(state: GuiState) {
       Text("This window holds no stream from a Runtime, so it shows nothing of what is exposed.", color = muted)
     }
   }
-  Text(Wording.NO_AUTOSTART, color = muted)
 }
 
 @Composable
@@ -123,6 +124,24 @@ private fun StageDetail(state: GuiState, stage: Stage, send: (GuiIntent) -> Unit
           icon = Res.drawable.power_settings_new)
         Text("Closing this window leaves the Runtime running: it never stops, disconnects or withholds anything.",
           style = MaterialTheme.typography.bodySmall, color = muted)
+        Section("Start Runtime at boot")
+        val startup = state.startup
+        Text("Automatic startup · ${startup?.label ?: "Checking…"}")
+        startup?.let { Text(it.words, color = muted) }
+        Text(Wording.BOOT_STARTUP)
+        Text(Wording.BOOT_ACCOUNT, style = MaterialTheme.typography.bodySmall, color = muted)
+        Text(Wording.BOOT_STORAGE, style = MaterialTheme.typography.bodySmall, color = muted)
+        startup?.launcher?.let { Text("Registered installation: $it", style = MaterialTheme.typography.bodySmall, color = muted) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          if (startup?.canEnable == true && startup.state != StartupState.On)
+            Btn("Enable", { send(GuiIntent.ConfigureStartup(StartupAction.Enable)) }, enabled = !state.startupBusy)
+          if (startup?.canDisable == true)
+            Btn("Disable", { send(GuiIntent.ConfigureStartup(StartupAction.Disable)) }, enabled = !state.startupBusy)
+          if (startup?.canUseInstallation == true)
+            Btn("Use this installation", { send(GuiIntent.ConfigureStartup(StartupAction.UseInstallation)) }, enabled = !state.startupBusy)
+          Btn("Refresh", { send(GuiIntent.RefreshStartup) }, enabled = !state.startupBusy)
+        }
+        if (state.startupBusy) Text("Updating automatic startup…", color = muted)
       }
       Stage.Tunnel -> {
         when (val tunnel = snapshot?.runtime?.state) {

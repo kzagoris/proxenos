@@ -381,7 +381,17 @@ For scripts and coding agents, `./bin/tui check`, `./bin/tui status --json`,
 `./bin/tui register <directory> --name <name>` and `./bin/tui await-listing <workspace>` never
 start the Runtime; see [the installation guide](docs/INSTALL.md#checking-from-a-terminal-or-from-a-coding-agent).
 
-There is **no automatic startup after reboot**. Open the desktop app or the dashboard, or run `tui start` again. Stopping the Runtime preserves workspace registrations and ends running operations; their effects may be uncertain and are not rolled back.
+Automatic startup is **off by default**. Under **Connection → Runtime**, choose **Enable** for
+**Start Runtime at boot** to run before login and continue after logout. In the TUI, open Review
+with `i`, open Runtime with Enter, then press `e` and confirm with `y`. This uses a systemd user
+unit and account lingering, preserving saved Access Levels and Connect/Disconnect state.
+
+Enable and Disable leave the current Runtime unchanged. Disable prevents future boot startup;
+**Stop Runtime** ends the current run and its Operations without disabling boot startup. A
+deliberate Stop is not automatically restarted. Without boot startup, open either frontend or
+run `tui start` after reboot. See [automatic startup](docs/INSTALL.md#automatic-startup-before-login)
+for requirements and removal. Stopping preserves registrations; running Operations end as
+Uncertain and their effects are not rolled back.
 
 Default locations:
 

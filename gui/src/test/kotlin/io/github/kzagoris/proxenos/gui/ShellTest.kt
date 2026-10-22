@@ -15,6 +15,9 @@ import androidx.compose.ui.unit.dp
 import io.github.kzagoris.proxenos.coreapi.*
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.Reason
+import io.github.kzagoris.proxenos.frontend.StartupAction
+import io.github.kzagoris.proxenos.frontend.StartupState
+import io.github.kzagoris.proxenos.frontend.StartupStatus
 import java.time.Instant
 import kotlin.test.*
 
@@ -299,11 +302,27 @@ class ShellTest {
   }
 
   @Test
-  fun `the Runtime detail explains Attached and no-autostart even while running`() = runComposeUiTest {
+  fun `the Runtime detail explains Attached and boot startup even while running`() = runComposeUiTest {
     shell(attached().after(GuiIntent.ShowStage(Stage.Runtime)))
     onNodeWithText("this window holds the Runtime's stream", substring = true).assertExists()
-    onNodeWithText("There is no autostart", substring = true).assertExists()
+    onNodeWithText("Start Runtime at boot", ignoreCase = true).assertExists()
     onNodeWithText("Stop Runtime…").assertIsEnabled()
+  }
+
+  @Test
+  fun `boot startup can be enabled with no Runtime and disabled without asking to Stop`() = runComposeUiTest {
+    val gui = shell(GuiState(attachment = Attachment.Absent(Reason.NotAnswering),
+      destination = Destination.Connection, stage = Stage.Runtime,
+      startup = StartupStatus(StartupState.Off, "Automatic startup is off.", canEnable = true)))
+    onNodeWithText("Enable").performScrollTo().performClick()
+    assertEquals(GuiIntent.ConfigureStartup(StartupAction.Enable), gui.sent.last())
+    assertTrue(gui.sent.none { it == GuiIntent.StartRuntime || it == GuiIntent.AskStop })
+    gui.state = gui.state.copy(startup = StartupStatus(StartupState.On, "Configured for boot.", canDisable = true))
+    onNodeWithText("Disable").performScrollTo().performClick()
+    assertEquals(GuiIntent.ConfigureStartup(StartupAction.Disable), gui.sent.last())
+    assertFalse(gui.state.stopConfirmation)
+    gui.state = gui.state.copy(startupBusy = true)
+    onNodeWithText("Disable").assertIsNotEnabled()
   }
 
   @Test

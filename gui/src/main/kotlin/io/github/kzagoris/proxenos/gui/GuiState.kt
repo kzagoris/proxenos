@@ -11,6 +11,7 @@ import io.github.kzagoris.proxenos.coreapi.RunningOperation
 import io.github.kzagoris.proxenos.coreapi.WorkspaceId
 import io.github.kzagoris.proxenos.coreapi.WorkspaceState
 import io.github.kzagoris.proxenos.coreapi.RuntimeEvent
+import io.github.kzagoris.proxenos.frontend.StartupStatus
 import io.github.kzagoris.proxenos.coreapi.RuntimeState
 import io.github.kzagoris.proxenos.frontend.Attachment
 import io.github.kzagoris.proxenos.frontend.FeedRow
@@ -56,6 +57,8 @@ data class Tried(
 
 data class GuiState(
   val attachment: Attachment = Attachment.Attaching,
+  val startup: StartupStatus? = null,
+  val startupBusy: Boolean = false,
   val setup: SetupProgress? = null,
   val setupVisible: Boolean = false,
   val setupTunnelId: String = "",
@@ -216,6 +219,7 @@ data class GuiState(
     GuiIntent.OpenSetup -> if (dialogOpen || setup == null) this else copy(setupVisible = true)
     GuiIntent.FinishLater -> if (dialogOpen || setupBusy) this else copy(setupVisible = false)
     GuiIntent.CheckSetup, GuiIntent.InstallTunnelClient, is GuiIntent.SetupNavigate, is GuiIntent.SetupAssociated, is GuiIntent.SetupChoose,
+    GuiIntent.RefreshStartup, is GuiIntent.ConfigureStartup,
     is GuiIntent.SaveCredentials, GuiIntent.SetupConfirmPlugin, GuiIntent.CompleteSetup -> this
     is GuiIntent.Show -> if (dialogOpen) this else copy(destination = intent.destination, setupVisible = false)
     is GuiIntent.ShowStage -> if (dialogOpen) this else copy(destination = Destination.Connection, stage = intent.stage, setupVisible = false)
